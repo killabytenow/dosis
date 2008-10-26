@@ -1,0 +1,49 @@
+.TH dosis 1  "November, 2008" "@PACKAGE_VERSION@" "USER COMMANDS"
+.SH NAME
+dosis \- DoS Test Suite
+.SH SYNOPSIS
+.B dosis \-h
+.SH DESCRIPTION
+Denial of Service test suite.
+.SH OPTIONS
+.TP
+\-h, \-\-help
+Help.
+
+.SH EXIT STATUS
+Dosis returns a zero exit status if it succeeds or non zero is returned in case
+of failure.
+
+.SH FILES
+This program does not use any file.
+
+.SH NOTES
+This program will react to some signals:
+.TP
+.BR "SIGINT" ", " "SIGQUIT" ", " "SIGTERM"
+The first and second time one of this signals is received the program will try
+to finish everything that is initiated and then it will finish printing the
+partial report. If one of this signals is received for third time the program
+will be terminated inmediately without printing any result.
+
+.SH BUGS
+This program does not have bugs. It only has crazy, dangerous and unuseful
+undocumented features.
+
+.SH EXAMPLES
+Todo
+.PP
+.RS
+dosis xxx
+.RE
+.PP
+If you only want to work in some computers in network 192.168.0.0/16, from
+192.168.5.10 to 192.168.7.59, you can use this notation:
+
+.SH AUTHOR
+Gerardo García Peña (gerardo (at) kung-foo.dhs.org)
+.PP
+Visit Dosis's home page.
+.RS
+http://dosis.xxx.net/
+.RE
