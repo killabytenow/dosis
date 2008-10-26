@@ -27,6 +27,7 @@
 bin_PROGRAMS = dosis
 dosis_SOURCES = dosis.c     dosis.h     \
                 ipqex.c     ipqex.h     \
+								lnet.c      lnet.h      \
 								log.c       log.h       \
 								pthreadex.c pthreadex.h \
 								tcpopen.c   tcpopen.h   \

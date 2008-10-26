@@ -43,21 +43,21 @@ void tea_timer(tea_attack_go2work go2work,
   unsigned int mneeded, tneeded;
   pthreadex_timer_t timer;
 
-  /* build a timer to limit petitions to only opts.hits per minute */
+  /* build a timer to limit petitions to only config.hits per minute */
   pthreadex_timer_init(&timer, 0.0);
-  pthreadex_timer_set_frequency(&timer, opts.hits);
-  if(pthreadex_timer_get(&timer) > (double) opts.runtime)
-    pthreadex_timer_set(&timer, opts.runtime);
+  pthreadex_timer_set_frequency(&timer, config.hits);
+  if(pthreadex_timer_get(&timer) > (double) config.runtime)
+    pthreadex_timer_set(&timer, config.runtime);
 
   /* flag that will keep threads waiting for starting */
-  pthreadex_barrier_init(&start_barrier, opts.c + 1);
+  pthreadex_barrier_init(&start_barrier, config.c + 1);
 
   /* build threads */
-  DBG("Alloc'ing memory for %d threads.", opts.c);
-  if((tin = (THREAD_WORK *) calloc(opts.c, sizeof(THREAD_WORK))) == NULL)
+  DBG("Alloc'ing memory for %d threads.", config.c);
+  if((tin = (THREAD_WORK *) calloc(config.c, sizeof(THREAD_WORK))) == NULL)
     FAT("Memory allocation failed.");
 
-  for(i = 0; i < opts.c; i++)
+  for(i = 0; i < config.c; i++)
   {
     tin[i].id         = i;
     tin[i].pthread_id = 0;
@@ -70,11 +70,11 @@ void tea_timer(tea_attack_go2work go2work,
   /* GO! */
   DBG("Waiting that all threads have been created and ready before start...");
   pthreadex_barrier_wait(&start_barrier);
-  DBG("Starting attack of %d seconds.", opts.runtime);
+  DBG("Starting attack of %d seconds.", config.runtime);
   tneeded = 0;
-  mneeded = opts.c;
+  mneeded = config.c;
   for(gettimeofday(&sttime, NULL), gettimeofday(&entime, NULL);
-      entime.tv_sec - sttime.tv_sec < opts.runtime && !opts.finalize;
+      entime.tv_sec - sttime.tv_sec < config.runtime && !config.finalize;
       gettimeofday(&entime, NULL))
   {
     if(!go2work())
@@ -86,7 +86,7 @@ void tea_timer(tea_attack_go2work go2work,
     if(pthreadex_timer_wait(&timer) < 0)
       ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
   }
-  if(opts.finalize)
+  if(config.finalize)
     WRN("Attack cancelled by user.");
   if(tneeded > mneeded)
     WRN("You should allow at least %d threads for getting optimum performance.", tneeded);
@@ -96,12 +96,12 @@ void tea_timer(tea_attack_go2work go2work,
   /*       errors. A pthread_cancel return value different from zero, but */
   /*       a zero errno only means that thread is already finished.       */
   LOG("[--] Cancelling all threads.");
-  for(i = 0; i < opts.c; i++)
+  for(i = 0; i < config.c; i++)
     if(pthread_cancel(tin[i].pthread_id) && errno != 0)
       ERR("[--] Cannot cancel thread %02u: %s", i, strerror(errno));
 
   DBG("[--] Waiting for all to join.");
-  for(i = 0; i < opts.c; i++)
+  for(i = 0; i < config.c; i++)
     if(pthread_join(tin[i].pthread_id, NULL))
       ERR("[--] Cannot join with thread %02u: %s", i, strerror(errno));
 

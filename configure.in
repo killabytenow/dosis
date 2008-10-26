@@ -180,6 +180,7 @@ dnl Tell Autoconf/Automake which files must be generated
 dnl ---------------------------------------------------------------------------
 
 AC_CONFIG_FILES([Makefile
+                 doc/man/dosis.1
                  include/Makefile
                  src/Makefile
                  src/dosis/Makefile])

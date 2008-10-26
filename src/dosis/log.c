@@ -23,8 +23,7 @@
  *
  *****************************************************************************/
 
-#include <stdarg.h>
-#include <stdio.h>
+#include <config.h>
 
 #include "dosis.h"
 #include "log.h"
@@ -71,7 +70,7 @@ static void d_log_prefix_print(int level, char *file, char *function)
 
 static void d_log_level_print(int level, char *file, char *function, char *format, va_list args)
 {
-  if(opts.verbosity < level)
+  if(config.verbosity < level)
     return;
 
 /* XXX: When threaded, get log library lock here */
