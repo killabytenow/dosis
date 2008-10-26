@@ -1,0 +1,87 @@
+README
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Contents
+========
+
+        1. Description of Dosis
+        2. Quick install
+        3. Using it
+        4. License of Dosis
+
+
+1. Description of Dosis
+=======================
+
+  Dosis is a Denial of Service Test suite.
+
+  If you have any idea or suggestion, or if you think you have found a bug, you
+  can contact me at
+  
+    Gerardo García Peña <gerardo@kung-foo.dhs.org>
+
+
+2. Quick install
+================
+
+  You will need root privileges unless you install this software in your home
+  (see --prefix option in 'configure --help').
+
+  Go to a temporary directory (in this example we will use /var/tmp) and
+  uncompress Dosis distribution there.
+
+    $ cd /var/tmp/
+    $ zcat <your dosis-1.0.0.tar.gz dist file> | tar xvf -
+    $ cd dosis-1.0.0
+
+  Configure Dosis with 'configure':
+
+    $ ./configure
+
+  If the default configuration is not useful for you, you can tweak it. Try
+  'configure --help' to get a list of possible configuration and installation
+  options. The default configuration will install all Dosis files in
+  '/usr/local' directory.
+
+  Once configured, build the package:
+
+    $ make
+
+  If all have gone ok you can install now Dosis executing the following line
+  after getting root privileges:
+
+    $ su
+    Password: 
+    # make install
+
+
+3. Using Dosis
+==============
+
+  You can get help on using Dosis with option '-h' or '--help'.
+
+
+4. License of Dosis
+===================
+
+  All Dosis files are governed by the GPL license (GNU General Public License,
+  see file `COPYING' in this directory),
+
+
+-----
+dosis - DoS: Internet Sodomizer
+  (C) 2008 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 51 Franklin
+Street, Fifth Floor, Boston, MA  02110-1301  USA
+
