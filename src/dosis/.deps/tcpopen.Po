@@ -60,10 +60,10 @@ tcpopen.o tcpopen.o: tcpopen.c ../../include/config.h \
   /usr/include/linux/stddef.h \
   /usr/lib/gcc/i486-linux-gnu/4.1.2/include/asm/posix_types.h \
   /usr/include/asm/posix_types.h /usr/include/asm-i486/posix_types.h \
-  /usr/include/linux/netfilter_ipv4/ip_queue.h dosis.h tea.h pthreadex.h \
-  /usr/include/pthread.h /usr/include/sched.h /usr/include/xlocale.h \
-  /usr/include/bits/initspin.h tcpopen.h lnet.h ipqex.h \
-  /usr/include/linux/netfilter.h log.h
+  /usr/include/linux/netfilter_ipv4/ip_queue.h dosis.h ip.h tea.h \
+  pthreadex.h /usr/include/pthread.h /usr/include/sched.h \
+  /usr/include/xlocale.h /usr/include/bits/initspin.h tcpopen.h lnet.h \
+  ipqex.h /usr/include/linux/netfilter.h log.h
 
 ../../include/config.h:
 
@@ -308,6 +308,8 @@ tcpopen.o tcpopen.o: tcpopen.c ../../include/config.h \
 /usr/include/linux/netfilter_ipv4/ip_queue.h:
 
 dosis.h:
+
+ip.h:
 
 tea.h:
 

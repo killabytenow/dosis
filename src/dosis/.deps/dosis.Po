@@ -60,7 +60,8 @@ dosis.o dosis.o: dosis.c ../../include/config.h \
   /usr/include/linux/stddef.h \
   /usr/lib/gcc/i486-linux-gnu/4.1.2/include/asm/posix_types.h \
   /usr/include/asm/posix_types.h /usr/include/asm-i486/posix_types.h \
-  /usr/include/linux/netfilter_ipv4/ip_queue.h dosis.h log.h tcpopen.h
+  /usr/include/linux/netfilter_ipv4/ip_queue.h dosis.h ip.h log.h \
+  tcpopen.h
 
 ../../include/config.h:
 
@@ -305,6 +306,8 @@ dosis.o dosis.o: dosis.c ../../include/config.h \
 /usr/include/linux/netfilter_ipv4/ip_queue.h:
 
 dosis.h:
+
+ip.h:
 
 log.h:
 

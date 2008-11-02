@@ -48,6 +48,13 @@ extern "C" {
 #define DBG(...)              d_log_level(LOG_LEVEL_DEBUG,   THIS, __VA_ARGS__)
 #define DBG2(...)             d_log_level(LOG_LEVEL_DEBUG2,  THIS, __VA_ARGS__)
 
+#define D_FAT(...)            FAT(__VA_ARGS__)
+#define D_ERR(...)            ERR(__VA_ARGS__)
+#define D_WRN(...)            WRN(__VA_ARGS__)
+#define D_LOG(...)            LOG(__VA_ARGS__)
+#define D_DBG(...)            DBG(__VA_ARGS__)
+#define D_DBG2(...)           DBG2(__VA_ARGS__)
+
 void d_log_level(int level, char *file, char *function, char *format, ...);
 void d_debug(char *file, char *function, char *format, ...);
 void d_debug2(char *file, char *function, char *format, ...);

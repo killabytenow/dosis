@@ -28,16 +28,14 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 
+#include "ip.h"
+
 typedef struct __TAG_config {
-  char           *dev;          /* device to open (where to listen)          */
-  struct in_addr  shost;        /* source address in packet tests            */
-  u_int16_t       sport;        /* (optional) source port in packet tests    */
-  struct in_addr  dhost;        /* target address in packet tests            */
-  u_int16_t       dport;        /* (optional) target port in packet tests    */
+  INET_ADDR       shost;        /* source address in packet tests            */
+  INET_ADDR       dhost;        /* target address in packet tests            */
   u_int32_t       c;            /* total number of threads                   */
   u_int32_t       l;            /* threads used to read from ip_queue        */
   u_int64_t       packets;      /* packets sent in each packet burst         */
-  u_int32_t       bursts;       /* number of burst in packet tests           */
   double          hits;         /* packets per second                        */
   u_int32_t       wait;
   u_int32_t       iwait;

