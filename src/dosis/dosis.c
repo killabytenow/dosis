@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
   config.hits      = 1.0;           /* 1 hit per second by default                  */
 
   /* get input parameters */
-  while((opt = getopt(argc, argv, "c:C:d:D:H:l:p:r:R:s:S:T:v:w:W:")) != -1)
+  while((opt = getopt(argc, argv, "c:C:d:D:H:l:p:r:R:s:S:T:v:")) != -1)
   {
     switch(opt)
     {
@@ -142,14 +142,6 @@ int main(int argc, char *argv[])
           config.verbosity = LOG_LEVEL_ALL-1;
         }
         break;
-      case 'w':
-        if(!(config.iwait = atoi(optarg)))
-          FAT("Error getting interburst wait time.");
-        break;
-      case 'W':
-        if(!(config.wait = atoi(optarg)))
-          FAT("Error getting connection wait time.");
-        break;
       default:
         FAT("Bad option.");
         exit(-1);
@@ -173,8 +165,6 @@ int main(int argc, char *argv[])
   /* set the rest of options */
   config.rdport   = config.dhost.port ? 0 : 1;
   config.packets  = config.packets? config.packets : 1;
-  config.iwait    = config.iwait? config.iwait : 500000;
-  config.wait     = config.wait? config.wait : 2000000;
   config.cwait    = config.cwait? config.cwait : 3000000;
   config.rwait    = config.rwait? config.rwait : 10000000;
   config.runtime  = config.runtime? config.runtime : 1;

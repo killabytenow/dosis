@@ -37,8 +37,6 @@ typedef struct __TAG_config {
   u_int32_t       l;            /* threads used to read from ip_queue        */
   u_int64_t       packets;      /* packets sent in each packet burst         */
   double          hits;         /* packets per second                        */
-  u_int32_t       wait;
-  u_int32_t       iwait;
   u_int32_t       cwait;
   u_int32_t       rwait;
   u_int32_t       runtime;      /* time to keep simulating real users        */
