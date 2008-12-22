@@ -26,8 +26,7 @@
 #ifndef __IPQEX_H__
 #define __IPQEX_H__
 
-#include <libipq/libipq.h>
-#include <linux/netfilter.h>
+#include <config.h>
 
 #define ipqex_msg_errstr(x)           ((x)->s < 0 ? (x)->e : 0)
 #define ipqex_identify_ip_protocol(x) (((struct iphdr *)                  \

@@ -36,8 +36,8 @@
 /* Define to 1 if you have the `ipq' library (-lipq). */
 #undef HAVE_LIBIPQ
 
-/* Define to 1 if you have the <libipq/libipq.h> header file. */
-#undef HAVE_LIBIPQ_LIBIPQ_H
+/* Define to 1 if you have the <libipq.h> header file. */
+#undef HAVE_LIBIPQ_H
 
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM

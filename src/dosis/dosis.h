@@ -25,35 +25,5 @@
 #ifndef __DOSIS_H__
 #define __DOSIS_H__
 
-#include <stdlib.h>
-#include <arpa/inet.h>
-
-#include "ip.h"
-
-typedef struct __TAG_config {
-  INET_ADDR       shost;        /* source address in packet tests            */
-  INET_ADDR       dhost;        /* target address in packet tests            */
-  u_int32_t       c;            /* total number of threads                   */
-  u_int32_t       l;            /* threads used to read from ip_queue        */
-  u_int64_t       packets;      /* packets sent in each packet burst         */
-  double          hits;         /* packets per second                        */
-  u_int32_t       cwait;
-  u_int32_t       rwait;
-  u_int32_t       runtime;      /* time to keep simulating real users        */
-  char           *req;
-  int             verbosity;
-
-  char          **args;
-  int             nargs;
-
-  /* configuration data set by application based on user options */
-  u_int8_t       *payload;      /* (random) data sent in packet tests        */
-  int             req_size;     /* request size                              */
-  int             finalize;     /* for request inmediate program termination */
-  u_int8_t        rsport;       /* if set source port is randomly choosed    */
-  u_int8_t        rdport;       /* if set target port is randomly choosed    */
-} CONFIG;
-
-extern CONFIG config;
 
 #endif

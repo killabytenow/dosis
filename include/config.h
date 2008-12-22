@@ -64,7 +64,8 @@ extern "C" {
 
 /* network hardcore */
 #include <libnet.h>
-#include <libipq/libipq.h>
+#include <libipq.h>
+#include <linux/netfilter.h>
 
 /* Some functions as log functions (d_debug, d_log, d_error ...)     */
 /* have a variable number of parameters so 'stdarg.h' will be needed */

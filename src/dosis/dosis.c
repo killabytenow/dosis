@@ -25,17 +25,16 @@
 
 #include <config.h>
 #include "dosis.h"
+#include "dosconfig.h"
 #include "log.h"
 #include "tcpopen.h"
 
-CONFIG config;
-
 void handle_termination__signal(int s)
 {
-  if(!config.finalize)
+  if(!dos_param_get_bool("finalize"))
   {
     WRN("One more termination signal will force program termination.");
-    config.finalize = -1;
+    dos_param_set("finalize", "true");
   } else {
     FAT("Program termination forced.");
     exit(1);
@@ -55,13 +54,13 @@ int main(int argc, char *argv[])
   signal(SIGQUIT, handle_termination__signal);
   signal(SIGTERM, handle_termination__signal);
 
-  /* default configuration */
-  bzero(&config, sizeof(CONFIG));
-
-  config.verbosity = LOG_LEVEL_LOG;
-  config.hits      = 1.0;           /* 1 hit per second by default                  */
+  if(dos_config_init(argc, argv, &res))
+  {
+    FAT("bad config");
+  }
 
   /* get input parameters */
+#if 0
   while((opt = getopt(argc, argv, "c:C:d:D:H:l:p:r:R:s:S:T:v:")) != -1)
   {
     switch(opt)
@@ -148,26 +147,8 @@ int main(int argc, char *argv[])
     }
   }
 
-  /* get arguments */
-  config.args  = argv + optind;
-  config.nargs = argc - optind;
-
-  if(config.nargs > 0)
-  {
-    int i;
-
-    DBG("Arguments:");
-    for(i = 0; i < config.nargs; i++)
-      DBG("  [%02d] '%s'", i, config.args[i]);
-  } else
-    DBG("Executed without arguments.");
-
   /* set the rest of options */
   config.rdport   = config.dhost.port ? 0 : 1;
-  config.packets  = config.packets? config.packets : 1;
-  config.cwait    = config.cwait? config.cwait : 3000000;
-  config.rwait    = config.rwait? config.rwait : 10000000;
-  config.runtime  = config.runtime? config.runtime : 1;
   if(!config.req)
   {
     config.req = strdup("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
@@ -200,6 +181,7 @@ int main(int argc, char *argv[])
 
   /* run attack and get stats */
   attack_tcpopen();
+#endif
   LOG("Finished.");
 
   return 0;
