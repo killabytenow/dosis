@@ -57,10 +57,10 @@ tcpopen.o: tcpopen.c ../../include/config.h ../../include/autoconfig.h \
   /usr/lib/gcc/i486-linux-gnu/4.3.2/include-fixed/asm/posix_types.h \
   /usr/include/asm/posix_types.h /usr/include/asm/posix_types_32.h \
   /usr/include/linux/netfilter_ipv4/ip_queue.h \
-  /usr/include/linux/netfilter.h dosis.h ip.h tea.h pthreadex.h \
+  /usr/include/linux/netfilter.h dosis.h tea.h pthreadex.h \
   /usr/include/pthread.h /usr/include/sched.h /usr/include/bits/sched.h \
-  /usr/include/xlocale.h /usr/include/bits/setjmp.h tcpopen.h lnet.h \
-  ipqex.h log.h
+  /usr/include/xlocale.h /usr/include/bits/setjmp.h tcpopen.h dosconfig.h \
+  ip.h lnet.h ipqex.h log.h
 
 ../../include/config.h:
 
@@ -290,8 +290,6 @@ tcpopen.o: tcpopen.c ../../include/config.h ../../include/autoconfig.h \
 
 dosis.h:
 
-ip.h:
-
 tea.h:
 
 pthreadex.h:
@@ -307,6 +305,10 @@ pthreadex.h:
 /usr/include/bits/setjmp.h:
 
 tcpopen.h:
+
+dosconfig.h:
+
+ip.h:
 
 lnet.h:
 

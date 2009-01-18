@@ -1,11 +1,11 @@
 /*****************************************************************************
- * tcpopen.c
+ * help.h
  *
- * DoS on TCP servers by leaving connections opened.
+ * Helpful messages.
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -23,11 +23,17 @@
  *
  *****************************************************************************/
 
-#ifndef __TCPOPEN_H__
-#define __TCPOPEN_H__
+#ifndef __HELP_H__
+#define __HELP_H__
 
-#include "dosconfig.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-extern DOS_COMMAND dos_attack_tcpopen;
+void dos_help_program_header(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

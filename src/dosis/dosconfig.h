@@ -4,8 +4,8 @@
  * DioNiSio configuration structure.
  *
  * ---------------------------------------------------------------------------
- * DioNiSio - DNS scanner
- *   (C) 2006-2008 Gerardo García Peña
+ * dosis - DoS: Internet Sodomizer
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -51,8 +51,13 @@ typedef struct __TAG_config {
 
   /* configuration data set by application based on user options */
   int             finalize;     /* for request inmediate program termination */
+
+  /* parameter reading (dosconfig) */
+  char            **params;
+  char            nparams;
 } DOS_CONFIG;
 
+extern DOS_CONFIG *cfg;
 
 /*****************************************************************************
  * LOGFILE
@@ -62,6 +67,15 @@ typedef struct __TAG_config {
  */
 
 #define LOGFILE     (cfg->logfile ? cfg->logfile : stderr)
+
+typedef struct {
+  char      **name;                    /* name and aliases of this command */
+  void      (*command)(void);
+  int       min_pars;                  /* min pars expected                */
+  int       max_pars;                  /* max pars expected (-1 infinite)  */
+} DOS_COMMAND;
+
+extern DOS_COMMAND *dio_cmd_list[];
 
 /* program flags and configuration parameters */
 typedef struct _tag_DOS_PARAMETER {
@@ -105,7 +119,7 @@ typedef struct _tag_CMD_OPTION {
 
 extern DOS_CMD_OPTION cmd_options[];
 
-int dos_config_init(int argc, char **argv, int *error);
+DOS_COMMAND *dos_config_init(int argc, char **argv, int *error);
 void dos_param_set(char *param, char *value);
 int dos_param_get(char *param, void *b);
 int dos_param_get_bool(char *param);

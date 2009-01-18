@@ -44,7 +44,6 @@ void handle_termination__signal(int s)
 int main(int argc, char *argv[])
 {
   int res;
-  u_int32_t opt;
 
   log_init();
 

@@ -1,7 +1,7 @@
 /*****************************************************************************
- * dosis.c
+ * help.c
  *
- * DoS generator.
+ * Helpful messages.
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -25,6 +25,23 @@
 
 #include <config.h>
 #include "help.h"
+
+void dos_help_program_header(void)
+{
+  char *msg[] = {
+    PACKAGE_NAME " version " PACKAGE_VERSION ", Copyright (C) 2006-2009 Gerardo García Peña",
+    PACKAGE_NAME " is free software and comes with ABSOLUTELY NO WARRANTY;",
+    "you are welcome to redistribute it under certain conditions;",
+    "for details see the file `COPYING' that accompanies this software.",
+    "----------------------------------------------------------------------",
+    "",
+    NULL
+  };
+  char **i;
+
+  for(i = msg; *i; i++)
+    d_log(NULL, NULL, *i);
+}
 
 void print_help(void)
 {

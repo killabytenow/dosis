@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -26,7 +26,10 @@
 #include <config.h>
 #include <datadir.h>
 #include "dosconfig.h"
+#include "help.h"
 #include "log.h"
+
+#include "tcpopen.h"
 
 /* default config and global configuration pointer */
 static DOS_CONFIG cfg_default = {
@@ -58,9 +61,9 @@ static int help_flag;
 static int dos_vhandler_addr(DOS_PARAMETER *, char *, int);
 static int dos_vhandler_bool(DOS_PARAMETER *, char *, int);
 static int dos_vhandler_int(DOS_PARAMETER *, char *, int);
+static int dos_vhandler_verbosity(DOS_PARAMETER *, char *, int);
+static int dos_vhandler_port(DOS_PARAMETER *, char *, int);
 static int dos_vhandler_string(DOS_PARAMETER *, char *, int);
-static int dos_vhandler_nslist(DOS_PARAMETER *, char *, int);
-static int dos_vhandler_output_format(DOS_PARAMETER *, char *, int);
 
 #define CFGOFF(f)         offsetof(DOS_CONFIG,f)
 DOS_PARAMETER dos_param_list[] = {
@@ -68,10 +71,12 @@ DOS_PARAMETER dos_param_list[] = {
   { "conn-timeout",   NULL, CFGOFF(cwait),     dos_vhandler_int           },
   { "target",         NULL, CFGOFF(dhost),     dos_vhandler_addr          },
   { "target-port",    NULL, CFGOFF(dhost),     dos_vhandler_port          },
+  { "rnd-sport",      NULL, CFGOFF(rsport),    dos_vhandler_bool          },
+  { "rnd-dport",      NULL, CFGOFF(rdport),    dos_vhandler_bool          },
   { "hit-ratio",      NULL, CFGOFF(hits),      dos_vhandler_int           },
   { "listen",         NULL, CFGOFF(l),         dos_vhandler_int           },
   { "npackets",       NULL, CFGOFF(packets),   dos_vhandler_int           },
-  { "request",        NULL, CFGOFF(request),   dos_vhandler_string        },
+  { "request",        NULL, CFGOFF(req),       dos_vhandler_string        },
   { "reply-timeout",  NULL, CFGOFF(rwait),     dos_vhandler_int           },
   { "source",         NULL, CFGOFF(shost),     dos_vhandler_addr          },
   { "source-port",    NULL, CFGOFF(shost),     dos_vhandler_port          },
@@ -88,6 +93,8 @@ static int dos_help_opt_trigger(char *optarg)
 
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
 DOS_CMD_OPTION cmd_options[] = {
+  { 'a', "rnd-sport",     0, "rnd-sport",     "yes", NULL                  },
+  { 'A', "rnd-dport",     0, "rnd-dport",     "yes", NULL                  },
   { 'c', "clients",       0, "clients",       "yes", NULL                  },
   { 'C', "conn-timeout",  0, "conn-timeout",  "yes", NULL                  },
   { 'd', "target",        0, "target",        "yes", NULL                  },
@@ -106,8 +113,15 @@ DOS_CMD_OPTION cmd_options[] = {
   {   0, NULL,            0, NULL,             NULL, NULL                  },
 };
 
+/* declare commands */
+DOS_COMMAND *dos_cmd_list[] = {
+  &dos_attack_tcpopen,
+  NULL
+};
+
+
 /*****************************************************************************
- * Module Private Functions
+ * Parameter handlers
  *****************************************************************************/
 
 static int dos_vhandler_bool(DOS_PARAMETER *c, char *buff, int rbuffsize)
@@ -160,6 +174,51 @@ static int dos_vhandler_int(DOS_PARAMETER *c, char *buff, int rbuffsize)
   return ret;
 }
 
+static int dos_vhandler_port(DOS_PARAMETER *c, char *buff, int rbuffsize)
+{
+  INET_ADDR *target = ((void *) cfg) + c->cfg_offset;
+  int ret = 0;
+
+  if(!buff)
+    rbuffsize = 0;
+
+  if(rbuffsize >= 0)
+    ret = snprintf(buff, rbuffsize, "%d", target->port);
+  else
+    if(buff)
+      target->port = atoi(buff);
+
+  return ret;
+}
+
+static int dos_vhandler_verbosity(DOS_PARAMETER *c, char *buff, int rbuffsize)
+{
+  int *target = ((void *) cfg) + c->cfg_offset;
+  int ret = 0;
+  int t;
+
+  if(!buff)
+    rbuffsize = 0;
+
+  if(rbuffsize >= 0)
+    ret = snprintf(buff, rbuffsize, "%d", *target);
+  else
+    if(buff)
+    {
+      t = atoi(buff);
+      if(t >= 0 && t <= LOG_LEVEL_ALL)
+      {
+        *target = t;
+        ret = 0;
+      } else {
+        D_ERR("Bad verbosity level (%d).", t);
+        ret = -1;
+      }
+    }
+
+  return ret;
+}
+
 static int dos_vhandler_string(DOS_PARAMETER *c, char *buff, int rbuffsize)
 {
   char **target = ((void *) cfg) + c->cfg_offset;
@@ -187,41 +246,23 @@ static int dos_vhandler_string(DOS_PARAMETER *c, char *buff, int rbuffsize)
   return 0;
 }
 
-static int dos_vhandler_nslist(DOS_PARAMETER *c, char *buff, int rbuffsize)
+static int dos_vhandler_addr(DOS_PARAMETER *c, char *buff, int rbuffsize)
 {
-  int r;
-
-  r = dos_vhandler_string(c, buff, rbuffsize);
-
-  if(r < 0 && buff)
-    nslist_load();
-
-  return r;
-}
-
-static int dos_vhandler_output_format(DOS_PARAMETER *c, char *buff, int rbuffsize)
-{
-  char *formats[] = { "txt", "csv" };
-  int *target = ((void *) cfg) + c->cfg_offset;
-  int i, ret;
+  INET_ADDR *target = ((void *) cfg) + c->cfg_offset;
+  int ret;
 
   if(!buff)
     rbuffsize = 0;
 
   if(rbuffsize >= 0)
-    ret = snprintf(buff, rbuffsize, "%s", formats[*target]);
+    ret = ip_addr_snprintf(target, rbuffsize, buff);
   else
     if(buff)
     {
-      for(i = 0; i < sizeof(formats) / sizeof(char *); i++)
-        if(!strcasecmp(buff, formats[i]))
-        {
-          *target = i;
-          ret = 0;
-        }
+      ret = ip_addr_parse(buff, target);
 
       if(ret < 0)
-        D_ERR("%s: Bad output mode '%s'.", c->name, buff);
+        D_ERR("%s: Bad address '%s'.", c->name, buff);
     }
 
   return ret;
@@ -235,21 +276,41 @@ static int dos_vhandler_output_format(DOS_PARAMETER *c, char *buff, int rbuffsiz
  *
  *****************************************************************************/
 
-void dos_param_set(char *param, char *value)
+DOS_PARAMETER *find_param(char *param)
 {
   DOS_PARAMETER *p;
 
   for(p = dos_param_list; p->name && strcmp(p->name, param); p++)
     ;
-  if(!p->name)
+
+  return p->name ? p : NULL;
+}
+
+void dos_param_set(char *param, char *value)
+{
+  DOS_PARAMETER *p;
+
+  if((p = find_param(param)) == NULL)
   {
    D_ERR("Parameter configuration '%s' does not exists.", param);
    return;
   }
-  D_ERR("<<<<<<<<<<<<%s>>>>>>>>>>>>", p->name);
 
   if(p->par_handler(p, value, -1))
     D_ERR("Cannot configure parameter '%s'.", param);
+}
+
+int dos_param_get_bool(char *param)
+{
+  DOS_PARAMETER *p;
+
+  if((p = find_param(param)) == NULL)
+  {
+   D_ERR("Parameter configuration '%s' does not exists.", param);
+   return 0;
+  }
+
+  return *((int *) ((void *) cfg) + p->cfg_offset);
 }
 
 static DOS_CMD_OPTION *find_cmd_option(int c)
@@ -379,101 +440,11 @@ static DOS_COMMAND *dos_config_parse_command(int argc, char **argv, int *error)
         D_FAT("Cannot copy parameter %d (%s).", i + par_index, argv[i + par_index]);
   }
 
-  if(cfg->verbosity < -1 || cfg->verbosity > LOG_LEVEL_ALL)
-  {
-    D_ERR("Verbosity out of bounds.");
-    goto error;
-  }
-  if(cfg->mfails < 0)
-  {
-    D_FAT("--max-fail cannot be negative."); 
-    goto error;
-  }
-
   return cmd;
 
 error:
   *error = 1;
   return NULL;
-}
-
-/*****************************************************************************
- * Manage configuration stack
- *****************************************************************************/
-
-void dos_config_push(void)
-{
-  DOS_CONFIG *old;
-
-  old = cfg;
-  if((cfg = malloc(sizeof(DOS_CONFIG))) == NULL)
-    D_FAT("Cannot alloc memory for configuration.");
-
-  memcpy(cfg, old, sizeof(DOS_CONFIG));
-
-  cfg->previous = old;
-}
-
-void dos_config_pop(void)
-{
-  DOS_CONFIG *old;
-  int i;
-
-  if(!cfg->previous)
-  {
-    D_WRN("Top configuration is active. No pop possible.");
-    return;
-  }
-
-  /* pop config */
-  old = cfg;
-  cfg = cfg->previous;
-
-  /* free mem, close handles, etc... */
-  if(old->logfile && cfg->logfile != old->logfile)
-    fclose(old->logfile);
-  if(old->params && cfg->params != old->params)
-  {
-    for(i = 0; i < old->nparams; i++)
-      if(old->params[i])
-        free(old->params[i]);
-    free(old->params);
-  }
-  if(old->dicfile && cfg->dicfile != old->dicfile)
-    free(old->dicfile);
-  if(old->nslfile && cfg->nslfile != old->nslfile)
-    free(old->nslfile);
-  if(old->dumpfile && cfg->dumpfile != old->dumpfile)
-    free(old->dumpfile);
-  if(old->nameservers && cfg->nameservers != old->nameservers)
-    nslist_free(old->nameservers);
-}
-
-void dos_config_pop_and_merge(void)
-{
-  DOS_CONFIG *old;
-  int i;
-
-  if(!cfg->previous)
-  {
-    D_WRN("Top configuration is active. No pop possible.");
-    return;
-  }
-
-  /* pop config */
-  old = cfg;
-  cfg = cfg->previous;
-
-  /* free mem, close handles, etc... */
-
-  /* params are not merged */
-  if(old->params && cfg->params != old->params)
-  {
-    for(i = 0; i < old->nparams; i++)
-      if(old->params[i])
-        free(old->params[i]);
-    free(old->params);
-  }
 }
 
 /*****************************************************************************
@@ -486,9 +457,6 @@ static void dos_config_fini(void)
 
   if(cfg)
   {
-    if(cfg->logfile)
-      fclose(cfg->logfile);
-
     if(cfg->params)
     {
       for(i = 0; i < cfg->nparams; i++)
@@ -496,14 +464,8 @@ static void dos_config_fini(void)
           free(cfg->params[i]);
       free(cfg->params);
     }
-    if(cfg->dicfile)
-      free(cfg->dicfile);
-    if(cfg->nslfile)
-      free(cfg->nslfile);
-    if(cfg->dumpfile)
-      free(cfg->dumpfile);
-    if(cfg->nameservers)
-      nslist_free(cfg->nameservers);
+    if(cfg->req)
+      free(cfg->req);
     free(cfg);
     cfg = NULL;
   }
@@ -567,6 +529,7 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
     "/etc",
     NULL
   };
+  char tmp[255];
 
   /* first of all get concious about dead */
   if(atexit(dos_config_fini))
@@ -620,17 +583,19 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
 
   D_DBG("Configuration");
   D_DBG("  verbosity level             = %d", cfg->verbosity);
-  D_DBG("  follow new domains mode     = %d", cfg->follow);
-  D_DBG("  nameserver max-fails        = %d", cfg->mfails);
-  D_DBG("  name server list file       = %s", cfg->nslfile);
-  D_DBG("  dictionary file             = %s", cfg->dicfile);
-  D_DBG("  add comments                = %s", cfg->comments ? "yes" : "no");
-  D_DBG("  output module               = %d", cfg->output);
-  D_DBG("  do host analysis            = %s", cfg->test.host ? "yes" : "no");
-  D_DBG("  do reverse analysis         = %s", cfg->test.rev  ? "yes" : "no");
-  D_DBG("  do zone transfer analysis   = %s", cfg->test.axfr ? "yes" : "no");
-  D_DBG("  do domain analysis          = %s", cfg->test.dom  ? "yes" : "no");
-  D_DBG("  memorize non-existent names = %s", cfg->memorize  ? "yes" : "no");
+  ip_addr_snprintf(&cfg->shost, sizeof(tmp), tmp);
+  D_DBG("  source address              = %s", tmp);
+  ip_addr_snprintf(&cfg->dhost, sizeof(tmp), tmp);
+  D_DBG("  target address              = %s", tmp);
+  D_DBG("  source port random          = %s", cfg->rsport ? "yes" : "no");
+  D_DBG("  target port random          = %s", cfg->rdport ? "yes" : "no");
+  D_DBG("  number of threads           = %d", cfg->c);
+  D_DBG("  listener threads            = %d", cfg->l);
+  D_DBG("  packets                     = %d", cfg->packets);
+  D_DBG("  hits per second             = %f", cfg->hits);
+  D_DBG("  timeout cwait               = %u", cfg->cwait);
+  D_DBG("  timeout rwait               = %u", cfg->rwait);
+  D_DBG("  runtime                     = %u", cfg->runtime);
   if(cmd)
   {
     D_DBG("  command                     = %s", cmd->name[0]);

