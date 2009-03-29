@@ -97,7 +97,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'A', "rnd-dport",     0, "rnd-dport",     "yes", NULL                  },
   { 'c', "clients",       0, "clients",       "yes", NULL                  },
   { 'C', "conn-timeout",  0, "conn-timeout",  "yes", NULL                  },
-  { 'd', "target",        0, "target",        "yes", NULL                  },
+  { 'd', "target",        0, "target",         NULL, NULL                  },
   { 'D', "target-port",   1, "target-port",    NULL, NULL                  },
   { 'h', "help",          0, NULL,             NULL, dos_help_opt_trigger  },
   { 'H', "hit-ratio",     0, "hit-ratio",       "4", NULL                  },
@@ -254,6 +254,7 @@ static int dos_vhandler_addr(DOS_PARAMETER *c, char *buff, int rbuffsize)
   if(!buff)
     rbuffsize = 0;
 
+  D_LOG("XXXXXXXXXX");
   if(rbuffsize >= 0)
     ret = ip_addr_snprintf(target, rbuffsize, buff);
   else
