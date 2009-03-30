@@ -142,6 +142,13 @@ int ip_read_range(char *network, INET_IPV4_RANGE *range)
 
 void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
 {
+  char tmp[INET_ADDR_MAXLEN_STR];
+
+  if(addr->port_defined)
+  {
+    ip_addr_snprintf(addr, INET_ADDR_MAXLEN, tmp);
+    D_WRN("Port not defined for address '%s'.", tmp);
+  }
   switch(addr->type)
   {
     case INET_FAMILY_IPV4:
@@ -217,23 +224,28 @@ void ip_addr_set_null(INET_ADDR *addr)
   memset(&addr, 0, sizeof(INET_ADDR));
 }
 
-void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in, int port)
+void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in)
 {
   addr->type = INET_FAMILY_IPV4;
   memcpy(&addr->addr.in, in, sizeof(INET_IPV4_ADDR));
-  addr->port = htons(port);
 }
 
-void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in6, int port)
+void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in6)
 {
   addr->type = INET_FAMILY_IPV6;
   memcpy(&addr->addr.in6, in6, sizeof(INET_IPV6_ADDR));
-  addr->port = htons(port);
 }
 
 void ip_addr_set_port(INET_ADDR *addr, int port)
 {
   addr->port = htons(port);
+  addr->port_defined = 1;
+}
+
+void ip_addr_unset_port(INET_ADDR *addr)
+{
+  addr->port = 0;
+  addr->port_defined = 0;
 }
 
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from)
@@ -253,7 +265,7 @@ int ip_addr_snprintf_ipv4(INET_ADDR *addr, int l, char *str)
     return -1;
   }
 
-  if(addr->port)
+  if(addr->port_defined)
   {
     r = snprintf(str, l, "%d.%d.%d.%d:%d",
                     IPV4_GETP(3, &addr->addr.in),
@@ -351,14 +363,18 @@ int ip_snprintf_ipv6(INET_IPV6_ADDR *in6, int l, char *str)
 
 int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr)
 {
-  int a, b, c, d, p, r, x;
+  int a, b, c, d, p, r, x, port_defined;
 
   if((r = sscanf(saddr, "%3u.%3u.%3u.%3u:%5u%n", &a, &b, &c, &d, &p, &x)) != 5)
     if((r = sscanf(saddr, "%3u.%3u.%3u.%3u%n", &a, &b, &c, &d, &x)) != 4)
       return -1;
 
   if(r == 4)
-      p = 0;
+  {
+    p = 0;
+    port_defined = 0;
+  } else
+    port_defined = 1;
   if(saddr[x])
     return -1;
 
@@ -375,7 +391,8 @@ int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr)
            | ((c & 0x000000ffl) <<  8)
            | ((b & 0x000000ffl) << 16)
            | ((a & 0x000000ffl) << 24));
-  addr->port = htons(p);
+  addr->port_defined = port_defined;
+  addr->port = port_defined ? htons(p) : 0;
   
   return 0;
 }

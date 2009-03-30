@@ -59,6 +59,7 @@ typedef union _tag_BIG_SOCKET {
 #define INET_ADDR_MAXLEN_IPV6    39
 #define INET_ADDR_MAXLEN_IPV4    15
 #define INET_ADDR_MAXLEN         INET_ADDR_MAXLEN_IPV6
+#define INET_ADDR_MAXLEN_STR     (INET_ADDR_MAXLEN_IPV6 + 1)
 
 #define INET_ADDR_IS_IPV4(x)            ((x).type == INET_FAMILY_IPV4)
 #define INET_ADDR_IS_IPV6(x)            ((x).type == INET_FAMILY_IPV6)
@@ -71,6 +72,7 @@ typedef struct _tag_INET_ADDR {
     INET_IPV6_ADDR  in6;      /* IPv6 address                            */
   } addr;
   int               port;     /* connection port (TCP/UDP)               */
+  int               port_defined;
 } INET_ADDR;
 
 typedef struct _tag_INET_IPV4_RANGE {
@@ -86,9 +88,10 @@ int ip_addr_snprintf_ipv6(INET_ADDR *addr, int l, char *str);
 int ip_addr_snprintf(INET_ADDR *addr, int l, char *str);
 
 void ip_addr_set_null(INET_ADDR *addr);
-void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in, int port);
-void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in, int port);
+void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in);
+void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in);
 void ip_addr_set_port(INET_ADDR *addr, int port);
+void ip_addr_unset_port(INET_ADDR *addr);
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from);
 
 void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
