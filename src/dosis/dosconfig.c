@@ -91,20 +91,22 @@ static int dos_help_opt_trigger(char *optarg)
 
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
 DOS_CMD_OPTION cmd_options[] = {
+  { 'a', "rnd-sport",     0, "rnd-sport",     "yes", NULL                  },
+  { 'A', "rnd-dport",     0, "rnd-dport",     "yes", NULL                  },
   { 'c', "clients",       1, "clients",       "yes", NULL                  },
-  { 'C', "conn-timeout",  0, "conn-timeout",  "yes", NULL                  },
-  { 'd', "target",        1, "target",        "yes", NULL                  },
+  { 'C', "conn-timeout",  1, "conn-timeout",  "yes", NULL                  },
+  { 'd', "target",        1, "target",         NULL, NULL                  },
   { 'D', "target-port",   1, "target-port",    NULL, NULL                  },
   { 'h', "help",          0, NULL,             NULL, dos_help_opt_trigger  },
-  { 'H', "hit-ratio",     0, "hit-ratio",       "4", NULL                  },
-  { 'l', "listen",        0, "listen",        "yes", NULL                  },
+  { 'H', "hit-ratio",     1, "hit-ratio",       "4", NULL                  },
+  { 'l', "listen",        1, "listen",        "yes", NULL                  },
   { 'p', "npackets",      1, "npackets",       NULL, NULL                  },
   { 'q', "quiet",         0, "verbosity",       "0", NULL                  },
   { 'r', "request",       1, "request",        NULL, NULL                  },
   { 'R', "reply-timeout", 1, "reply-timeout",  NULL, NULL                  },
   { 's', "source",        1, "source",         NULL, NULL                  },
   { 'S', "source-port",   1, "source-port",    NULL, NULL                  },
-  { 'T', "run-time",      0, "run-time",      "yes", NULL                  },
+  { 'T', "run-time",      1, "run-time",       "10", NULL                  },
   { 'v', "verbosity",     2, "verbosity",       "3", NULL                  },
   {   0, NULL,            0, NULL,             NULL, NULL                  },
 };
@@ -182,7 +184,7 @@ static int dos_vhandler_port(DOS_PARAMETER *c, char *buff, int rbuffsize)
     ret = snprintf(buff, rbuffsize, "%d", target->port);
   else
     if(buff)
-      target->port = atoi(buff);
+      ip_addr_set_port(target, atoi(buff));
 
   return ret;
 }
@@ -250,6 +252,7 @@ static int dos_vhandler_addr(DOS_PARAMETER *c, char *buff, int rbuffsize)
   if(!buff)
     rbuffsize = 0;
 
+  D_LOG("XXXXXXXXXX");
   if(rbuffsize >= 0)
     ret = ip_addr_snprintf(target, rbuffsize, buff);
   else
@@ -583,8 +586,8 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
   D_DBG("  source address              = %s", tmp);
   ip_addr_snprintf(&cfg->dhost, sizeof(tmp), tmp);
   D_DBG("  target address              = %s", tmp);
-  D_DBG("  source port random          = %s", cfg->rsport ? "yes" : "no");
-  D_DBG("  target port random          = %s", cfg->rdport ? "yes" : "no");
+  D_DBG("  source port random          = %s", cfg->shost.port_defined ? "no" : "yes");
+  D_DBG("  target port random          = %s", cfg->dhost.port_defined ? "no" : "yes");
   D_DBG("  number of threads           = %d", cfg->c);
   D_DBG("  listener threads            = %d", cfg->l);
   D_DBG("  packets                     = %d", cfg->packets);
