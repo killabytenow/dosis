@@ -71,8 +71,6 @@ DOS_PARAMETER dos_param_list[] = {
   { "conn-timeout",   NULL, CFGOFF(cwait),     dos_vhandler_int           },
   { "target",         NULL, CFGOFF(dhost),     dos_vhandler_addr          },
   { "target-port",    NULL, CFGOFF(dhost),     dos_vhandler_port          },
-  { "rnd-sport",      NULL, CFGOFF(rsport),    dos_vhandler_bool          },
-  { "rnd-dport",      NULL, CFGOFF(rdport),    dos_vhandler_bool          },
   { "hit-ratio",      NULL, CFGOFF(hits),      dos_vhandler_int           },
   { "listen",         NULL, CFGOFF(l),         dos_vhandler_int           },
   { "npackets",       NULL, CFGOFF(packets),   dos_vhandler_int           },
@@ -93,11 +91,9 @@ static int dos_help_opt_trigger(char *optarg)
 
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
 DOS_CMD_OPTION cmd_options[] = {
-  { 'a', "rnd-sport",     0, "rnd-sport",     "yes", NULL                  },
-  { 'A', "rnd-dport",     0, "rnd-dport",     "yes", NULL                  },
-  { 'c', "clients",       0, "clients",       "yes", NULL                  },
+  { 'c', "clients",       1, "clients",       "yes", NULL                  },
   { 'C', "conn-timeout",  0, "conn-timeout",  "yes", NULL                  },
-  { 'd', "target",        0, "target",        "yes", NULL                  },
+  { 'd', "target",        1, "target",        "yes", NULL                  },
   { 'D', "target-port",   1, "target-port",    NULL, NULL                  },
   { 'h', "help",          0, NULL,             NULL, dos_help_opt_trigger  },
   { 'H', "hit-ratio",     0, "hit-ratio",       "4", NULL                  },

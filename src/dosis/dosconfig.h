@@ -37,8 +37,6 @@ typedef struct __TAG_config {
   int             verbosity;
   INET_ADDR       shost;        /* source address in packet tests            */
   INET_ADDR       dhost;        /* target address in packet tests            */
-  u_int8_t        rsport;       /* if set source port is randomly choosed    */
-  u_int8_t        rdport;       /* if set target port is randomly choosed    */
   u_int32_t       c;            /* total number of threads                   */
   u_int32_t       l;            /* threads used to read from ip_queue        */
   u_int64_t       packets;      /* packets sent in each packet burst         */
