@@ -122,7 +122,7 @@ void   dos_param_set(char *param, char *value);
 void   dos_param_set_int(char *param, int value);
 void   dos_param_set_str(char *param, int value);
 
-int    dos_param_get(char *param, void *b);
+void  *dos_param_get(char *param);
 int    dos_param_get_bool(char *param);
 int    dos_param_get_int(char *param);
 char  *dos_param_get_str(char *param);

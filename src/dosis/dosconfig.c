@@ -250,7 +250,6 @@ static int dos_vhandler_addr(DOS_PARAMETER *c, char *buff, int rbuffsize)
   if(!buff)
     rbuffsize = 0;
 
-  D_LOG("XXXXXXXXXX");
   if(rbuffsize >= 0)
     ret = ip_addr_snprintf(target, rbuffsize, buff);
   else
@@ -283,6 +282,40 @@ DOS_PARAMETER *find_param(char *param)
   return p->name ? p : NULL;
 }
 
+void *dos_param_get(char *param)
+{
+  DOS_PARAMETER *p;
+
+  if((p = find_param(param)) == NULL)
+  {
+   D_ERR("Parameter '%s' does not exists.", param);
+   return NULL;
+  }
+
+  return ((void *) cfg) + p->cfg_offset;
+}
+
+int dos_param_get_int(char *param)
+{
+  int *p;
+
+  if((p = (int *) dos_param_get(param)) != NULL)
+    return *p;
+}
+
+int dos_param_get_bool(char *param)
+{
+  return dos_param_get_int(param) ? -1 : 0;
+}
+
+double dos_param_get_float(char *param)
+{
+  double *p;
+
+  if((p = (double *) dos_param_get(param)) != NULL)
+    return *p;
+}
+
 void dos_param_set(char *param, char *value)
 {
   DOS_PARAMETER *p;
@@ -297,17 +330,17 @@ void dos_param_set(char *param, char *value)
     D_ERR("Cannot configure parameter '%s'.", param);
 }
 
-int dos_param_get_bool(char *param)
+void dos_param_set_int(char *param, int value)
 {
-  DOS_PARAMETER *p;
+  int *p;
 
-  if((p = find_param(param)) == NULL)
-  {
-   D_ERR("Parameter configuration '%s' does not exists.", param);
-   return 0;
-  }
+  if((p = (int *) dos_param_get(param)) != NULL)
+    *p = value;
+}
 
-  return *((int *) ((void *) cfg) + p->cfg_offset);
+void dos_param_set_bool(char *param, int value)
+{
+  dos_param_set_int(param, value ? -1 : 0);
 }
 
 static DOS_CMD_OPTION *find_cmd_option(int c)
@@ -586,7 +619,7 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
     WRN("All threads will listen, but none will send SYN packets.");
     WRN("Remember to launch a SYN flood attack from other process/machine.");
   }
-  if(dos_param_get_float("hits-ration") < 0.0)
+  if(dos_param_get_float("hit-ratio") < 0.0)
     FAT("Bad hits per second.");
   if(dos_param_get_int("npackets") < 0)
     FAT("Bad number of packets.");
@@ -633,10 +666,10 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
   D_DBG("  runtime                     = %u", cfg->runtime);
   if(cmd)
   {
-    D_DBG("  command                     = %s", cmd->name[0]);
+    D_DBG("  command [%s]", cmd->name[0]);
     if(cfg->params)
     {
-      D_DBG("  printing parameters (%d)", cfg->nparams);
+      D_DBG("  with parameters (%d):", cfg->nparams);
       for(i = 0; i < cfg->nparams; i++)
         D_DBG("    %02d [%s]", i+1, cfg->params[i]);
     } else

@@ -44,6 +44,7 @@ void handle_termination__signal(int s)
 int main(int argc, char *argv[])
 {
   int res;
+  DOS_COMMAND *c;
 
   log_init();
 
@@ -53,12 +54,13 @@ int main(int argc, char *argv[])
   signal(SIGQUIT, handle_termination__signal);
   signal(SIGTERM, handle_termination__signal);
 
-  if(dos_config_init(argc, argv, &res))
+  if((c = dos_config_init(argc, argv, &res)) == NULL)
   {
     FAT("bad config");
   }
 
   /* XXX */
+  c->command();
 
   LOG("Finished.");
 
