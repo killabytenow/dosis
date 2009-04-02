@@ -118,11 +118,15 @@ typedef struct _tag_CMD_OPTION {
 extern DOS_CMD_OPTION cmd_options[];
 
 DOS_COMMAND *dos_config_init(int argc, char **argv, int *error);
-void dos_param_set(char *param, char *value);
-int dos_param_get(char *param, void *b);
-int dos_param_get_bool(char *param);
-int dos_param_get_int(char *param);
-int dos_param_get_str(char *param);
+void   dos_param_set(char *param, char *value);
+void   dos_param_set_int(char *param, int value);
+void   dos_param_set_str(char *param, int value);
+
+int    dos_param_get(char *param, void *b);
+int    dos_param_get_bool(char *param);
+int    dos_param_get_int(char *param);
+char  *dos_param_get_str(char *param);
+double dos_param_get_float(char *param);
 
 #ifdef __cplusplus
 }

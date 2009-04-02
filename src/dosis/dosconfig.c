@@ -36,8 +36,6 @@ static DOS_CONFIG cfg_default = {
   /* verbosity                                 */ LOG_LEVEL_LOG,
   /* source address in packet tests            */ { 0 },
   /* target address in packet tests            */ { 0 },
-  /* if set source port is randomly choosed    */ 1,
-  /* if set target port is randomly choosed    */ 1,
   /* total number of threads                   */ 2,
   /* threads used to read from ip_queue        */ 1,
   /* packets sent in each packet burst         */ 1,
@@ -78,7 +76,7 @@ DOS_PARAMETER dos_param_list[] = {
   { "reply-timeout",  NULL, CFGOFF(rwait),     dos_vhandler_int           },
   { "source",         NULL, CFGOFF(shost),     dos_vhandler_addr          },
   { "source-port",    NULL, CFGOFF(shost),     dos_vhandler_port          },
-  { "run-time",       NULL, CFGOFF(runtime),   dos_vhandler_int           },
+  { "runtime",        NULL, CFGOFF(runtime),   dos_vhandler_int           },
   { "verbosity",       "2", CFGOFF(verbosity), dos_vhandler_verbosity     },
   { NULL,                0, 0,                 NULL                       }
 };
@@ -106,7 +104,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'R', "reply-timeout", 1, "reply-timeout",  NULL, NULL                  },
   { 's', "source",        1, "source",         NULL, NULL                  },
   { 'S', "source-port",   1, "source-port",    NULL, NULL                  },
-  { 'T', "run-time",      1, "run-time",       "10", NULL                  },
+  { 'T', "runtime",       1, "runtime",        "10", NULL                  },
   { 'v', "verbosity",     2, "verbosity",       "3", NULL                  },
   {   0, NULL,            0, NULL,             NULL, NULL                  },
 };
@@ -568,14 +566,52 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
 
   /* set basic configuration */
   memcpy(cfg, &cfg_default, sizeof(DOS_CONFIG));
-  dos_param_set("names",   set_default_file(datadirs, "dionisio.dic"));
-  dos_param_set("ns-list", set_default_file(etcdirs,  "nslist.txt"));
 
   /* read config and command from command line */
   cmd = dos_config_parse_command(argc, argv, error);
-
   if(*error)
     return cmd;
+
+  /* check parameters */
+  if(dos_param_get_int("clients") < 0
+  || dos_param_get_int("listen") < 0)
+    FAT("You cannot use less than 0 threads.");
+  if(dos_param_get_int("clients") < 0
+  && dos_param_get_int("listen") < 0)
+    FAT("You should use one thread at less.");
+  if(dos_param_get_int("listen") > dos_param_get_int("clients"))
+    FAT("You cannot make a set of listener threads bigger than available threads.");
+  if(dos_param_get_int("listen") == dos_param_get_int("clients"))
+  {
+    WRN("All threads will listen, but none will send SYN packets.");
+    WRN("Remember to launch a SYN flood attack from other process/machine.");
+  }
+  if(dos_param_get_float("hits-ration") < 0.0)
+    FAT("Bad hits per second.");
+  if(dos_param_get_int("npackets") < 0)
+    FAT("Bad number of packets.");
+  if(dos_param_get_int("conn-timeout") <= 0)
+    FAT("Too short connection timeout.");
+  if(dos_param_get_int("reply-timeout") <= 0)
+    FAT("Error getting reply timeout.");
+  if(dos_param_get_int("runtime") <= 0)
+    FAT("Error getting running time.");
+  if(!INET_ADDR_IS_VALID(cfg->shost))
+    FAT("A source address is required!");
+  if(!INET_ADDR_IS_VALID(cfg->dhost))
+    FAT("A destination address is required!");
+  if(dos_param_get_int("clients") - dos_param_get_int("listen") > 0
+  && dos_param_get_int("clients") - dos_param_get_int("listen") > dos_param_get_int("npackets"))
+  {
+    WRN("More sender threads than packets. Limiting sender threads to %d.", dos_param_get_int("npackets") + 1);
+    dos_param_set_int("npackets", cfg->packets + cfg->l);
+  }
+  if(!cfg->req)
+  {
+    cfg->req = strdup("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    cfg->req_size = strlen(cfg->req);
+    WRN("Assuming default request (http://<addr>/)");
+  }
 
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();
