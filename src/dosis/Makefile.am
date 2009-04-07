@@ -30,9 +30,10 @@ dosis_SOURCES = dosis.c     dosis.h     \
                 ip.c        ip.h        \
                 ipqex.c     ipqex.h     \
                 help.c      help.h      \
-								lnet.c      lnet.h      \
-								log.c       log.h       \
-								pthreadex.c pthreadex.h \
-								tcpopen.c   tcpopen.h   \
-								tea.c       tea.h
+                lnet.c      lnet.h      \
+                log.c       log.h       \
+                pthreadex.c pthreadex.h \
+		script.y \
+                tcpopen.c   tcpopen.h   \
+                tea.c       tea.h
 
