@@ -35,7 +35,10 @@
   }
 %}
 
-%token NINT NFLOAT VAR CMD_ON CMD_MOD CMD_OFF PERIODIC
+%token NINT NFLOAT IPADDR VAR
+%token PERIODIC
+%token CMD_ON CMD_MOD CMD_OFF
+%token OPT_UDP OPT_TCP OPT_SRC OPT_DST
 %% /* Grammar rules and actions follow.  */
 input: /* empty */
        | input line
@@ -64,6 +67,13 @@ list_num: nint
 selector: '*'
         | list_num
         ;
+
+options: /* empty */
+       | OPT_TCP options
+       | OPT_UDP options
+       | OPT_SRC IPADDR options
+       | OPT_DST IPADDR options
+       ;
 
 command: nfloat CMD_ON list_num options pattern
        | nfloat CMD_MOD selector options pattern
