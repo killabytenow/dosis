@@ -24,87 +24,185 @@
  *****************************************************************************/
 
 %{
-  #include <script.h>
+  #ifndef _GNU_SOURCE
+  #define _GNU_SOURCE 1
+  #endif
+
+  #include <string.h>
   #include <ctype.h>
 
-  #define YYSTYPE SNODE *
+  #include "script.h"
+  #include "log.h"
+  #include "ip.h"
 
   int yylex (void);
   void yyerror (char const *);
-
-  /* The lexical analyzer returns a double floating point
-     number on the stack and the token NUM, or the numeric code
-     of the character read if not a number.  It skips all blanks
-     and tabs, and returns 0 for end-of-input.  */
-
-  int yylex (void)
-  {
-    int c;
-
-    /* Skip white space.  */
-    while(isblank(c = getchar()))
-      ;
-    /* Return end-of-input.  */
-    if(c == EOF)
-      return 0;
-    /* Process numbers.  */
-    if(c == '.' || isdigit(c))
-    {
-      ungetc(c, stdin);
-      scanf("%lf", &yylval);
-      return NFLOAT;
-    }
-    /* Return a single char.  */
-    return c;
-  }
+  SNODE *new_node(int type);
 %}
-
-%token NINT NFLOAT IPADDR VAR
-%token PERIODIC
-%token CMD_ON CMD_MOD CMD_OFF
-%token OPT_UDP OPT_TCP OPT_SRC OPT_DST
+%union {
+  SNODE     *snode;
+  int        nint;
+  double     nfloat;
+  char      *string;
+  INET_ADDR *inetaddr;
+}
+%token <nint>     NINT
+%type  <nint>     nint
+%token <nfloat>   NFLOAT
+%type  <nfloat>   nfloat
+%token <inetaddr> INETADDR
+%token <string>   VAR
+%type  <snode>    command option options pattern
+%type  <snode>    list_num list_num_enum selector
+%type  <snode>    line input
+%token            PERIODIC
+%token            CMD_ON CMD_MOD CMD_OFF
+%token            OPT_UDP OPT_TCP OPT_SRC OPT_DST
 %% /* Grammar rules and actions follow.  */
-input: /* empty */
-       | input line
+input: /* empty */  { $$ = NULL;     }
+       | input line { $$ = $1;
+                      $$->command.next = $2; }
        ;
 
-line: '\n'
-    | command '\n' { printf ("\t%.10g\n", $1); }
+line: '\n'         { $$ = NULL; }
+    | command '\n' { $$ = $1; }
     ;
 
 nint: NINT
-    | VAR
+    | VAR   { $$ = atol($1); free($1); }
     ;
 
 nfloat: NFLOAT
-      | nint
+      | NINT   { $$ = $1; }
+      | VAR    { $$ = atof($1); free($1); }
       ;
 
-list_num_more: /* empty */
-        
-list_num: nint
-        | '[' nint '..' nint ']'
-        | '[' nint ']'
-        | '[' nint ',' list_num_more ']'
+list_num_enum: nint                   { $$ = new_node(TYPE_LIST_NUM);
+                                        $$->list_num.val  = $1;
+                                        $$->list_num.next = NULL; }
+             | nint ',' list_num_enum { $$ = new_node(TYPE_LIST_NUM);
+                                        $$->list_num.val  = $1;
+                                        $$->list_num.next = $3; }
+             ;
+
+list_num: '[' nint ':' nint ']' { int i;
+                                  SNODE *n = NULL;
+                                  for(i = $2; i <= $4; i++)
+                                  {
+                                    $$ = new_node(TYPE_LIST_NUM);
+                                    $$->list_num.val  = i;
+                                    $$->list_num.next = NULL;
+                                    if(n) n->list_num.next = $$;
+                                  } }
+        | nint                  { $$ = new_node(TYPE_LIST_NUM);
+                                  $$->list_num.val  = $1;
+                                  $$->list_num.next = NULL; }
+        | '[' list_num_enum ']' { $$ = $2; }
         ;
 
-selector: '*'
-        | list_num
+selector: '*'          { $$ = new_node(TYPE_SELECTOR);
+                         $$->selector.rmin = -1;
+                         $$->selector.rmax = -1; }
+        | list_num     { $$ = $1; }
         ;
 
-options: /* empty */
-       | OPT_TCP options
-       | OPT_UDP options
-       | OPT_SRC IPADDR options
-       | OPT_DST IPADDR options
+option: OPT_TCP          { $$ = new_node(TYPE_OPT_TCP); }
+      | OPT_UDP          { $$ = new_node(TYPE_OPT_UDP); }
+      | OPT_SRC INETADDR { $$ = new_node(TYPE_OPT_SRC);
+                           $$->option.addr = $2; }
+      | OPT_DST INETADDR { $$ = new_node(TYPE_OPT_DST);
+                           $$->option.addr = $2; }
+      ;
+
+options: /* empty */    { $$ = NULL; }
+       | option options { $$ = $1;
+                          $$->option.next = $2; }
        ;
 
-command: nfloat CMD_ON list_num options pattern
-       | nfloat CMD_MOD selector options pattern
-       | nfloat CMD_OFF selector
+pattern: PERIODIC '[' nfloat ',' nint ']' { $$ = new_node(TYPE_PERIODIC);
+                                            $$->pattern.periodic.ratio = $3;
+                                            $$->pattern.periodic.n     = $5; }
        ;
 
-pattern: PERIODIC '[' nfloat ',' nint ']'
+command: nfloat CMD_ON list_num options pattern  { $$ = new_node(TYPE_CMD_ON);
+                                                   $$->command.time     = $1;
+                                                   $$->command.list_num = $3;
+                                                   $$->command.options  = $4;
+                                                   $$->command.pattern  = $5; }
+       | nfloat CMD_MOD selector options pattern { $$ = new_node(TYPE_CMD_MOD);
+                                                   $$->command.time     = $1;
+                                                   $$->command.selector = $3;
+                                                   $$->command.options  = $4;
+                                                   $$->command.pattern  = $5; }
+       | nfloat CMD_OFF selector                 { $$ = new_node(TYPE_CMD_OFF);
+                                                   $$->command.time     = $1;
+                                                   $$->command.selector = $3; }
        ;
 %%
+SNODE *new_node(int type)
+{
+  SNODE *n;
+  if((n = calloc(1, sizeof(SNODE))) == NULL)
+    D_FAT("Cannot alloc SNODE (%d).", type);
+  n->type = type;
+  return n;
+}
+
+/* The lexical analyzer returns a double floating point
+   number on the stack and the token NUM, or the numeric code
+   of the character read if not a number.  It skips all blanks
+   and tabs, and returns 0 for end-of-input.  */
+
+int yylex(void)
+{
+  int c, i, f;
+  char buff[256];
+
+  /* Skip white space.  */
+  while(isblank(c = getchar()))
+    ;
+  /* Return end-of-input.  */
+  if(c == EOF)
+    return 0;
+
+  /* Process numbers and network addresses */
+  if(c == '.' || isdigit(c))
+  {
+    f = 0;
+    i = 0;
+    do {
+      buff[i++] = c;
+      if(c == '.') f++;
+    } while(isdigit(c = getchar()) || c == '.');
+    buff[i] = '\0';
+    ungetc(c, stdin);
+    if(f <= 1 && (isdigit(c = getchar()) || c == '.'))
+    {
+      if(f == 0)
+      {
+        sscanf(buff, "%d", &(yylval.nint));
+        return NINT;
+      }
+      sscanf(buff, "%lf", &(yylval.nfloat));
+      return NFLOAT;
+    }
+  }
+
+  /* Process env var */
+  if(c == '$')
+  {
+    i = 0;
+    while(isalnum(c = getchar()))
+      buff[i++] = c;
+    buff[i] = '\0';
+    ungetc(c, stdin);
+    s = getenv(buff);
+    if(!s)
+      D_FAT("Variable '%s' no definida.", buff);
+    return s;
+  }
+
+  /* Return a single char.  */
+  return c;
+}
 
