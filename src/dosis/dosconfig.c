@@ -65,18 +65,7 @@ static int dos_vhandler_string(DOS_PARAMETER *, char *, int);
 
 #define CFGOFF(f)         offsetof(DOS_CONFIG,f)
 DOS_PARAMETER dos_param_list[] = {
-  { "clients",        "no", CFGOFF(c),         dos_vhandler_int           },
-  { "conn-timeout",   NULL, CFGOFF(cwait),     dos_vhandler_int           },
-  { "target",         NULL, CFGOFF(dhost),     dos_vhandler_addr          },
-  { "target-port",    NULL, CFGOFF(dhost),     dos_vhandler_port          },
-  { "hit-ratio",      NULL, CFGOFF(hits),      dos_vhandler_int           },
-  { "listen",         NULL, CFGOFF(l),         dos_vhandler_int           },
-  { "npackets",       NULL, CFGOFF(packets),   dos_vhandler_int           },
-  { "request",        NULL, CFGOFF(req),       dos_vhandler_string        },
-  { "reply-timeout",  NULL, CFGOFF(rwait),     dos_vhandler_int           },
-  { "source",         NULL, CFGOFF(shost),     dos_vhandler_addr          },
-  { "source-port",    NULL, CFGOFF(shost),     dos_vhandler_port          },
-  { "runtime",        NULL, CFGOFF(runtime),   dos_vhandler_int           },
+  { "script",         NULL, CFGOFF(script),    dos_vhandler_string        },
   { "verbosity",       "2", CFGOFF(verbosity), dos_vhandler_verbosity     },
   { NULL,                0, 0,                 NULL                       }
 };
@@ -89,23 +78,10 @@ static int dos_help_opt_trigger(char *optarg)
 
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
 DOS_CMD_OPTION cmd_options[] = {
-  { 'a', "rnd-sport",     0, "rnd-sport",     "yes", NULL                  },
-  { 'A', "rnd-dport",     0, "rnd-dport",     "yes", NULL                  },
-  { 'c', "clients",       1, "clients",       "yes", NULL                  },
-  { 'C', "conn-timeout",  1, "conn-timeout",  "yes", NULL                  },
-  { 'd', "target",        1, "target",         NULL, NULL                  },
-  { 'D', "target-port",   1, "target-port",    NULL, NULL                  },
+  { 'i', "script",        1, "script",         NULL, NULL                  },
   { 'h', "help",          0, NULL,             NULL, dos_help_opt_trigger  },
-  { 'H', "hit-ratio",     1, "hit-ratio",       "4", NULL                  },
-  { 'l', "listen",        1, "listen",        "yes", NULL                  },
-  { 'p', "npackets",      1, "npackets",       NULL, NULL                  },
   { 'q', "quiet",         0, "verbosity",       "0", NULL                  },
-  { 'r', "request",       1, "request",        NULL, NULL                  },
-  { 'R', "reply-timeout", 1, "reply-timeout",  NULL, NULL                  },
-  { 's', "source",        1, "source",         NULL, NULL                  },
-  { 'S', "source-port",   1, "source-port",    NULL, NULL                  },
-  { 'T', "runtime",       1, "runtime",        "10", NULL                  },
-  { 'v', "verbosity",     2, "verbosity",       "3", NULL                  },
+  Z 'v', "verbosity",     2, "verbosity",       "3", NULL                  },
   {   0, NULL,            0, NULL,             NULL, NULL                  },
 };
 

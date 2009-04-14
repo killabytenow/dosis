@@ -108,9 +108,17 @@ selector: '*'          { $$ = new_node(TYPE_SELECTOR);
 option: OPT_TCP          { $$ = new_node(TYPE_OPT_TCP); }
       | OPT_UDP          { $$ = new_node(TYPE_OPT_UDP); }
       | OPT_SRC STRING   { $$ = new_node(TYPE_OPT_SRC);
-                           $$->option.addr = $2; }
+                           if(ip_addr_parse($2, &($$->option.addr)))
+                             D_FAT("Bad source address '%s'.", $2);
+                           free($2); }
       | OPT_DST STRING   { $$ = new_node(TYPE_OPT_DST);
-                           $$->option.addr = $2; }
+                           if(ip_addr_parse($2, &($$->option.addr)))
+                             D_FAT("Bad destination address '%s'.", $2);
+                           free($2); }
+      /*
+      | OPT_PAYLOAD STRING {
+      | OPT_PAYLOAD FILE '(' STRING ')' {
+      */
       ;
 
 options: /* empty */    { $$ = NULL; }
@@ -151,16 +159,58 @@ SNODE *new_node(int type)
    number on the stack and the token NUM, or the numeric code
    of the character read if not a number.  It skips all blanks
    and tabs, and returns 0 for end-of-input.  */
-#define SRESET()     { i = 0; buff[0] = '\0'; }
-#define SADD(c)      { if(i >= sizeof(buff))   \
-                         goto ha_roto_la_olla; \
-                       buff[i++] = (c);        \
-                       buff[i] = '\0'; }
+#define BUFFLEN      512
+#define SRESET()     { bi = 0; buff[0] = '\0'; }
+#define SADD(c)      { if(bi >= BUFFLEN)             \
+                         goto ha_roto_la_olla;       \
+                       buff[bi++] = (c);             \
+                       buff[bi] = '\0'; }
+#define SCAT(s)      { if(bi + strlen(s) >= BUFFLEN) \
+                         goto ha_roto_la_olla;       \
+                       strcat(buff, s);              \
+                       bi += strlen(s); }
+
+char *readvar(char *buff, int bi)
+{
+  int c;
+  char *s, *v;
+
+  /* read var name in buffer */
+  v = buff + bi;
+  c = getchar();
+  if(c == '{')
+  {
+    while((c = getchar()) != '}' && !isblank(c) && c != EOF)
+      SADD(c);
+    if(isblank(c) || c == EOF)
+      D_FAT("Bad identifier.");
+  } else
+    if(c == EOF)
+      D_FAT("Bad identifier.");
+    do {
+      SADD(c);
+    } while(!isblank(c = getchar()) && c != EOF);
+  /* get env var */
+  s = getenv(v);
+  if(!s)
+    D_FAT("Variable '%s' not defined.", v);
+  s = strdup(s);
+  if(!s)
+    D_FAT("No mem for var '%s'.", v);
+  /* erase var name from buffer */
+  *v = '\0';
+  /* ret value */
+  return s;
+
+ha_roto_la_olla:
+  D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
+  return 0;
+}
 
 int yylex(void)
 {
-  int c, i, f;
-  char buff[256], *s;
+  int c, bi, f;
+  char buff[BUFFLEN], *s;
   struct {
     char *token;
     int  id;
@@ -174,7 +224,7 @@ int yylex(void)
     { "TCP",      TYPE_OPT_TCP  },
     { "UDP",      TYPE_OPT_UDP  },
     { NULL,       0             }
-  };
+  }, *token;
 
   /* Skip white space.  */
   while(isblank(c = getchar()))
@@ -196,7 +246,7 @@ int yylex(void)
     } while(isdigit(c = getchar()) || c == '.');
     ungetc(c, stdin);
     /* check if it is a number */
-    if(f <= 1 && i > f)
+    if(f <= 1 && bi > f)
     {
       if(f == 0)
       {
@@ -218,17 +268,7 @@ int yylex(void)
   /* Process env var */
   if(c == '$')
   {
-    i = 0;
-    while(isalnum(c = getchar()))
-      SADD(c);
-    ungetc(c, stdin);
-    s = getenv(buff);
-    if(!s)
-      D_FAT("Variable '%s' not defined.", buff);
-    s = strdup(s);
-    if(!s)
-      D_FAT("No mem for var '%s'.", buff);
-    yylval.string = buff;
+    yylval.string = readvar(buff, bi);
     return VAR;
   }
 
@@ -239,37 +279,70 @@ int yylex(void)
       if(c == '\\')
       {
         c = getchar();
-        if(c != EOF)
-          SADD(c);
-        else
+        SADD(c);
+        if(c == EOF)
           ungetc(c, stdin);
       }
-    s = strdup(s);
+    s = strdup(buff);
     if(!s)
-      D_FAT("No mem for var '%s'.", buff);
-    yylval.string = buff;
-    return VAR;
-  } else
+      D_FAT("No mem for string '%s'.", buff);
+    yylval.string = s;
+    return STRING;
+  }
+
   if(c == '"')
   {
     while((c = getchar()) != '"' && c != EOF)
       if(c == '\\')
       {
         c = getchar();
-        if(c != EOF)
-          SADD(c);
-        else
+        SADD(c);
+        if(c == EOF)
           ungetc(c, stdin);
      } else
-     if(c == '$'
-  } else {
+     if(c == '$')
+     {
+       /* get var value */
+       s = readvar(buff, bi);
+       /* cat val */
+       SCAT(s);
+       free(s);
+     }
+    s = strdup(buff);
+    if(!s)
+      D_FAT("No mem for string \"%s\".", buff);
+    yylval.string = s;
+    return STRING;
   }
 
-  /* Return a single char.  */
-  return c;
+  /* special chars (chocolate minitokens) */
+  if(c == ','
+  || c == ':'
+  || c == '*'
+  || c == '[' || c == ']'
+  || c == '(' || c == ')'
+  || c == '\n')
+    return c;
+
+  /* ummm.. read word (string) or token */
+  do {
+    SADD(c);
+  } while(!isblank(c = getchar()) != '"' && c != EOF);
+  ungetc(c, stdin);
+  /* is a language token? */
+  for(token = tokens; token->token; token++)
+    if(!strcasecmp(buff, token->token))
+      return token->id;
+  /* return string */
+  s = strdup(buff);
+  if(!s)
+    D_FAT("No mem for string \"%s\".", buff);
+  yylval.string = s;
+  return STRING;
 
 ha_roto_la_olla:
   D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
+  return 0;
 }
 
 void yyerror(char const *str)

@@ -69,7 +69,7 @@ typedef struct SNODE_tag {
     } command;
     struct {
       union {
-        INET_ADDR *addr;
+        INET_ADDR addr;
       };
       struct SNODE_tag *next;
     } option;
