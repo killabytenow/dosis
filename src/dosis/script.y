@@ -44,13 +44,12 @@
   int        nint;
   double     nfloat;
   char      *string;
-  INET_ADDR *inetaddr;
 }
 %token <nint>     NINT
 %type  <nint>     nint
 %token <nfloat>   NFLOAT
 %type  <nfloat>   nfloat
-%token <inetaddr> INETADDR
+%token <string>   STRING
 %token <string>   VAR
 %type  <snode>    command option options pattern
 %type  <snode>    list_num list_num_enum selector
@@ -108,9 +107,9 @@ selector: '*'          { $$ = new_node(TYPE_SELECTOR);
 
 option: OPT_TCP          { $$ = new_node(TYPE_OPT_TCP); }
       | OPT_UDP          { $$ = new_node(TYPE_OPT_UDP); }
-      | OPT_SRC INETADDR { $$ = new_node(TYPE_OPT_SRC);
+      | OPT_SRC STRING   { $$ = new_node(TYPE_OPT_SRC);
                            $$->option.addr = $2; }
-      | OPT_DST INETADDR { $$ = new_node(TYPE_OPT_DST);
+      | OPT_DST STRING   { $$ = new_node(TYPE_OPT_DST);
                            $$->option.addr = $2; }
       ;
 
@@ -152,11 +151,30 @@ SNODE *new_node(int type)
    number on the stack and the token NUM, or the numeric code
    of the character read if not a number.  It skips all blanks
    and tabs, and returns 0 for end-of-input.  */
+#define SRESET()     { i = 0; buff[0] = '\0'; }
+#define SADD(c)      { if(i >= sizeof(buff))   \
+                         goto ha_roto_la_olla; \
+                       buff[i++] = (c);        \
+                       buff[i] = '\0'; }
 
 int yylex(void)
 {
   int c, i, f;
-  char buff[256];
+  char buff[256], *s;
+  struct {
+    char *token;
+    int  id;
+  } tokens[] = {
+    { "DST",      TYPE_OPT_DST  },
+    { "MOD",      TYPE_CMD_MOD  },
+    { "OFF",      TYPE_CMD_OFF  },
+    { "ON",       TYPE_CMD_ON   },
+    { "PERIODIC", TYPE_PERIODIC },
+    { "SRC",      TYPE_OPT_SRC  },
+    { "TCP",      TYPE_OPT_TCP  },
+    { "UDP",      TYPE_OPT_UDP  },
+    { NULL,       0             }
+  };
 
   /* Skip white space.  */
   while(isblank(c = getchar()))
@@ -165,18 +183,20 @@ int yylex(void)
   if(c == EOF)
     return 0;
 
+  /* reset */
+  SRESET();
+
   /* Process numbers and network addresses */
   if(c == '.' || isdigit(c))
   {
     f = 0;
-    i = 0;
     do {
-      buff[i++] = c;
+      SADD(c);
       if(c == '.') f++;
     } while(isdigit(c = getchar()) || c == '.');
-    buff[i] = '\0';
     ungetc(c, stdin);
-    if(f <= 1 && (isdigit(c = getchar()) || c == '.'))
+    /* check if it is a number */
+    if(f <= 1 && i > f)
     {
       if(f == 0)
       {
@@ -186,6 +206,13 @@ int yylex(void)
       sscanf(buff, "%lf", &(yylval.nfloat));
       return NFLOAT;
     }
+    /* oooh... it is not a number; it is a string */
+    while(!isblank(c = getchar()) && c != EOF)
+      SADD(c);
+    ungetc(c, stdin);
+    if((yylval.string = strdup(buff)) == NULL)
+      D_FAT("No mem for string '%s'.", buff);
+    return STRING;
   }
 
   /* Process env var */
@@ -193,16 +220,60 @@ int yylex(void)
   {
     i = 0;
     while(isalnum(c = getchar()))
-      buff[i++] = c;
-    buff[i] = '\0';
+      SADD(c);
     ungetc(c, stdin);
     s = getenv(buff);
     if(!s)
-      D_FAT("Variable '%s' no definida.", buff);
-    return s;
+      D_FAT("Variable '%s' not defined.", buff);
+    s = strdup(s);
+    if(!s)
+      D_FAT("No mem for var '%s'.", buff);
+    yylval.string = buff;
+    return VAR;
+  }
+
+  /* Process strings */
+  if(c == '\'')
+  {
+    while((c = getchar()) != '\'' && c != EOF)
+      if(c == '\\')
+      {
+        c = getchar();
+        if(c != EOF)
+          SADD(c);
+        else
+          ungetc(c, stdin);
+      }
+    s = strdup(s);
+    if(!s)
+      D_FAT("No mem for var '%s'.", buff);
+    yylval.string = buff;
+    return VAR;
+  } else
+  if(c == '"')
+  {
+    while((c = getchar()) != '"' && c != EOF)
+      if(c == '\\')
+      {
+        c = getchar();
+        if(c != EOF)
+          SADD(c);
+        else
+          ungetc(c, stdin);
+     } else
+     if(c == '$'
+  } else {
   }
 
   /* Return a single char.  */
   return c;
+
+ha_roto_la_olla:
+  D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
+}
+
+void yyerror(char const *str)
+{
+  D_FAT("parsing error: %s", str);
 }
 
