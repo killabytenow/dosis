@@ -34,64 +34,59 @@
 #include "pthreadex.h"
 #include "tea.h"
 
-void tea_timer(tea_attack_go2work go2work,
-               tea_attack_thread attack_thread)
+static THREAD_WORK **ttable;
+
+static void tea_timer_fini(void)
+{
+  if(ttable)
+  {
+    for(i = 0; i < cfg.maxthreads; i++)
+      if(ttable[i])
+        free(ttable[i]);
+    free(ttable);
+  }
+}
+
+void tea_timer_init(void)
+{
+  if(atexit(tea_timer_fini()))
+    D_FAT("Cannot set finalization routine.");
+
+  if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
+    D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
+}
+
+void tea_timer(int tid, TEA_OBJECT *to)
 {
   int i;
   struct timeval sttime, entime;
   pthreadex_barrier_t start_barrier;
   THREAD_WORK *tin;
   unsigned int mneeded, tneeded;
-  pthreadex_timer_t timer;
-
-  /* build a timer to limit petitions to only cfg->hits per minute */
-  pthreadex_timer_init(&timer, 0.0);
-  pthreadex_timer_set_frequency(&timer, cfg->hits);
-  if(pthreadex_timer_get(&timer) > (double) cfg->runtime)
-    pthreadex_timer_set(&timer, cfg->runtime);
-
-  /* flag that will keep threads waiting for starting */
-  pthreadex_barrier_init(&start_barrier, cfg->c + 1);
 
   /* build threads */
-  DBG("Alloc'ing memory for %d threads.", cfg->c);
-  if((tin = (THREAD_WORK *) calloc(cfg->c, sizeof(THREAD_WORK))) == NULL)
-    FAT("Memory allocation failed.");
+  DBG("Alloc'ing thread %d.", tid);
+  if(ttable[tid])
+    D_FAT("Cannot alloc thread %d because it is already used.", tid);
 
-  for(i = 0; i < cfg->c; i++)
-  {
-    tin[i].id         = i;
-    tin[i].pthread_id = 0;
-    tin[i].start      = &start_barrier;
+  tin[tid].id         = i;
+  tin[tid].pthread_id = 0;
+  tin[tid].to         = to;
 
-    if(pthread_create(&(tin[i].pthread_id), NULL, (void *) attack_thread, tin+i) != 0)
-      FAT("  - Thread creation failed at thread %d: %s", i, strerror(errno));
-  }
+  /* configure thread here */
+  XXXXXXX
 
-  /* GO! */
-  DBG("Waiting that all threads have been created and ready before start...");
-  pthreadex_barrier_wait(&start_barrier);
-  DBG("Starting attack of %d seconds.", cfg->runtime);
-  tneeded = 0;
-  mneeded = cfg->c;
-  for(gettimeofday(&sttime, NULL), gettimeofday(&entime, NULL);
-      entime.tv_sec - sttime.tv_sec < cfg->runtime && !cfg->finalize;
-      gettimeofday(&entime, NULL))
-  {
-    if(!go2work())
-      tneeded++;
-    else
-      tneeded = 0;
+  /* launch thread */
+  if(pthread_create(&(tin[tid].pthread_id),
+                    NULL,
+                    (void *) attack_thread,
+                    tin+tid) != 0)
+    FAT("Error creating thread %d: %s", tid, strerror(errno));
 
-    /* wait */
-    if(pthreadex_timer_wait(&timer) < 0)
-      ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
-  }
   if(cfg->finalize)
     WRN("Attack cancelled by user.");
-  if(tneeded > mneeded)
-    WRN("You should allow at least %d threads for getting optimum performance.", tneeded);
 
+  x
   /* cancel all threads */
   /* NOTE: Only cancelations with 'errno' different from zero are real    */
   /*       errors. A pthread_cancel return value different from zero, but */

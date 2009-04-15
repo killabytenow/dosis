@@ -31,10 +31,10 @@
 
 void handle_termination__signal(int s)
 {
-  if(!dos_param_get_bool("finalize"))
+  if(!cfg.finalize)
   {
     WRN("One more termination signal will force program termination.");
-    dos_param_set("finalize", "true");
+    cfg.finalize = -1;
   } else {
     FAT("Program termination forced.");
     exit(1);
@@ -44,7 +44,6 @@ void handle_termination__signal(int s)
 int main(int argc, char *argv[])
 {
   int res;
-  DOS_COMMAND *c;
 
   log_init();
 
@@ -54,13 +53,11 @@ int main(int argc, char *argv[])
   signal(SIGQUIT, handle_termination__signal);
   signal(SIGTERM, handle_termination__signal);
 
-  if((c = dos_config_init(argc, argv, &res)) == NULL)
-  {
-    FAT("bad config");
-  }
+  /* read command line parameters */
+  dos_config_init(argc, argv, &res);
 
-  /* XXX */
-  c->command();
+  /* parse script */
+  yyparse();
 
   LOG("Finished.");
 

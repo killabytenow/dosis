@@ -26,8 +26,6 @@
 #ifndef __TCPOPEN_H__
 #define __TCPOPEN_H__
 
-#include "dosconfig.h"
-
-extern DOS_COMMAND dos_attack_tcpopen;
+void attack_tcpopen(void);
 
 #endif

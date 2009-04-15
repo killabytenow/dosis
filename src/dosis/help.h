@@ -31,6 +31,7 @@ extern "C" {
 #endif
 
 void dos_help_program_header(void);
+void print_help(void);
 
 #ifdef __cplusplus
 }
