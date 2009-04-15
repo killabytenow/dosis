@@ -81,7 +81,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'i', "script",        1, "script",         NULL, NULL                  },
   { 'h', "help",          0, NULL,             NULL, dos_help_opt_trigger  },
   { 'q', "quiet",         0, "verbosity",       "0", NULL                  },
-  Z 'v', "verbosity",     2, "verbosity",       "3", NULL                  },
+  { 'v', "verbosity",     2, "verbosity",       "3", NULL                  },
   {   0, NULL,            0, NULL,             NULL, NULL                  },
 };
 
@@ -317,20 +317,6 @@ void dos_param_set_int(char *param, int value)
 void dos_param_set_bool(char *param, int value)
 {
   dos_param_set_int(param, value ? -1 : 0);
-}
-
-static DOS_CMD_OPTION *find_cmd_option(int c)
-{
-  int i;
-
-  if(c >= 0 && c < CMD_OPTIONS_N)
-    return cmd_options + c;
-
-  for(i = 0; i < CMD_OPTIONS_N; i++)
-    if(c == cmd_options[i].shortopt)
-      return cmd_options + i;
-
-  return NULL;
 }
 
 static DOS_COMMAND *find_cmd(char *s)
@@ -582,19 +568,6 @@ DOS_COMMAND *dos_config_init(int argc, char **argv, int *error)
     return cmd;
 
   /* check parameters */
-  if(dos_param_get_int("clients") < 0
-  || dos_param_get_int("listen") < 0)
-    FAT("You cannot use less than 0 threads.");
-  if(dos_param_get_int("clients") < 0
-  && dos_param_get_int("listen") < 0)
-    FAT("You should use one thread at less.");
-  if(dos_param_get_int("listen") > dos_param_get_int("clients"))
-    FAT("You cannot make a set of listener threads bigger than available threads.");
-  if(dos_param_get_int("listen") == dos_param_get_int("clients"))
-  {
-    WRN("All threads will listen, but none will send SYN packets.");
-    WRN("Remember to launch a SYN flood attack from other process/machine.");
-  }
   if(dos_param_get_float("hit-ratio") < 0.0)
     FAT("Bad hits per second.");
   if(dos_param_get_int("npackets") < 0)
