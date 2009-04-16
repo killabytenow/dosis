@@ -28,6 +28,18 @@
 
 #include "pthreadex.h"
 
+typedef struct _tag_TEA_MSG {
+  unsigned int   s;
+  unsigned char *b;
+} TEA_MSG;
+
+typedef struct _tag_TEA_OBJECT {
+  void (*launch)(THREAD_WORK *tw);
+  void (*listen)(THREAD_WORK *tw, TEA_MSG *msg);
+  void (*stop)(THREAD_WORK *tw);
+  int  (*configure)(THREAD_WORK *tw);
+} TEA_OBJECT;
+
 typedef struct _tag_THREAD_WORK {
   int                  id;
   pthread_t            pthread_id;

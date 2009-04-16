@@ -1,5 +1,5 @@
 /*****************************************************************************
- * tcpopen.c
+ * tcpraw.c
  *
  * DoS on TCP servers by raw tcp packets (synflood?).
  *
@@ -49,9 +49,9 @@ typedef struct _tag_TCPOPEN_WORK {
   LN_CONTEXT    lnc;
   ipqex_msg_t   msg;
   TCPOPEN_CFG   cfg;
-} TCPOPEN_WORK;
+} TCPRAW_WORK;
 
-static void send_packets(TCPOPEN_WORK *tw)
+static void send_packets(TCPRAW_WORK *tw)
 {
   pthreadex_timer_t timer;
   unsigned int seq = libnet_get_prand(LIBNET_PRu32);
@@ -99,7 +99,7 @@ static void send_packets(TCPOPEN_WORK *tw)
  *     x - sender
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static void tcpraw__thread_cleanup(TCPOPEN_WORK *tw)
+static void tcpraw__thread_cleanup(TCPRAW_WORK *tw)
 {
   /* collect libnet data */
   ln_destroy_context(&(tw->lnc));
@@ -110,7 +110,7 @@ static void tcpraw__thread_cleanup(TCPOPEN_WORK *tw)
 static void tcpraw__thread_launch(THREAD_WORK *w)
 {
   int r;
-  TCPOPEN_WORK tw;
+  TCPRAW_WORK tw;
 
   /* initialize specialized work thread data */
   memset(&tw, 0, sizeof(tw));
@@ -133,24 +133,13 @@ static void tcpraw__thread_launch(THREAD_WORK *w)
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GO4WORK
- *   Function to enqueue SYN packets.
+ * TCPRAW TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
-
-void attack_tcpopen(void)
-{
-  /* launch attack */
-  launch_thread(attack_tcpopen__thread);
-}
-
-typedef struct _tag_TEA_OBJECT {
-  void (*thread_launch)(THREAD_WORK *tw);
-  void (*thread_stop)(THREAD_WORK *tw);
-  int  (*configure)(THREAD_WORK *tw);
-} TEA_OBJECT;
 
 TEA_OBJECT teaTCPRAW = {
   tcpraw__thread_launch,
+  NULL,
   tcpraw__thread_stop,
   tcpraw__configure,
 };
+

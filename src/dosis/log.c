@@ -71,7 +71,7 @@ static void d_log_prefix_print(int level, char *file, char *function)
 
 static void d_log_level_print(int level, char *file, char *function, char *format, va_list args)
 {
-  if(cfg->verbosity < level)
+  if(cfg.verbosity < level)
     return;
 
 /* XXX: When threaded, get log library lock here */

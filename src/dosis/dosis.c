@@ -43,8 +43,6 @@ void handle_termination__signal(int s)
 
 int main(int argc, char *argv[])
 {
-  int res;
-
   log_init();
 
   /* install signal handlers */
@@ -54,7 +52,7 @@ int main(int argc, char *argv[])
   signal(SIGTERM, handle_termination__signal);
 
   /* read command line parameters */
-  dos_config_init(argc, argv, &res);
+  dos_config_init(argc, argv);
 
   /* parse script */
   yyparse();

