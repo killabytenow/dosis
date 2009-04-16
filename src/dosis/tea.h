@@ -27,6 +27,7 @@
 #define __TEA_H__
 
 #include "pthreadex.h"
+#include "script.h"
 
 typedef struct _tag_TEA_MSG {
   unsigned int         s;
@@ -37,13 +38,13 @@ typedef struct _tag_TEA_MSG {
 typedef struct _tag_TEA_MSG_QUEUE {
   TEA_MSG           *first;
   TEA_MSG           *last;
-  pthreadex_mutex_t *m;
+  pthreadex_mutex_t *mutex;
 } TEA_MSG_QUEUE;
 
 typedef struct _tag_THREAD_WORK {
   int                     id;
   pthread_t               pthread_id;
-  pthreadex_barrier_t    *start;
+  pthreadex_flag_t       *mwaiting;
   TEA_MSG_QUEUE          *mqueue;
   struct _tag_TEA_OBJECT *methods;
   void                   *data;
