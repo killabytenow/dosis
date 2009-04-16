@@ -56,6 +56,25 @@ void tea_timer_init(void)
     D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
 }
 
+static void tea_timer_basic_thread(THREAD_WORK *tw)
+{
+  int r;
+
+  /* initialize thread */
+  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
+  pthread_cleanup_push((void *) attack_tcpopen__thread_cleanup, &tw);
+
+  /* launch thread */
+  if(tw->methods->listen)
+  {
+    if((tw->mqueue = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
+      D_FAT("[%02d] No memory for a tea message queue.", tw->id);
+
+  }
+  tw->start(tw);
+}
+
 void tea_timer(int tid, TEA_OBJECT *to)
 {
   int i;

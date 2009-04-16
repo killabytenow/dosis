@@ -37,6 +37,7 @@ typedef struct __TAG_config {
   char           *output;
   char           *script;
   int             maxthreads;
+  int             listenthreads;
 
   /* configuration data set by application based on user options */
   FILE           *of;

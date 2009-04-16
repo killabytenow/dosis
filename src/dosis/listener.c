@@ -1,68 +1,53 @@
-diff --git a/src/dosis/dosis.c b/src/dosis/dosis.c
-index 5eb21dc..94b8679 100644
---- a/src/dosis/dosis.c
-+++ b/src/dosis/dosis.c
-@@ -43,8 +43,6 @@ void handle_termination__signal(int s)
- 
- int main(int argc, char *argv[])
- {
--  int res;
--
-   log_init();
- 
-   /* install signal handlers */
-@@ -54,7 +52,7 @@ int main(int argc, char *argv[])
-   signal(SIGTERM, handle_termination__signal);
- 
-   /* read command line parameters */
--  dos_config_init(argc, argv, &res);
-+  dos_config_init(argc, argv);
- 
-   /* parse script */
-   yyparse();
-diff --git a/src/dosis/log.c b/src/dosis/log.c
-index 607fcf6..d048f49 100644
---- a/src/dosis/log.c
-+++ b/src/dosis/log.c
-@@ -71,7 +71,7 @@ static void d_log_prefix_print(int level, char *file, char *function)
- 
- static void d_log_level_print(int level, char *file, char *function, char *format, va_list args)
- {
--  if(cfg->verbosity < level)
-+  if(cfg.verbosity < level)
-     return;
- 
- /* XXX: When threaded, get log library lock here */
-diff --git a/src/dosis/tcpopen.c b/src/dosis/tcpopen.c
-index c9fa136..133adf6 100644
---- a/src/dosis/tcpopen.c
-+++ b/src/dosis/tcpopen.c
+static void tea_timer_listener_thread_cleanup(void *x)
+{
+  /* nothing here */
+}
+
+static void tea_timer_listener_thread(void)
+{
+  int r;
+  ipqex_msg_t msg;
+  THREAD_WORK *tw;
+
+  /* initialize thread */
+  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
+  pthread_cleanup_push((void *) tea_timer_listener_thread_cleanup, NULL);
+
+  /* get packets and classify */
+  while(!cfg.finalize)
+  {
+    if((status = ipqex_msg_read(&msg, 0)) <= 0)
+    {
+      if(status < 0)
+        ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
+      continue;
+    }
+
+    tw = tea_timer_search_listener(m->b, m->s);
+    if(tw)
+    {
+      pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+      tea_timer_push_msg(tw, m->b, m->s);
+      pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+      pthread_testcancel();
+    } else
+      if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
+        ERR("Cannot DROP IPQ packet.");
+  }
+
+  /* finish him */
+  pthread_cleanup_pop(1);
+  pthread_exit(NULL);
+}
+
 @@ -59,118 +59,66 @@ static pthreadex_flag_t    attack_flag;
-  * LISTENER THREAD
-  *****************************************************************************/
- 
--static void listener_thread(TCPOPEN_WORK *tw)
-+static void tcpopen__listen(TCPOPEN_WORK *tw, TEA_MSG *msg)
- {
-   int status;
- 
--  /* initialize pcap library */
--  DBG("[LL_%02u] Initializing IPQ message...", tw->w->id);
--  if(ipqex_msg_init(&(tw->msg), &attack_tcpopen__ipq))
--    FAT("[LL_%02u] Cannot initialize IPQ message.", tw->w->id);
--
-   /* listen the radio */
-   while(!cfg.finalize)
-   {
 -    if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)
 +    /* but ... in some circumstances ... */
 +    if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
 +    && ipqex_get_ip_header(&(tw->msg))->daddr == tw->cfg.shost.addr.in.addr
 +    && ipqex_get_tcp_header(&(tw->msg))->source == tw->cfg.dhost.port)
      {
--      if(status < 0)
--        ERR("[LL_%02u] Error reading from IPQ: %s",
--            tw->w->id, ipq_errstr());
 -    } else {
 -      /* but ... in some circumstances ... */
 -      if(ipqex_get_ip_header(&(tw->msg))->protocol == 6

@@ -29,27 +29,35 @@
 #include "pthreadex.h"
 
 typedef struct _tag_TEA_MSG {
-  unsigned int   s;
-  unsigned char *b;
+  unsigned int         s;
+  unsigned char       *b;
+  struct _tag_TEA_MSG *next;
 } TEA_MSG;
 
-typedef struct _tag_TEA_OBJECT {
-  void (*launch)(THREAD_WORK *tw);
-  void (*listen)(THREAD_WORK *tw, TEA_MSG *msg);
-  void (*stop)(THREAD_WORK *tw);
-  int  (*configure)(THREAD_WORK *tw);
-} TEA_OBJECT;
+typedef struct _tag_TEA_MSG_QUEUE {
+  TEA_MSG           *first;
+  TEA_MSG           *last;
+  pthreadex_mutex_t *m;
+} TEA_MSG_QUEUE;
 
 typedef struct _tag_THREAD_WORK {
-  int                  id;
-  pthread_t            pthread_id;
-  pthreadex_barrier_t *start;
+  int                     id;
+  pthread_t               pthread_id;
+  pthreadex_barrier_t    *start;
+  TEA_MSG_QUEUE          *mqueue;
+  struct _tag_TEA_OBJECT *methods;
+  void                   *data;
 } THREAD_WORK;
 
-typedef int  (*tea_attack_go2work)(void);
-typedef void (*tea_attack_thread)(THREAD_WORK *w);
+typedef struct _tag_TEA_OBJECT {
+  void (*configure)(THREAD_WORK *tw);
+  void (*cleanup)(THREAD_WORK *tw);
+  void (*thread)(THREAD_WORK *tw);
+  void (*listen)(THREAD_WORK *tw);
+  void (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
+} TEA_OBJECT;
 
-void tea_timer(tea_attack_go2work go2work,
-               tea_attack_thread attack_thread);
+void tea_timer_init(SNODE *program);
+void tea_timer(SNODE *program);
 
 #endif
