@@ -38,6 +38,8 @@
   int yylex (void);
   void yyerror (char const *);
   SNODE *new_node(int type);
+
+  SNODE *script;
 %}
 %union {
   SNODE     *snode;
@@ -58,6 +60,9 @@
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_UDP OPT_TCP OPT_SRC OPT_DST
 %% /* Grammar rules and actions follow.  */
+script: input       { script = $1; }
+      ;
+
 input: /* empty */  { $$ = NULL;     }
        | input line { $$ = $1;
                       $$->command.next = $2; }

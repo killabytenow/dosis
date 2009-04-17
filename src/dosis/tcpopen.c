@@ -45,12 +45,10 @@ typedef struct _tag_TCPOPEN_CFG {
   LN_CONTEXT *lnc;
 } TCPOPEN_CFG;
 
-static pthreadex_flag_t    attack_flag;
-
-#define ip_protocol(x) (((struct iphdr *) (x)->s)->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x)->s)
-#define tcp_header(x)  ((struct tcphdr *) ((x)->s \
-                       + (((struct iphdr *) (x)->s)->ihl << 2)))
+#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
+#define ip_header(x)   ((struct iphdr *)  (x))
+#define tcp_header(x)  ((struct tcphdr *) ((x) \
+                       + (((struct iphdr *) (x))->ihl << 2)))
 
 /*****************************************************************************
  * LISTENER THREAD
@@ -77,7 +75,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
-  while((m = tea_msg_get(tw)) != NULL)
+  while((m = tea_timer_msg_get(tw)) != NULL)
   {
     DBG("[%02u] Received a spoofed connection packet.", tw->id);
     /*
@@ -130,7 +128,23 @@ static void tcpopen__listen(THREAD_WORK *tw)
  *     x - sender
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static void attack_tcpopen__thread_cleanup(THREAD_WORK *tw)
+static int attack_tcpopen__configure(THREAD_WORK *tw)
+{
+  TCPOPEN_CFG *tc;
+
+  /* initialize specialized work thread data */
+  if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
+    D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+  tw->data = (void *) tc;
+
+  /* initialize libnet */
+  DBG("[%02u] Initializing libnet.", tw->id);
+  if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
+    D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+  ln_init_context(tc->lnc);
+}
+
+static void attack_tcpopen__cleanup(THREAD_WORK *tw)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
@@ -153,30 +167,6 @@ static void attack_tcpopen__thread_cleanup(THREAD_WORK *tw)
   DBG("[%02u] Finalized.", tw->id);
 }
 
-static void attack_tcpopen__thread(THREAD_WORK *tw)
-{
-  TCPOPEN_WORK *tc;
-
-  /* initialize specialized work thread data */
-  if((tc = calloc(1, sizeof(TCPOPEN_WORK))) == NULL)
-    D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
-  tw->data = (void *) tc;
-
-  /* initialize libnet */
-  DBG("[%02u] Initializing libnet.", tw->id);
-  if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-    D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
-  ln_init_context(tc->lnc);
-
-  /* launch specialized thread */
-  listener_thread(&tw);
-  else
-    sender_thread(&tw);
-
-  pthread_cleanup_pop(1);
-  pthread_exit(NULL);
-}
-
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  * GO4WORK
  *   Function to enqueue SYN packets.
@@ -184,23 +174,12 @@ static void attack_tcpopen__thread(THREAD_WORK *tw)
 
 static int attack_tcpopen__go2work(void)
 {
-  return pthreadex_flag_up(&attack_flag);
 }
 
-void attack_tcpopen(void)
-{
-  /* initialize */
-  DBG("Initializing IPQ...");
-  if(ipqex_init(&attack_tcpopen__ipq, BUFSIZE))
-    FAT("  !! Cannot initialize IPQ.");
-
-  /* flag that will keep attack threads waiting for work */
-  pthreadex_flag_init(&attack_flag, 0);
-
-  /* launch attack */
-  tea_timer(attack_tcpopen__go2work, attack_tcpopen__thread);
-
-  /* finalize ipq */
-  ipqex_destroy(&attack_tcpopen__ipq);
-}
+TEA_OBJECT teaTCPOPEN = {
+  .configure = tcpopen__configure,
+  .cleanup   = tcpopen__cleanup,
+  .listen    = tcpopen__thread_listen,
+  .stop      = tcpopen__thread_stop,
+};
 

@@ -51,7 +51,7 @@ typedef struct _tag_THREAD_WORK {
 } THREAD_WORK;
 
 typedef struct _tag_TEA_OBJECT {
-  void (*configure)(THREAD_WORK *tw);
+  int  (*configure)(THREAD_WORK *tw);
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
   void (*listen)(THREAD_WORK *tw);
@@ -60,5 +60,8 @@ typedef struct _tag_TEA_OBJECT {
 
 void tea_timer_init(SNODE *program);
 void tea_timer(SNODE *program);
+
+TEA_MSG *tea_timer_msg_get(THREAD_WORK *tw);
+void tea_timer_msg_release(TEA_MSG *msg);
 
 #endif

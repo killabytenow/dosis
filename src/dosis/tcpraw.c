@@ -137,9 +137,8 @@ static void tcpraw__thread_launch(THREAD_WORK *w)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TEA_OBJECT teaTCPRAW = {
-  tcpraw__thread_launch,
-  NULL,
-  tcpraw__thread_stop,
-  tcpraw__configure,
+  .configure = tcpraw__configure,
+  .thread    = tcpraw__thread,
+  .cleanup   = tcpraw__stop,
 };
 

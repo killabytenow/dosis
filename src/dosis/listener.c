@@ -41,6 +41,20 @@ static void tea_timer_listener_thread(void)
   pthread_exit(NULL);
 }
 
+  /* initialize */
+  DBG("Initializing IPQ...");
+  if(ipqex_init(&attack_tcpopen__ipq, BUFSIZE))
+    FAT("  !! Cannot initialize IPQ.");
+
+  /* up! */
+  return pthreadex_flag_up(&attack_flag);
+
+  /* finalize ipq */
+  ipqex_destroy(&attack_tcpopen__ipq);
+
+  /* flag that will keep attack threads waiting for work */
+  pthreadex_flag_init(&attack_flag, 0);
+
 @@ -59,118 +59,66 @@ static pthreadex_flag_t    attack_flag;
 -    if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)
 +    /* but ... in some circumstances ... */
