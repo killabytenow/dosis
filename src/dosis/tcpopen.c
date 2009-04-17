@@ -128,7 +128,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
  *     x - sender
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int attack_tcpopen__configure(THREAD_WORK *tw)
+static int tcpopen__configure(THREAD_WORK *tw)
 {
   TCPOPEN_CFG *tc;
 
@@ -142,9 +142,11 @@ static int attack_tcpopen__configure(THREAD_WORK *tw)
   if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
     D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
   ln_init_context(tc->lnc);
+
+  return 0;
 }
 
-static void attack_tcpopen__cleanup(THREAD_WORK *tw)
+static void tcpopen__cleanup(THREAD_WORK *tw)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
@@ -168,18 +170,12 @@ static void attack_tcpopen__cleanup(THREAD_WORK *tw)
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GO4WORK
- *   Function to enqueue SYN packets.
+ * TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
-
-static int attack_tcpopen__go2work(void)
-{
-}
 
 TEA_OBJECT teaTCPOPEN = {
   .configure = tcpopen__configure,
   .cleanup   = tcpopen__cleanup,
-  .listen    = tcpopen__thread_listen,
-  .stop      = tcpopen__thread_stop,
+  .listen    = tcpopen__listen,
 };
 
