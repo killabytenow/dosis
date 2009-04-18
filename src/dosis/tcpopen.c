@@ -75,7 +75,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
-  while((m = tea_timer_msg_get(tw)) != NULL)
+  while((m = tea_timer_msg_get(tw->mqueue)) != NULL)
   {
     DBG("[%02u] Received a spoofed connection packet.", tw->id);
     /*
@@ -174,8 +174,9 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TEA_OBJECT teaTCPOPEN = {
-  .configure = tcpopen__configure,
-  .cleanup   = tcpopen__cleanup,
-  .listen    = tcpopen__listen,
+  .configure    = tcpopen__configure,
+  .cleanup      = tcpopen__cleanup,
+  .listen       = tcpopen__listen,
+  .listen_check = tcpopen__listen_check,
 };
 

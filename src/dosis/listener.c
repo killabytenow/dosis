@@ -53,7 +53,6 @@ static void tea_timer_listener_thread(void)
   ipqex_destroy(&attack_tcpopen__ipq);
 
   /* flag that will keep attack threads waiting for work */
-  pthreadex_flag_init(&attack_flag, 0);
 
 @@ -59,118 +59,66 @@ static pthreadex_flag_t    attack_flag;
 -    if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)

@@ -38,6 +38,8 @@ static THREAD_WORK **ttable;
 
 static void tea_timer_fini(void)
 {
+  int i;
+
   if(ttable)
   {
     for(i = 0; i < cfg.maxthreads; i++)
@@ -49,11 +51,71 @@ static void tea_timer_fini(void)
 
 void tea_timer_init(void)
 {
-  if(atexit(tea_timer_fini()))
+  if(atexit(tea_timer_fini))
     D_FAT("Cannot set finalization routine.");
 
   if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
     D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
+}
+
+static TEA_MSG_QUEUE *tea_timer_mqueue_create(void)
+{
+  TEA_MSG_QUEUE *mq;
+
+  if((mq = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
+    D_FAT("[%02d] No memory for a tea message queue.", tw->id);
+  pthreadex_mutex_init(&(mq->mutex));
+  pthreadex_flag_init(&(tin[tid].mwaiting), 0);
+
+  return mq;
+}
+
+static void tea_timer_mqueue_destroy(TEA_MSG_QUEUE *mq)
+{
+  TEA_MSG *m;
+
+  /* empty queue */
+  while((m = tea_timer_msg_get()) != NULL)
+    tea_timer_msg_release(m);
+
+  /* free queue */
+  free(mq);
+}
+
+TEA_MSG *tea_timer_mqueue_get(TEA_MSG_QUEUE *mq)
+{
+  TEA_MSG *m;
+
+  pthreadex_mutex_begin(&(mq->mutex));
+  if(mq->last)
+  {
+    m = mq->last;
+    mq->last = m->prev;
+    if(mq->first == m)
+      mq->first = NULL;
+  }
+  pthreadex_mutex_end()
+}
+
+static void tea_timer_basic_thread_cleanup(THREAD_WORK *tw)
+{
+  TEA_MSG_QUEUE *mq;
+
+  tw->methods->cleanup(tw);
+
+  /* disassociate mqueue of tw */
+  pthreadex_mutex_begin(&(tw->mqueue->mutex));
+  if(tw->mqueue)
+    mq = tw->mqueue;
+  else
+    mq = NULL;
+  tw->mqueue = NULL;
+  pthreadex_mutex_end()
+
+  /* destroy mqueue */
+  if(mq)
+    tea_timer_mqueue_destroy(mq);
+  pthread_flag_destroy(tw->mwaiting);
 }
 
 static void tea_timer_basic_thread(THREAD_WORK *tw)
@@ -63,19 +125,25 @@ static void tea_timer_basic_thread(THREAD_WORK *tw)
   /* initialize thread */
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
-  pthread_cleanup_push((void *) attack_tcpopen__thread_cleanup, &tw);
+  pthread_cleanup_push((void *) tea_timer_basic_thread_cleanup, &tw);
 
   /* launch thread */
   if(tw->methods->listen)
   {
-    if((tw->mqueue = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
-      D_FAT("[%02d] No memory for a tea message queue.", tw->id);
+    while(!tw->finalize)
+    {
+      pthreadex_flag_wait(&(tw->mwaiting));
+      tw->methods->listen(tw);
+    }
+  } else
+    tw->methods->thread(tw);
 
-  }
-  tw->start(tw);
+  /* finish him */
+  pthread_cleanup_pop(1);
+  pthread_exit(NULL);
 }
 
-void tea_timer(int tid, TEA_OBJECT *to)
+void tea_timer_new_thread(int tid, TEA_OBJECT *to)
 {
   int i;
   struct timeval sttime, entime;
@@ -91,6 +159,14 @@ void tea_timer(int tid, TEA_OBJECT *to)
   tin[tid].id         = i;
   tin[tid].pthread_id = 0;
   tin[tid].to         = to;
+
+  /* check methods */
+  if(tw->methods->listen)
+  {
+    tw->mqueue = tea_timer_mqueue_create();
+  } else {
+    tw->mqueue = NULL;
+  }
 
   /* configure thread here */
   XXXXXXX

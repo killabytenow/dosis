@@ -32,19 +32,21 @@
 typedef struct _tag_TEA_MSG {
   unsigned int         s;
   unsigned char       *b;
+  struct _tag_TEA_MSG *prev;
   struct _tag_TEA_MSG *next;
 } TEA_MSG;
 
 typedef struct _tag_TEA_MSG_QUEUE {
+  int                no_moar;
   TEA_MSG           *first;
   TEA_MSG           *last;
-  pthreadex_mutex_t *mutex;
+  pthreadex_mutex_t  mutex;
 } TEA_MSG_QUEUE;
 
 typedef struct _tag_THREAD_WORK {
   int                     id;
   pthread_t               pthread_id;
-  pthreadex_flag_t       *mwaiting;
+  pthreadex_flag_t        mwaiting;
   TEA_MSG_QUEUE          *mqueue;
   struct _tag_TEA_OBJECT *methods;
   void                   *data;
@@ -55,13 +57,14 @@ typedef struct _tag_TEA_OBJECT {
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
   void (*listen)(THREAD_WORK *tw);
-  void (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
+  int  (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
 } TEA_OBJECT;
 
-void tea_timer_init(SNODE *program);
+void tea_timer_init(void);
 void tea_timer(SNODE *program);
+void tea_timer_new_thread(int tid, TEA_OBJECT *to);
 
-TEA_MSG *tea_timer_msg_get(THREAD_WORK *tw);
-void tea_timer_msg_release(TEA_MSG *msg);
+TEA_MSG *tea_timer_mqueue_get(TEA_MSG_QUEUE *tw);
+void tea_timer_mqueue_release(TEA_MSG *msg);
 
 #endif
