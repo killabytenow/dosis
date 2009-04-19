@@ -48,13 +48,12 @@
   char      *string;
 }
 %token <nint>     NINT
-%type  <nint>     nint
 %token <nfloat>   NFLOAT
-%type  <nfloat>   nfloat
-%token <string>   STRING
+%token <string>   STRING LITERAL
 %token <string>   VAR
+%type  <snode>    nint nfloat ntime ntime_val string
 %type  <snode>    command option options pattern
-%type  <snode>    list_num list_num_enum selector
+%type  <snode>    list_num selection list_num_enum range
 %type  <snode>    line input
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
@@ -64,7 +63,7 @@ script: input       { script = $1; }
       ;
 
 input: /* empty */  { $$ = NULL;     }
-       | input line { $$ = $1;
+       | line input { $$ = $1;
                       $$->command.next = $2; }
        ;
 
@@ -72,13 +71,53 @@ line: '\n'         { $$ = NULL; }
     | command '\n' { $$ = $1; }
     ;
 
-nint: NINT
-    | VAR   { $$ = atol($1); free($1); }
+nint: NINT  { $$ = new_node(TYPE_NINT);
+              $$->nint.isvar = 0;
+              $$->nint.n     = $1; }
+    | VAR   { $$ = new_node(TYPE_NINT);
+              $$->nint.isvar = -1;
+              $$->nint.var   = $1; }
     ;
 
-nfloat: NFLOAT
-      | NINT   { $$ = $1; }
-      | VAR    { $$ = atof($1); free($1); }
+nfloat: NFLOAT { $$ = new_node(TYPE_NFLOAT);
+                 $$->nfloat.isvar = 0;
+                 $$->nfloat.n     = $1; }
+      | NINT   { $$ = new_node(TYPE_NFLOAT);
+                 $$->nfloat.isvar = 0;
+                 $$->nfloat.n     = $1; }
+      | VAR    { $$ = new_node(TYPE_NFLOAT);
+                 $$->nfloat.isvar = -1;
+                 $$->nfloat.var   = $1; }
+      ;
+
+ntime_val: NFLOAT { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.isvar = 0;
+                    $$->ntime.n     = $1; }
+         | NINT   { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.isvar = 0;
+                    $$->ntime.n     = $1; }
+         | VAR    { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.isvar = -1;
+                    $$->ntime.var   = $1; }
+         ;
+
+ntime: '+' ntime_val { $$ = $2;
+                       $$->ntime.rel = -1; }
+     | ntime_val
+     ;
+
+string: STRING  { $$ = new_node(TYPE_STRING);
+                  $$->string.isvar = 0;
+                  $$->string.parse = -1;
+                  $$->string.value = $1; }
+      | LITERAL { $$ = new_node(TYPE_STRING);
+                  $$->string.isvar = 0;
+                  $$->string.parse = 0;
+                  $$->string.value = $1; }
+      | VAR     { $$ = new_node(TYPE_STRING);
+                  $$->string.isvar = -1;
+                  $$->string.parse = 0;
+                  $$->string.value = $1; }
       ;
 
 list_num_enum: nint                   { $$ = new_node(TYPE_LIST_NUM);
@@ -89,26 +128,23 @@ list_num_enum: nint                   { $$ = new_node(TYPE_LIST_NUM);
                                         $$->list_num.next = $3; }
              ;
 
-list_num: '[' nint ':' nint ']' { int i;
-                                  SNODE *n = NULL;
-                                  for(i = $2; i <= $4; i++)
-                                  {
-                                    $$ = new_node(TYPE_LIST_NUM);
-                                    $$->list_num.val  = i;
-                                    $$->list_num.next = NULL;
-                                    if(n) n->list_num.next = $$;
-                                  } }
-        | nint                  { $$ = new_node(TYPE_LIST_NUM);
+list_num: nint                  { $$ = new_node(TYPE_LIST_NUM);
                                   $$->list_num.val  = $1;
                                   $$->list_num.next = NULL; }
         | '[' list_num_enum ']' { $$ = $2; }
         ;
 
-selector: '*'          { $$ = new_node(TYPE_SELECTOR);
-                         $$->selector.rmin = -1;
-                         $$->selector.rmax = -1; }
-        | list_num     { $$ = $1; }
-        ;
+range: '*'                   { $$ = new_node(TYPE_SELECTOR);
+                               $$->range.min = NULL;
+                               $$->range.max = NULL; }
+     | '[' nint ':' nint ']' { $$ = new_node(TYPE_SELECTOR);
+                               $$->range.min = $2;
+                               $$->range.max = $4; }
+     ;
+
+selection: range
+         | list_num
+         ;
 
 option: OPT_TCP          { $$ = new_node(TYPE_OPT_TCP); }
       | OPT_UDP          { $$ = new_node(TYPE_OPT_UDP); }
@@ -136,19 +172,23 @@ pattern: PERIODIC '[' nfloat ',' nint ']' { $$ = new_node(TYPE_PERIODIC);
                                             $$->pattern.periodic.n     = $5; }
        ;
 
-command: nfloat CMD_ON list_num options pattern  { $$ = new_node(TYPE_CMD_ON);
-                                                   $$->command.time     = $1;
-                                                   $$->command.list_num = $3;
-                                                   $$->command.options  = $4;
-                                                   $$->command.pattern  = $5; }
-       | nfloat CMD_MOD selector options pattern { $$ = new_node(TYPE_CMD_MOD);
-                                                   $$->command.time     = $1;
-                                                   $$->command.selector = $3;
-                                                   $$->command.options  = $4;
-                                                   $$->command.pattern  = $5; }
-       | nfloat CMD_OFF selector                 { $$ = new_node(TYPE_CMD_OFF);
-                                                   $$->command.time     = $1;
-                                                   $$->command.selector = $3; }
+command: ntime CMD_ON selection options pattern  { $$ = new_node(TYPE_CMD_ON);
+                                                   $$->command.time                = $1;
+                                                   $$->command.thcontrol.selection = $3;
+                                                   $$->command.thcontrol.options   = $4;
+                                                   $$->command.thcontrol.pattern   = $5; }
+       | ntime CMD_MOD selection options pattern { $$ = new_node(TYPE_CMD_MOD);
+                                                   $$->command.time                = $1;
+                                                   $$->command.thcontrol.selection = $3;
+                                                   $$->command.thcontrol.options   = $4;
+                                                   $$->command.thcontrol.pattern   = $5; }
+       | ntime CMD_OFF selection                 { $$ = new_node(TYPE_CMD_OFF);
+                                                   $$->command.time                = $1;
+                                                   $$->command.thcontrol.selection = $3; }
+       | ntime LITERAL '=' string                { $$ = new_node(TYPE_CMD_SETVAR);
+                                                   $$->command.time       = $1;
+                                                   $$->command.setvar.var = $2;
+                                                   $$->command.setvar.val = $4; }
        ;
 %%
 SNODE *new_node(int type)
@@ -185,7 +225,7 @@ char *readvar(char *buff, int bi)
   c = getchar();
   if(c == '{')
   {
-    while((c = getchar()) != '}' && !isblank(c) && c != EOF)
+    while((c = getchar()) != '}' && isalnum(c) && c != EOF)
       SADD(c);
     if(isblank(c) || c == EOF)
       D_FAT("Bad identifier.");
@@ -194,7 +234,7 @@ char *readvar(char *buff, int bi)
       D_FAT("Bad identifier.");
     do {
       SADD(c);
-    } while(!isblank(c = getchar()) && c != EOF);
+    } while(isalnum(c = getchar()) && c != EOF);
   /* get env var */
   s = getenv(v);
   if(!s)
@@ -220,15 +260,15 @@ int yylex(void)
     char *token;
     int  id;
   } tokens[] = {
-    { "DST",      TYPE_OPT_DST  },
-    { "MOD",      TYPE_CMD_MOD  },
-    { "OFF",      TYPE_CMD_OFF  },
-    { "ON",       TYPE_CMD_ON   },
-    { "PERIODIC", TYPE_PERIODIC },
-    { "SRC",      TYPE_OPT_SRC  },
-    { "TCP",      TYPE_OPT_TCP  },
-    { "UDP",      TYPE_OPT_UDP  },
-    { NULL,       0             }
+    { "DST",      OPT_DST  },
+    { "MOD",      CMD_MOD  },
+    { "OFF",      CMD_OFF  },
+    { "ON",       CMD_ON   },
+    { "PERIODIC", PERIODIC },
+    { "SRC",      OPT_SRC  },
+    { "TCP",      OPT_TCP  },
+    { "UDP",      OPT_UDP  },
+    { NULL,       0        }
   }, *token;
 
   /* Skip white space.  */
@@ -236,7 +276,10 @@ int yylex(void)
     ;
   /* Return end-of-input.  */
   if(c == EOF)
+  {
+    D_DBG("YYLEX EOF!");
     return 0;
+  }
 
   /* reset */
   SRESET();
@@ -296,8 +339,8 @@ int yylex(void)
     if(!s)
       D_FAT("No mem for string '%s'.", buff);
     yylval.string = s;
-    D_DBG("TOKEN[STRING] = '%s'", buff);
-    return STRING;
+    D_DBG("TOKEN[LITERAL] = '%s'", buff);
+    return LITERAL;
   }
 
   if(c == '"')
@@ -333,23 +376,30 @@ int yylex(void)
   || c == '[' || c == ']'
   || c == '(' || c == ')'
   || c == '\n')
+  {
+    D_DBG("TOKEN[CHAR(%d)] = '%c'", c, c);
     return c;
+  }
 
   /* ummm.. read word (string) or token */
   do {
     SADD(c);
-  } while(!isblank(c = getchar()) != '"' && c != EOF);
+  } while(!isblank(c = getchar()) && c != EOF);
   ungetc(c, stdin);
   /* is a language token? */
   for(token = tokens; token->token; token++)
     if(!strcasecmp(buff, token->token))
+    {
+      D_DBG("TOKEN[%s]", buff);
       return token->id;
+    }
   /* return string */
   s = strdup(buff);
   if(!s)
     D_FAT("No mem for string \"%s\".", buff);
   yylval.string = s;
-  return STRING;
+  D_DBG("TOKEN[LITERAL] = '%s'", buff);
+  return LITERAL;
 
 ha_roto_la_olla:
   D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
@@ -358,6 +408,6 @@ ha_roto_la_olla:
 
 void yyerror(char const *str)
 {
-  D_FAT("parsing error: %s", str);
+  D_ERR("parsing error: %s", str);
 }
 

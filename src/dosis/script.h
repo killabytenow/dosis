@@ -36,9 +36,15 @@ extern "C" {
 enum TYPES {
   TYPE_NULL,
   /* commands */
-  TYPE_CMD_ON,
   TYPE_CMD_MOD,
   TYPE_CMD_OFF,
+  TYPE_CMD_ON,
+  TYPE_CMD_SETVAR,
+  /* basic types */
+  TYPE_NINT,
+  TYPE_NFLOAT,
+  TYPE_NTIME,
+  TYPE_STRING,
   /* lists and selectors */
   TYPE_LIST_NUM,
   TYPE_SELECTOR,
@@ -56,39 +62,88 @@ enum TYPES {
 typedef struct SNODE_tag {
   int     type;
   union {
+    /* --------------------------------------------------------------------- */
+    /* command snode - A structure defining a command to be executed         */
     struct {
-      double            time;
-      int               command;
+      struct SNODE_tag *time;           /* ntime snode specifying time       */
       union {
-        struct SNODE_tag *list_num;
-        struct SNODE_tag *selector;
+        struct {
+          struct SNODE_tag *selection;  /* list or range of threads          */
+          struct SNODE_tag *options;    /* options snode                     */
+          struct SNODE_tag *pattern;    /* pattern snode                     */
+        } thcontrol;
+        struct {
+          char             *var;        /* variable identifier               */
+          struct SNODE_tag *val;        /* value to assign                   */
+        } setvar;
       };
-      struct SNODE_tag *options;
-      struct SNODE_tag *pattern;
       struct SNODE_tag *next;
     } command;
+
+    /* --------------------------------------------------------------------- */
+    /* option snode - Options specified for a certain command                */
     struct {
       union {
-        INET_ADDR addr;
+        INET_ADDR addr;          /* target/source address                    */
       };
       struct SNODE_tag *next;
     } option;
-    struct {
-      union {
-        struct {
-          double   ratio;
-          unsigned n;
-        } periodic;
-      };
+
+    /* --------------------------------------------------------------------- */
+    /* pattern snode - Pattern used by ON command                            */
+    union {
+      struct {
+        struct SNODE_tag *ratio; /* nfloat snode specifying packets/s        */
+        struct SNODE_tag *n;     /* nint snode with packet size              */
+      } periodic;
     } pattern;
+
+    /* --------------------------------------------------------------------- */
+    /* basic types snodes - Float & int numbers, time type and strings       */
     struct {
-      int               val;
+      int   isvar;              /* if 1, then 'value' is a reference         */
+      int   parse;              /* 1 parse vars, 0 is a literal string       */
+      char *value;              /* string or var to be processed             */
+    } string;
+
+    struct {
+      int isvar;                /* if 1, then this is a var reference (var)  */
+      int rel;                  /* if !=0, then it is a time-relative offset */
+      union {
+        double  n;              /* time                                      */
+        char   *var;            /* var                                       */
+      };
+    } ntime;
+
+    struct {
+      int isvar;                /* if 1, then this is a var reference (var)  */
+      union {
+        double  n;              /* time                                      */
+        char   *var;            /* var                                       */
+      };
+    } nfloat;
+
+    struct {
+      int isvar;                /* if 1, then this is a var reference (var)  */
+      union {
+        int     n;              /* time                                      */
+        char   *var;            /* var                                       */
+      };
+    } nint;
+
+    /* --------------------------------------------------------------------- */
+    /* list_num snode - snode used to specify a list of integers             */
+    struct {
+      struct SNODE_tag *val;    /* a snode specifying a number               */
       struct SNODE_tag *next;
     } list_num;
+
+    /* --------------------------------------------------------------------- */
+    /* range snode - snode used to specify a range of integers               */
     struct {
-      int rmin;
-      int rmax;
-    } selector;
+      struct SNODE_tag *min;    /* a snode specifying min range value        */
+      struct SNODE_tag *max;    /* a snode specifying max range value        */
+    } range;
   };
 } SNODE;
 
