@@ -75,7 +75,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
-  while((m = tea_timer_msg_get(tw->mqueue)) != NULL)
+  while((m = tea_timer_mqueue_shift(tw->mqueue)) != NULL)
   {
     DBG("[%02u] Received a spoofed connection packet.", tw->id);
     /*
@@ -117,7 +117,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
     }
 
     /* release msg buffer */
-    tea_timer_msg_release(m);
+    tea_timer_mqueue_release(m);
   }
 }
 

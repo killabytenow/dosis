@@ -25,6 +25,7 @@
 
 #include <config.h>
 #include "help.h"
+#include "log.h"
 
 void dos_help_program_header(void)
 {

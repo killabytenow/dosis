@@ -52,7 +52,7 @@ typedef struct _tag_pthreadex_prot_int {
 typedef pthread_mutex_t                pthreadex_mutex_t;
 #define PTHREADEX_MUTEX_INITIALIZER    PTHREAD_MUTEX_INITIALIZER
 
-#define pthreadex_mutex_init(x)          pthread_mutex_init(x)
+#define pthreadex_mutex_init(x)          pthread_mutex_init(x, NULL)
 #define pthreadex_mutex_begin(x)         pthread_cleanup_push_defer_np(       \
                                            (void *) pthread_mutex_unlock, x); \
                                          pthread_mutex_lock(x)

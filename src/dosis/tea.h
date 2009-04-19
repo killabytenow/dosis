@@ -64,7 +64,9 @@ void tea_timer_init(void);
 void tea_timer(SNODE *program);
 void tea_timer_new_thread(int tid, TEA_OBJECT *to);
 
-TEA_MSG *tea_timer_mqueue_get(TEA_MSG_QUEUE *tw);
+void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+TEA_MSG *tea_timer_mqueue_shift(TEA_MSG_QUEUE *mq);
 void tea_timer_mqueue_release(TEA_MSG *msg);
+void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
 
 #endif

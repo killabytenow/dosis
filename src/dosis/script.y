@@ -256,9 +256,11 @@ int yylex(void)
       if(f == 0)
       {
         sscanf(buff, "%d", &(yylval.nint));
+        D_DBG("TOKEN[NINT] = '%s'", buff);
         return NINT;
       }
       sscanf(buff, "%lf", &(yylval.nfloat));
+      D_DBG("TOKEN[NFLOAT] = '%s'", buff);
       return NFLOAT;
     }
     /* oooh... it is not a number; it is a string */
@@ -267,6 +269,7 @@ int yylex(void)
     ungetc(c, stdin);
     if((yylval.string = strdup(buff)) == NULL)
       D_FAT("No mem for string '%s'.", buff);
+    D_DBG("TOKEN[STRING] = '%s'", buff);
     return STRING;
   }
 
@@ -274,6 +277,7 @@ int yylex(void)
   if(c == '$')
   {
     yylval.string = readvar(buff, bi);
+    D_DBG("TOKEN[VAR] = '$%s'", buff);
     return VAR;
   }
 
@@ -292,6 +296,7 @@ int yylex(void)
     if(!s)
       D_FAT("No mem for string '%s'.", buff);
     yylval.string = s;
+    D_DBG("TOKEN[STRING] = '%s'", buff);
     return STRING;
   }
 
@@ -317,6 +322,7 @@ int yylex(void)
     if(!s)
       D_FAT("No mem for string \"%s\".", buff);
     yylval.string = s;
+    D_DBG("TOKEN[STRING] = '%s'", buff);
     return STRING;
   }
 
