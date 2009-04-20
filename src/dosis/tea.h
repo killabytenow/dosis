@@ -53,7 +53,7 @@ typedef struct _tag_THREAD_WORK {
 } THREAD_WORK;
 
 typedef struct _tag_TEA_OBJECT {
-  int  (*configure)(THREAD_WORK *tw);
+  int  (*configure)(THREAD_WORK *tw, SNODE *command);
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
   void (*listen)(THREAD_WORK *tw);

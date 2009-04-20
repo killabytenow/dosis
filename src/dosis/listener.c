@@ -1,18 +1,71 @@
+/*****************************************************************************
+ * listener.c
+ *
+ * Raw IPQ listener (used by raw listeners like tcpopen).
+ *
+ * ---------------------------------------------------------------------------
+ * dosis - DoS: Internet Sodomizer
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *
+ *   This program is free software; you can redistribute it and/or modify it
+ *   under the terms of the GNU General Public License as published by the Free
+ *   Software Foundation; either version 2 of the License, or (at your option)
+ *   any later version.
+ *
+ *   This program is distributed in the hope that it will be useful, but WITHOUT
+ *   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *   more details.
+ *
+ *   You should have received a copy of the GNU General Public License along
+ *   with this program; if not, write to the Free Software Foundation, Inc., 51
+ *   Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ *****************************************************************************/
+
+#include <config.h>
+
+#if 0
+#include "dosis.h"
+#include "dosconfig.h"
+#include "tea.h"
+#include "tcpopen.h"
+#include "lnet.h"
+#include "pthreadex.h"
+#include "log.h"
+#include "ip.h"
+#endif
+
+typedef struct _tag_LISTENER_CFG {
+  LN_CONTEXT    lnc;
+} LISTENER_CFG;
+
+typedef struct _tag_IPQLISTENER_CFG {
+  unsigned    npackets;
+  char       *req;
+  unsigned    req_size;
+  LN_CONTEXT *lnc;
+} IPQLISTENER_CFG;
+
+#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
+#define ip_header(x)   ((struct iphdr *)  (x))
+#define tcp_header(x)  ((struct tcphdr *) ((x) \
+                       + (((struct iphdr *) (x))->ihl << 2)))
+
+/*****************************************************************************
+ * LISTENER THREAD
+ *****************************************************************************/
+
 static void tea_timer_listener_thread_cleanup(void *x)
 {
   /* nothing here */
 }
 
-static void tea_timer_listener_thread(void)
+static void tea_timer_listener_thread(THREAD_WORK *tw)
 {
   int r;
   ipqex_msg_t msg;
-  THREAD_WORK *tw;
-
-  /* initialize thread */
-  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
-  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
-  pthread_cleanup_push((void *) tea_timer_listener_thread_cleanup, NULL);
+  IPQLISTENER_CFG *ic = (IPQLISTENER_CFG *) tw->data;
 
   /* get packets and classify */
   while(!cfg.finalize)

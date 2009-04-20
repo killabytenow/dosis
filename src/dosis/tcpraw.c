@@ -33,35 +33,38 @@
 #include "log.h"
 #include "ip.h"
 
-#define BUFSIZE    2048
+typedef struct _tag_TCPRAW_CFG {
+  INET_ADDR   shost;
+  INET_ADDR   dhost;
+  unsigned    npackets;
+  char       *req;
+  unsigned    req_size;
+  double     *hitratio;
+  LN_CONTEXT  lnc;
+} TCPRAW_CFG;
 
-typedef struct _tag_TCPOPEN_CFG {
-  INET_ADDR  shost;
-  INET_ADDR  dhost;
-  unsigned   npackets;
-  char      *req;
-  unsigned   req_size;
-  double    *hitratio;
-} TCPOPEN_CFG;
-
-typedef struct _tag_TCPOPEN_WORK {
-  THREAD_WORK  *w;
-  LN_CONTEXT    lnc;
-  ipqex_msg_t   msg;
-  TCPOPEN_CFG   cfg;
-} TCPRAW_WORK;
-
-static void send_packets(TCPRAW_WORK *tw)
+static void tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 {
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+
+  /* default */
+  xxx
+
+  /* read from SNODE command */
+  pthreadex_timer_init(&timer, 0.0);
+  if(hitratio > 0)
+    pthreadex_timer_set_frequency(&timer, cfg->hits);
+
+}
+
+static void tcpraw__thread(THREAD_WORK *tw)
+{
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
   pthreadex_timer_t timer;
   unsigned int seq = libnet_get_prand(LIBNET_PRu32);
   int i;
 
   DBG("[%02u] Started sender thread", tw->w->id);
-
-  pthreadex_timer_init(&timer, 0.0);
-  if(hitratio > 0)
-    pthreadex_timer_set_frequency(&timer, cfg->hits);
 
   /* ATTACK */
   while(!tw->finalize)
@@ -99,7 +102,7 @@ static void send_packets(TCPRAW_WORK *tw)
  *     x - sender
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static void tcpraw__thread_cleanup(TCPRAW_WORK *tw)
+static void tcpraw__thread_cleanup(THREAD_WORK *tw)
 {
   /* collect libnet data */
   ln_destroy_context(&(tw->lnc));
@@ -107,13 +110,11 @@ static void tcpraw__thread_cleanup(TCPRAW_WORK *tw)
   DBG("[%02u] Finalized.", tw->w->id);
 }
 
-static void tcpraw__thread_launch(THREAD_WORK *w)
+static void tcpraw__thread_launch(THREAD_WORK *tw)
 {
   int r;
-  TCPRAW_WORK tw;
 
   /* initialize specialized work thread data */
-  memset(&tw, 0, sizeof(tw));
   tw.w = w;
 
   /* initialize thread */

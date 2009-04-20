@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -51,7 +51,7 @@ typedef struct _tag_TCPOPEN_CFG {
                        + (((struct iphdr *) (x))->ihl << 2)))
 
 /*****************************************************************************
- * LISTENER THREAD
+ * THREAD IMPLEMENTATION
  *****************************************************************************/
 
 static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned size)
