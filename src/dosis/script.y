@@ -39,7 +39,7 @@
   void yyerror (char const *);
   SNODE *new_node(int type);
 
-  SNODE *script;
+  static SNODE *script;
 %}
 %union {
   SNODE     *snode;
@@ -56,7 +56,7 @@
 %type  <snode>    list_num selection list_num_enum range
 %type  <snode>    line input
 %token            PERIODIC
-%token            CMD_ON CMD_MOD CMD_OFF
+%token            CMD_ON CMD_MOD CMD_OFF CMD_LISTEN
 %token            OPT_UDP OPT_TCP OPT_SRC OPT_DST
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
@@ -189,6 +189,10 @@ command: ntime CMD_ON selection options pattern  { $$ = new_node(TYPE_CMD_ON);
                                                    $$->command.time       = $1;
                                                    $$->command.setvar.var = $2;
                                                    $$->command.setvar.val = $4; }
+       | ntime CMD_LISTEN selection              { $$ = new_node(TYPE_CMD_LISTEN);
+                                                   $$->command.thcontrol.selection = $3;
+                                                   $$->command.thcontrol.options   = NULL;
+                                                   $$->command.thcontrol.pattern   = NULL; }
        ;
 %%
 SNODE *new_node(int type)
@@ -260,15 +264,16 @@ int yylex(void)
     char *token;
     int  id;
   } tokens[] = {
-    { "DST",      OPT_DST  },
-    { "MOD",      CMD_MOD  },
-    { "OFF",      CMD_OFF  },
-    { "ON",       CMD_ON   },
-    { "PERIODIC", PERIODIC },
-    { "SRC",      OPT_SRC  },
-    { "TCP",      OPT_TCP  },
-    { "UDP",      OPT_UDP  },
-    { NULL,       0        }
+    { "DST",      OPT_DST    },
+    { "MOD",      CMD_MOD    },
+    { "OFF",      CMD_OFF    },
+    { "LISTEN",   CMD_LISTEN },
+    { "ON",       CMD_ON     },
+    { "PERIODIC", PERIODIC   },
+    { "SRC",      OPT_SRC    },
+    { "TCP",      OPT_TCP    },
+    { "UDP",      OPT_UDP    },
+    { NULL,       0          }
   }, *token;
 
   /* Skip white space.  */
@@ -410,4 +415,12 @@ void yyerror(char const *str)
 {
   D_ERR("parsing error: %s", str);
 }
+
+SNODE *script_parse(void)
+{
+  yyparse();
+
+  return script;
+}
+
 

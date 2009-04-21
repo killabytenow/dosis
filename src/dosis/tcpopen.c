@@ -128,7 +128,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
  *     x - sender
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int tcpopen__configure(THREAD_WORK *tw)
+static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPOPEN_CFG *tc;
 

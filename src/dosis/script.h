@@ -40,6 +40,7 @@ enum TYPES {
   TYPE_CMD_OFF,
   TYPE_CMD_ON,
   TYPE_CMD_SETVAR,
+  TYPE_CMD_LISTEN,
   /* basic types */
   TYPE_NINT,
   TYPE_NFLOAT,
@@ -146,6 +147,8 @@ typedef struct SNODE_tag {
     } range;
   };
 } SNODE;
+
+extern SNODE *script_parse(void);
 
 #define IPADDR      
 

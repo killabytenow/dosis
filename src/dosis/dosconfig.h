@@ -37,7 +37,6 @@ typedef struct __TAG_config {
   char           *output;
   char           *script;
   int             maxthreads;
-  int             listenthreads;
 
   /* configuration data set by application based on user options */
   FILE           *of;
@@ -45,6 +44,8 @@ typedef struct __TAG_config {
 } DOS_CONFIG;
 
 extern DOS_CONFIG cfg;
+
+void dos_config_init(int argc, char **argv);
 
 /*****************************************************************************
  * LOGFILE

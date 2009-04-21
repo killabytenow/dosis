@@ -27,7 +27,7 @@
 #include "dosis.h"
 #include "dosconfig.h"
 #include "log.h"
-#include "tcpopen.h"
+#include "tea.h"
 
 void handle_termination__signal(int s)
 {
@@ -43,6 +43,8 @@ void handle_termination__signal(int s)
 
 int main(int argc, char *argv[])
 {
+  SNODE *script;
+
   log_init();
 
   /* install signal handlers */
@@ -55,7 +57,9 @@ int main(int argc, char *argv[])
   dos_config_init(argc, argv);
 
   /* parse script */
-  yyparse();
+  script = script_parse();
+
+  tea_timer(script);
 
   LOG("Finished.");
 

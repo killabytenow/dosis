@@ -62,7 +62,7 @@ typedef struct _tag_TEA_OBJECT {
 
 void tea_timer_init(void);
 void tea_timer(SNODE *program);
-void tea_timer_new_thread(int tid, TEA_OBJECT *to);
+void tea_timer_new_thread(int tid, TEA_OBJECT *to, SNODE *command);
 
 void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
 TEA_MSG *tea_timer_mqueue_shift(TEA_MSG_QUEUE *mq);

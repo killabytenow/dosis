@@ -157,7 +157,7 @@ static void *tea_timer_thread(void *data)
   return NULL;
 }
 
-void tea_timer_new_thread(int tid, TEA_OBJECT *to)
+void tea_timer_new_thread(int tid, TEA_OBJECT *to, SNODE *command)
 {
   THREAD_WORK *tw;
 
@@ -181,7 +181,7 @@ void tea_timer_new_thread(int tid, TEA_OBJECT *to)
 
   /* configure thread here */
   if(tw->methods->configure)
-    tw->methods->configure(tw);
+    tw->methods->configure(tw, command);
 
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_timer_thread, tw) != 0)
@@ -228,6 +228,7 @@ void tea_timer(SNODE *program)
       case TYPE_CMD_ON:
       case TYPE_CMD_MOD:
       case TYPE_CMD_OFF:
+      case TYPE_CMD_LISTEN:
         break;
       default:
         D_FAT("[TT] Unknown command %d.", cmd->type);
