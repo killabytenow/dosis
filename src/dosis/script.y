@@ -52,7 +52,7 @@
 %token <string>   STRING LITERAL
 %token <string>   VAR
 %type  <snode>    nint nfloat ntime ntime_val string
-%type  <snode>    command option options pattern
+%type  <snode>    o_ntime command option options pattern
 %type  <snode>    list_num selection list_num_enum range
 %type  <snode>    line input
 %token            PERIODIC
@@ -146,16 +146,20 @@ selection: range
          | list_num
          ;
 
-option: OPT_TCP          { $$ = new_node(TYPE_OPT_TCP); }
-      | OPT_UDP          { $$ = new_node(TYPE_OPT_UDP); }
-      | OPT_SRC STRING   { $$ = new_node(TYPE_OPT_SRC);
-                           if(ip_addr_parse($2, &($$->option.addr)))
-                             D_FAT("Bad source address '%s'.", $2);
-                           free($2); }
-      | OPT_DST STRING   { $$ = new_node(TYPE_OPT_DST);
-                           if(ip_addr_parse($2, &($$->option.addr)))
-                             D_FAT("Bad destination address '%s'.", $2);
-                           free($2); }
+option: OPT_TCP                   { $$ = new_node(TYPE_OPT_TCP); }
+      | OPT_UDP                   { $$ = new_node(TYPE_OPT_UDP); }
+      | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
+                                    $$->option.addr = $2;
+                                    $$->option.port = NULL; }
+      | OPT_SRC string '/' string { $$ = new_node(TYPE_OPT_SRC);
+                                    $$->option.addr = $2;
+                                    $$->option.port = $4; }
+      | OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
+                                    $$->option.addr = $2;
+                                    $$->option.port = NULL; }
+      | OPT_DST string '/' string { $$ = new_node(TYPE_OPT_DST);
+                                    $$->option.addr = $2;
+                                    $$->option.port = $4; }
       /*
       | OPT_PAYLOAD STRING {
       | OPT_PAYLOAD FILE '(' STRING ')' {
@@ -172,27 +176,31 @@ pattern: PERIODIC '[' nfloat ',' nint ']' { $$ = new_node(TYPE_PERIODIC);
                                             $$->pattern.periodic.n     = $5; }
        ;
 
-command: ntime CMD_ON selection options pattern  { $$ = new_node(TYPE_CMD_ON);
-                                                   $$->command.time                = $1;
-                                                   $$->command.thcontrol.selection = $3;
-                                                   $$->command.thcontrol.options   = $4;
-                                                   $$->command.thcontrol.pattern   = $5; }
-       | ntime CMD_MOD selection options pattern { $$ = new_node(TYPE_CMD_MOD);
-                                                   $$->command.time                = $1;
-                                                   $$->command.thcontrol.selection = $3;
-                                                   $$->command.thcontrol.options   = $4;
-                                                   $$->command.thcontrol.pattern   = $5; }
-       | ntime CMD_OFF selection                 { $$ = new_node(TYPE_CMD_OFF);
-                                                   $$->command.time                = $1;
-                                                   $$->command.thcontrol.selection = $3; }
-       | ntime LITERAL '=' string                { $$ = new_node(TYPE_CMD_SETVAR);
-                                                   $$->command.time       = $1;
-                                                   $$->command.setvar.var = $2;
-                                                   $$->command.setvar.val = $4; }
-       | ntime CMD_LISTEN selection              { $$ = new_node(TYPE_CMD_LISTEN);
-                                                   $$->command.thcontrol.selection = $3;
-                                                   $$->command.thcontrol.options   = NULL;
-                                                   $$->command.thcontrol.pattern   = NULL; }
+o_ntime: /* empty */ { $$ = NULL; }
+       | ntime       { $$ = $1;   }
+       ;
+
+command: o_ntime CMD_ON selection options pattern  { $$ = new_node(TYPE_CMD_ON);
+                                                     $$->command.time                = $1;
+                                                     $$->command.thcontrol.selection = $3;
+                                                     $$->command.thcontrol.options   = $4;
+                                                     $$->command.thcontrol.pattern   = $5; }
+       | o_ntime CMD_MOD selection options pattern { $$ = new_node(TYPE_CMD_MOD);
+                                                     $$->command.time                = $1;
+                                                     $$->command.thcontrol.selection = $3;
+                                                     $$->command.thcontrol.options   = $4;
+                                                     $$->command.thcontrol.pattern   = $5; }
+       | o_ntime CMD_OFF selection                 { $$ = new_node(TYPE_CMD_OFF);
+                                                     $$->command.time                = $1;
+                                                     $$->command.thcontrol.selection = $3; }
+       | o_ntime LITERAL '=' string                { $$ = new_node(TYPE_CMD_SETVAR);
+                                                     $$->command.time       = $1;
+                                                     $$->command.setvar.var = $2;
+                                                     $$->command.setvar.val = $4; }
+       | o_ntime CMD_LISTEN selection              { $$ = new_node(TYPE_CMD_LISTEN);
+                                                     $$->command.thcontrol.selection = $3;
+                                                     $$->command.thcontrol.options   = NULL;
+                                                     $$->command.thcontrol.pattern   = NULL; }
        ;
 %%
 SNODE *new_node(int type)
@@ -219,41 +227,42 @@ SNODE *new_node(int type)
                        strcat(buff, s);              \
                        bi += strlen(s); }
 
-char *readvar(char *buff, int bi)
+void readvar(char *buff, int *real_bi)
 {
   int c;
-  char *s, *v;
+  char *v;
+  int bi = *real_bi;
 
   /* read var name in buffer */
   v = buff + bi;
   c = getchar();
+  if(c == EOF)
+    D_FAT("Bad identifier.");
+  SADD(c);
   if(c == '{')
   {
-    while((c = getchar()) != '}' && isalnum(c) && c != EOF)
+    while((c = getchar()) != '}' && isalnum(c) && c != '\n' && c != EOF)
       SADD(c);
+    if(c == '\n')
+      D_FAT("Non-terminated var.");
     if(isblank(c) || c == EOF)
       D_FAT("Bad identifier.");
-  } else
-    if(c == EOF)
-      D_FAT("Bad identifier.");
+  } else {
     do {
       SADD(c);
     } while(isalnum(c = getchar()) && c != EOF);
-  /* get env var */
-  s = getenv(v);
-  if(!s)
-    D_FAT("Variable '%s' not defined.", v);
-  s = strdup(s);
-  if(!s)
-    D_FAT("No mem for var '%s'.", v);
-  /* erase var name from buffer */
-  *v = '\0';
-  /* ret value */
-  return s;
+  }
+  ungetc(c, stdin);
+
+  D_DBG("Readed var name '%s'.", v);
+
+  /* update real_bi */
+  *real_bi = bi;
+
+  return;
 
 ha_roto_la_olla:
   D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
-  return 0;
 }
 
 int yylex(void)
@@ -324,7 +333,9 @@ int yylex(void)
   /* Process env var */
   if(c == '$')
   {
-    yylval.string = readvar(buff, bi);
+    readvar(buff, &bi);
+    if((yylval.string = strdup(buff)) == NULL)
+      D_FAT("No mem for string '%s'.", buff);
     D_DBG("TOKEN[VAR] = '$%s'", buff);
     return VAR;
   }
@@ -332,52 +343,58 @@ int yylex(void)
   /* Process strings */
   if(c == '\'')
   {
-    while((c = getchar()) != '\'' && c != EOF)
+    while((c = getchar()) != '\'' && c != '\n' && c != EOF)
       if(c == '\\')
       {
         c = getchar();
         SADD(c);
         if(c == EOF)
           ungetc(c, stdin);
+      } else {
+        SADD(c);
       }
+    if(c == '\n')
+      D_FAT("Non-terminated string.");
     s = strdup(buff);
     if(!s)
       D_FAT("No mem for string '%s'.", buff);
     yylval.string = s;
-    D_DBG("TOKEN[LITERAL] = '%s'", buff);
+    D_DBG("TOKEN['LITERAL'] = '%s'", buff);
     return LITERAL;
   }
 
   if(c == '"')
   {
-    while((c = getchar()) != '"' && c != EOF)
+    while((c = getchar()) != '"' && c != '\n' && c != EOF)
       if(c == '\\')
       {
         c = getchar();
         SADD(c);
         if(c == EOF)
           ungetc(c, stdin);
-     } else
-     if(c == '$')
-     {
-       /* get var value */
-       s = readvar(buff, bi);
-       /* cat val */
-       SCAT(s);
-       free(s);
-     }
+      } else
+      if(c == '$')
+      {
+        /* get var name */
+        readvar(buff, &bi);
+      } else {
+        SADD(c);
+      }
+    if(c == '\n')
+      D_FAT("Non-terminated string.");
     s = strdup(buff);
     if(!s)
       D_FAT("No mem for string \"%s\".", buff);
     yylval.string = s;
-    D_DBG("TOKEN[STRING] = '%s'", buff);
+    D_DBG("TOKEN[\"STRING\"] = '%s'", buff);
     return STRING;
   }
 
   /* special chars (chocolate minitokens) */
   if(c == ','
   || c == ':'
-  || c == '*'
+  || c == '='
+  || c == '*' || c == '/'
   || c == '[' || c == ']'
   || c == '(' || c == ')'
   || c == '\n')
@@ -389,7 +406,7 @@ int yylex(void)
   /* ummm.. read word (string) or token */
   do {
     SADD(c);
-  } while(!isblank(c = getchar()) && c != EOF);
+  } while(isalnum(c = getchar()) && c != EOF);
   ungetc(c, stdin);
   /* is a language token? */
   for(token = tokens; token->token; token++)

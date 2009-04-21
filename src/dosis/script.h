@@ -84,9 +84,8 @@ typedef struct SNODE_tag {
     /* --------------------------------------------------------------------- */
     /* option snode - Options specified for a certain command                */
     struct {
-      union {
-        INET_ADDR addr;          /* target/source address                    */
-      };
+      struct SNODE_tag *addr;         /* target/source address             */
+      struct SNODE_tag *port;         /* target/source port                */
       struct SNODE_tag *next;
     } option;
 
