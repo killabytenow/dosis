@@ -57,8 +57,10 @@ int main(int argc, char *argv[])
   dos_config_init(argc, argv);
 
   /* parse script */
-  script = script_parse();
+  if((script = script_parse()) == NULL)
+    D_FAT("Cannot parse input script.");
 
+D_DBG("FLAS");
   tea_timer(script);
 
   LOG("Finished.");

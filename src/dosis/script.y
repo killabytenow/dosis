@@ -39,6 +39,7 @@
   void yyerror (char const *);
   SNODE *new_node(int type);
 
+  static int lineno = 0;
   static SNODE *script;
 %}
 %union {
@@ -51,7 +52,7 @@
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
-%type  <snode>    nint nfloat ntime ntime_val string
+%type  <snode>    nint nfloat ntime ntime_val string var
 %type  <snode>    o_ntime command option options pattern
 %type  <snode>    list_num selection list_num_enum range
 %type  <snode>    line input
@@ -59,11 +60,14 @@
 %token            CMD_ON CMD_MOD CMD_OFF CMD_LISTEN
 %token            OPT_UDP OPT_TCP OPT_SRC OPT_DST
 %% /* Grammar rules and actions follow.  */
-script: input       { script = $1; }
+script: input       { D_DBG("nini 1");
+                      script = $1; }
       ;
 
-input: /* empty */  { $$ = NULL;     }
-       | line input { $$ = $1;
+input: /* empty */  { D_DBG("nini 2");
+                      $$ = NULL;     }
+       | line input { D_DBG("nini 3 line=%p input=%p", $1, $2);
+                      $$ = $1;
                       $$->command.next = $2; }
        ;
 
@@ -71,34 +75,27 @@ line: '\n'         { $$ = NULL; }
     | command '\n' { $$ = $1; }
     ;
 
+var:  VAR   { $$ = new_node(TYPE_VAR);
+              $$->var.name = $1; }
+    ;
+
 nint: NINT  { $$ = new_node(TYPE_NINT);
-              $$->nint.isvar = 0;
-              $$->nint.n     = $1; }
-    | VAR   { $$ = new_node(TYPE_NINT);
-              $$->nint.isvar = -1;
-              $$->nint.var   = $1; }
+              $$->nint.n   = $1; }
+    | var
     ;
 
 nfloat: NFLOAT { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat.isvar = 0;
-                 $$->nfloat.n     = $1; }
+                 $$->nfloat.n = $1; }
       | NINT   { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat.isvar = 0;
-                 $$->nfloat.n     = $1; }
-      | VAR    { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat.isvar = -1;
-                 $$->nfloat.var   = $1; }
+                 $$->nfloat.n = $1; }
+      | var
       ;
 
 ntime_val: NFLOAT { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.isvar = 0;
                     $$->ntime.n     = $1; }
          | NINT   { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.isvar = 0;
                     $$->ntime.n     = $1; }
-         | VAR    { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.isvar = -1;
-                    $$->ntime.var   = $1; }
+         | var
          ;
 
 ntime: '+' ntime_val { $$ = $2;
@@ -107,17 +104,18 @@ ntime: '+' ntime_val { $$ = $2;
      ;
 
 string: STRING  { $$ = new_node(TYPE_STRING);
-                  $$->string.isvar = 0;
                   $$->string.parse = -1;
                   $$->string.value = $1; }
       | LITERAL { $$ = new_node(TYPE_STRING);
-                  $$->string.isvar = 0;
                   $$->string.parse = 0;
                   $$->string.value = $1; }
-      | VAR     { $$ = new_node(TYPE_STRING);
-                  $$->string.isvar = -1;
-                  $$->string.parse = 0;
-                  $$->string.value = $1; }
+      | var
+      /*
+      | NFLOAT  { $$ = new_node(TYPE_NFLOAT);
+                  $$->nfloat.n     = $1; }
+      | NINT    { $$ = new_node(TYPE_NINT);
+                  $$->nfloat.n     = $1; }
+      */
       ;
 
 list_num_enum: nint                   { $$ = new_node(TYPE_LIST_NUM);
@@ -151,13 +149,13 @@ option: OPT_TCP                   { $$ = new_node(TYPE_OPT_TCP); }
       | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }
-      | OPT_SRC string '/' string { $$ = new_node(TYPE_OPT_SRC);
+      | OPT_SRC string '/' nint   { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
                                     $$->option.port = $4; }
       | OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }
-      | OPT_DST string '/' string { $$ = new_node(TYPE_OPT_DST);
+      | OPT_DST string '/' nint   { $$ = new_node(TYPE_OPT_DST);
                                     $$->option.addr = $2;
                                     $$->option.port = $4; }
       /*
@@ -248,9 +246,8 @@ void readvar(char *buff, int *real_bi)
     if(isblank(c) || c == EOF)
       D_FAT("Bad identifier.");
   } else {
-    do {
+    while(isalnum(c = getchar()) && c != EOF)
       SADD(c);
-    } while(isalnum(c = getchar()) && c != EOF);
   }
   ungetc(c, stdin);
 
@@ -295,6 +292,21 @@ int yylex(void)
     return 0;
   }
 
+  /* ignore comments */
+  if(c == '#')
+  {
+    while((c = getchar()) != '\n' && c != EOF)
+      ;
+    if(c == '\n')
+    {
+      D_DBG("TOKEN[NEWLINE]");
+      lineno++;
+      return c;
+    }
+    D_DBG("YYLEX EOF!");
+    return 0;
+  }
+
   /* reset */
   SRESET();
 
@@ -321,7 +333,7 @@ int yylex(void)
       return NFLOAT;
     }
     /* oooh... it is not a number; it is a string */
-    while(!isblank(c = getchar()) && c != EOF)
+    while(!isblank(c = getchar()) && c != '\n' && c != EOF)
       SADD(c);
     ungetc(c, stdin);
     if((yylval.string = strdup(buff)) == NULL)
@@ -354,7 +366,7 @@ int yylex(void)
         SADD(c);
       }
     if(c == '\n')
-      D_FAT("Non-terminated string.");
+      D_FAT("%d: Non-terminated string.", lineno);
     s = strdup(buff);
     if(!s)
       D_FAT("No mem for string '%s'.", buff);
@@ -391,13 +403,18 @@ int yylex(void)
   }
 
   /* special chars (chocolate minitokens) */
+  if(c == '\n')
+  {
+    D_DBG("TOKEN[NEWLINE]");
+    lineno++;
+    return c;
+  }
   if(c == ','
   || c == ':'
   || c == '='
   || c == '*' || c == '/'
   || c == '[' || c == ']'
-  || c == '(' || c == ')'
-  || c == '\n')
+  || c == '(' || c == ')')
   {
     D_DBG("TOKEN[CHAR(%d)] = '%c'", c, c);
     return c;

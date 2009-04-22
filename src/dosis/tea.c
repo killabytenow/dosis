@@ -212,23 +212,76 @@ void tea_timer_init(void)
   msg_free = tea_timer_mqueue_create();
 }
 
+char *tea_getvar(SNODE *n)
+{
+  char *r;
+
+  if(n->type != TYPE_VAR)
+    D_FAT("Node of type %d is not a var.", n->type);
+
+  r = getenv(n->var.name);
+  if(!r)
+    D_FAT("Non-existent variable '%s'.", n->var.name);
+
+  if((r = strdup(r)) == NULL)
+    D_FAT("No memory for var '%s' content.", n->var.name);
+
+  return r;
+}
+
+char *tea_getstring(SNODE *n)
+{
+  char *r;
+
+  switch(n->type)
+  {
+    case TYPE_STRING:
+      if((r = strdup(n->string.value)) == NULL)
+        D_FAT("Cannot dup string.");
+      break;
+    case TYPE_VAR:
+      r = tea_getvar(n);
+      break;
+    default:
+      D_FAT("Node of type %d cannot be converted to string.", n->type);
+  }
+
+  return r;
+}
+
 void tea_timer(SNODE *program)
 {
   struct timeval sttime, entime;
   SNODE *cmd;
   int i;
 
+        D_DBG("P=U");
   if(cfg.finalize)
     WRN("[TT] Attack cancelled by user.");
 
   for(cmd = program; !cmd; cmd = cmd->command.next)
   {
+    /* wait until command is prepared to be executed */
+    /* XXX TODO XXX
+    cmd->command.time       = $1;
+    */
     switch(cmd->type)
     {
       case TYPE_CMD_ON:
       case TYPE_CMD_MOD:
       case TYPE_CMD_OFF:
       case TYPE_CMD_LISTEN:
+        break;
+      case TYPE_CMD_SETVAR:
+        D_DBG("TYPE_CMD_SETVAR");
+        {
+          char *var = tea_getstring(cmd->command.setvar.var);
+          char *val = tea_getstring(cmd->command.setvar.val);
+          if(setenv(var, val, 1))
+            D_FAT("Cannot set var '%s' with value '%s'.", var, val);
+          free(var);
+          free(val);
+        }
         break;
       default:
         D_FAT("[TT] Unknown command %d.", cmd->type);

@@ -46,6 +46,7 @@ enum TYPES {
   TYPE_NFLOAT,
   TYPE_NTIME,
   TYPE_STRING,
+  TYPE_VAR,
   /* lists and selectors */
   TYPE_LIST_NUM,
   TYPE_SELECTOR,
@@ -101,35 +102,26 @@ typedef struct SNODE_tag {
     /* --------------------------------------------------------------------- */
     /* basic types snodes - Float & int numbers, time type and strings       */
     struct {
-      int   isvar;              /* if 1, then 'value' is a reference         */
       int   parse;              /* 1 parse vars, 0 is a literal string       */
       char *value;              /* string or var to be processed             */
     } string;
 
     struct {
-      int isvar;                /* if 1, then this is a var reference (var)  */
       int rel;                  /* if !=0, then it is a time-relative offset */
-      union {
-        double  n;              /* time                                      */
-        char   *var;            /* var                                       */
-      };
+      double  n;                /* time                                      */
     } ntime;
 
     struct {
-      int isvar;                /* if 1, then this is a var reference (var)  */
-      union {
-        double  n;              /* time                                      */
-        char   *var;            /* var                                       */
-      };
+      double  n;                /* float                                     */
     } nfloat;
 
     struct {
-      int isvar;                /* if 1, then this is a var reference (var)  */
-      union {
-        int     n;              /* time                                      */
-        char   *var;            /* var                                       */
-      };
+      int     n;                /* int                                       */
     } nint;
+    
+    struct {
+      char   *name;             /* var name                                  */
+    } var;
 
     /* --------------------------------------------------------------------- */
     /* list_num snode - snode used to specify a list of integers             */
