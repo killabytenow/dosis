@@ -60,13 +60,13 @@ typedef struct _tag_TEA_OBJECT {
   int  (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
 } TEA_OBJECT;
 
-void tea_timer_init(void);
+void tea_init(void);
 void tea_timer(SNODE *program);
-void tea_timer_new_thread(int tid, TEA_OBJECT *to, SNODE *command);
+void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command);
 
-void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
-TEA_MSG *tea_timer_mqueue_shift(TEA_MSG_QUEUE *mq);
-void tea_timer_mqueue_release(TEA_MSG *msg);
-void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq);
+void tea_mqueue_release(TEA_MSG *msg);
+void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
 
 #endif

@@ -60,7 +60,6 @@ int main(int argc, char *argv[])
   if((script = script_parse()) == NULL)
     D_FAT("Cannot parse input script.");
 
-D_DBG("FLAS");
   tea_timer(script);
 
   LOG("Finished.");

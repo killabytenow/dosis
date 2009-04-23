@@ -39,7 +39,7 @@
   void yyerror (char const *);
   SNODE *new_node(int type);
 
-  static int lineno = 0;
+  static int lineno = 1;
   static SNODE *script;
 %}
 %union {
@@ -55,39 +55,35 @@
 %type  <snode>    nint nfloat ntime ntime_val string var
 %type  <snode>    o_ntime command option options pattern
 %type  <snode>    list_num selection list_num_enum range
-%type  <snode>    line input
+%type  <snode>    input to
 %token            PERIODIC
-%token            CMD_ON CMD_MOD CMD_OFF CMD_LISTEN
-%token            OPT_UDP OPT_TCP OPT_SRC OPT_DST
+%token            CMD_ON CMD_MOD CMD_OFF
+%token            OPT_RAW OPT_SRC OPT_DST
+%token            TO_UDP TO_TCP TO_LISTEN
 %% /* Grammar rules and actions follow.  */
-script: input       { D_DBG("nini 1");
-                      script = $1; }
+script: input       { script = $1; }
       ;
 
-input: /* empty */  { D_DBG("nini 2");
-                      $$ = NULL;     }
-       | line input { D_DBG("nini 3 line=%p input=%p", $1, $2);
-                      $$ = $1;
-                      $$->command.next = $2; }
-       ;
-
-line: '\n'         { $$ = NULL; }
-    | command '\n' { $$ = $1; }
-    ;
+input: /* empty */        { $$ = NULL; }
+     | '\n' input         { $$ = $2;   }
+     | command '\n' input { $$ = $1;
+                            D_DBG("$$=%p $3=%p", $$, $3);
+                            $$->command.next = $3; }
+     ;
 
 var:  VAR   { $$ = new_node(TYPE_VAR);
-              $$->var.name = $1; }
+              $$->varname = $1; }
     ;
 
 nint: NINT  { $$ = new_node(TYPE_NINT);
-              $$->nint.n   = $1; }
+              $$->nint = $1; }
     | var
     ;
 
 nfloat: NFLOAT { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat.n = $1; }
+                 $$->nfloat = $1; }
       | NINT   { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat.n = $1; }
+                 $$->nfloat = $1; }
       | var
       ;
 
@@ -112,9 +108,9 @@ string: STRING  { $$ = new_node(TYPE_STRING);
       | var
       /*
       | NFLOAT  { $$ = new_node(TYPE_NFLOAT);
-                  $$->nfloat.n     = $1; }
+                  $$->nfloat     = $1; }
       | NINT    { $$ = new_node(TYPE_NINT);
-                  $$->nfloat.n     = $1; }
+                  $$->nfloat     = $1; }
       */
       ;
 
@@ -144,9 +140,7 @@ selection: range
          | list_num
          ;
 
-option: OPT_TCP                   { $$ = new_node(TYPE_OPT_TCP); }
-      | OPT_UDP                   { $$ = new_node(TYPE_OPT_UDP); }
-      | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
+option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }
       | OPT_SRC string '/' nint   { $$ = new_node(TYPE_OPT_SRC);
@@ -178,27 +172,36 @@ o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-command: o_ntime CMD_ON selection options pattern  { $$ = new_node(TYPE_CMD_ON);
-                                                     $$->command.time                = $1;
-                                                     $$->command.thcontrol.selection = $3;
-                                                     $$->command.thcontrol.options   = $4;
-                                                     $$->command.thcontrol.pattern   = $5; }
-       | o_ntime CMD_MOD selection options pattern { $$ = new_node(TYPE_CMD_MOD);
-                                                     $$->command.time                = $1;
-                                                     $$->command.thcontrol.selection = $3;
-                                                     $$->command.thcontrol.options   = $4;
-                                                     $$->command.thcontrol.pattern   = $5; }
-       | o_ntime CMD_OFF selection                 { $$ = new_node(TYPE_CMD_OFF);
-                                                     $$->command.time                = $1;
-                                                     $$->command.thcontrol.selection = $3; }
-       | o_ntime LITERAL '=' string                { $$ = new_node(TYPE_CMD_SETVAR);
-                                                     $$->command.time       = $1;
-                                                     $$->command.setvar.var = $2;
-                                                     $$->command.setvar.val = $4; }
-       | o_ntime CMD_LISTEN selection              { $$ = new_node(TYPE_CMD_LISTEN);
-                                                     $$->command.thcontrol.selection = $3;
-                                                     $$->command.thcontrol.options   = NULL;
-                                                     $$->command.thcontrol.pattern   = NULL; }
+to: TO_TCP options pattern         { $$ = new_node(TYPE_TO_TCP);
+                                     $$->to.options = $2;
+                                     $$->to.pattern = $3; }
+  | TO_UDP options pattern         { $$ = new_node(TYPE_TO_UDP);
+                                     $$->to.options = $2;
+                                     $$->to.pattern = $3; }
+  | TO_TCP OPT_RAW options pattern { $$ = new_node(TYPE_TO_TCPRAW);
+                                     $$->to.options = $3;
+                                     $$->to.pattern = $4; }
+  | TO_LISTEN                      { $$ = new_node(TYPE_TO_LISTEN);
+                                     $$->to.options = NULL;
+                                     $$->to.pattern = NULL; }
+  ;
+
+command: o_ntime CMD_ON selection to  { $$ = new_node(TYPE_CMD_ON);
+                                        $$->command.time          = $1;
+                                        $$->command.thc.selection = $3;
+                                        $$->command.thc.to        = $4; }
+       | o_ntime CMD_MOD selection to { $$ = new_node(TYPE_CMD_MOD);
+                                        $$->command.time          = $1;
+                                        $$->command.thc.selection = $3;
+                                        $$->command.thc.to        = $4; }
+       | o_ntime CMD_OFF selection    { $$ = new_node(TYPE_CMD_OFF);
+                                        $$->command.time          = $1;
+                                        $$->command.thc.selection = $3;
+                                        $$->command.thc.to        = NULL; }
+       | o_ntime LITERAL '=' string   { $$ = new_node(TYPE_CMD_SETVAR);
+                                        $$->command.time          = $1;
+                                        $$->command.setvar.var    = $2;
+                                        $$->command.setvar.val    = $4; }
        ;
 %%
 SNODE *new_node(int type)
@@ -207,6 +210,7 @@ SNODE *new_node(int type)
   if((n = calloc(1, sizeof(SNODE))) == NULL)
     D_FAT("Cannot alloc SNODE (%d).", type);
   n->type = type;
+  n->line = lineno;
   return n;
 }
 
@@ -273,12 +277,13 @@ int yylex(void)
     { "DST",      OPT_DST    },
     { "MOD",      CMD_MOD    },
     { "OFF",      CMD_OFF    },
-    { "LISTEN",   CMD_LISTEN },
+    { "LISTEN",   TO_LISTEN  },
     { "ON",       CMD_ON     },
     { "PERIODIC", PERIODIC   },
+    { "RAW",      OPT_RAW    },
     { "SRC",      OPT_SRC    },
-    { "TCP",      OPT_TCP    },
-    { "UDP",      OPT_UDP    },
+    { "TCP",      TO_TCP     },
+    { "UDP",      TO_UDP     },
     { NULL,       0          }
   }, *token;
 

@@ -50,11 +50,15 @@ enum TYPES {
   /* lists and selectors */
   TYPE_LIST_NUM,
   TYPE_SELECTOR,
+  /* thread types */
+  TYPE_TO_TCP,
+  TYPE_TO_TCPRAW,
+  TYPE_TO_UDP,
+  TYPE_TO_LISTEN,
   /* options */
-  TYPE_OPT_TCP,
-  TYPE_OPT_UDP,
-  TYPE_OPT_SRC,
   TYPE_OPT_DST,
+  TYPE_OPT_RAW,
+  TYPE_OPT_SRC,
   /* patterns */
   TYPE_PERIODIC,
 
@@ -63,6 +67,8 @@ enum TYPES {
 
 typedef struct SNODE_tag {
   int     type;
+  int     line;
+
   union {
     /* --------------------------------------------------------------------- */
     /* command snode - A structure defining a command to be executed         */
@@ -71,9 +77,8 @@ typedef struct SNODE_tag {
       union {
         struct {
           struct SNODE_tag *selection;  /* list or range of threads          */
-          struct SNODE_tag *options;    /* options snode                     */
-          struct SNODE_tag *pattern;    /* pattern snode                     */
-        } thcontrol;
+          struct SNODE_tag *to;         /* options snode                     */
+        } thc;
         struct {
           char             *var;        /* variable identifier               */
           struct SNODE_tag *val;        /* value to assign                   */
@@ -81,6 +86,13 @@ typedef struct SNODE_tag {
       };
       struct SNODE_tag *next;
     } command;
+
+    /* --------------------------------------------------------------------- */
+    /* to snode - It specifies a thread type and its options                 */
+    struct {
+      struct SNODE_tag *options;        /* options snode                     */
+      struct SNODE_tag *pattern;        /* pattern snode                     */
+    } to;
 
     /* --------------------------------------------------------------------- */
     /* option snode - Options specified for a certain command                */
@@ -105,23 +117,13 @@ typedef struct SNODE_tag {
       int   parse;              /* 1 parse vars, 0 is a literal string       */
       char *value;              /* string or var to be processed             */
     } string;
-
     struct {
       int rel;                  /* if !=0, then it is a time-relative offset */
       double  n;                /* time                                      */
     } ntime;
-
-    struct {
-      double  n;                /* float                                     */
-    } nfloat;
-
-    struct {
-      int     n;                /* int                                       */
-    } nint;
-    
-    struct {
-      char   *name;             /* var name                                  */
-    } var;
+    double  nfloat;             /* float                                     */
+    int     nint;               /* int                                       */
+    char   *varname;            /* var name                                  */
 
     /* --------------------------------------------------------------------- */
     /* list_num snode - snode used to specify a list of integers             */

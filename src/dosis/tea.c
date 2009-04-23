@@ -37,7 +37,13 @@
 static THREAD_WORK **ttable;
 static TEA_MSG_QUEUE *msg_free;
 
-static TEA_MSG_QUEUE *tea_timer_mqueue_create(void)
+struct {
+  SNODE *first;
+  int    i1, i2, i;
+  SNODE *c;
+} TEA_ITER;
+
+static TEA_MSG_QUEUE *tea_mqueue_create(void)
 {
   TEA_MSG_QUEUE *mq;
 
@@ -48,35 +54,35 @@ static TEA_MSG_QUEUE *tea_timer_mqueue_create(void)
   return mq;
 }
 
-static void tea_timer_mqueue_destroy(TEA_MSG_QUEUE *mq)
+static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
 {
   TEA_MSG *m;
 
   /* empty queue */
-  while((m = tea_timer_mqueue_shift(mq)) != NULL)
-    tea_timer_mqueue_release(m);
+  while((m = tea_mqueue_shift(mq)) != NULL)
+    tea_mqueue_release(m);
 
   /* free queue */
   free(mq);
 }
 
-TEA_MSG *tea_timer_msg_allocate(void)
+TEA_MSG *tea_msg_allocate(void)
 {
   TEA_MSG *m;
 
-  if((m = tea_timer_mqueue_shift(msg_free)) == NULL)
+  if((m = tea_mqueue_shift(msg_free)) == NULL)
     if((m = calloc(1, sizeof(TEA_MSG))) == NULL)
       D_FAT("No memory for msg.");
 
   return m;
 }
 
-void tea_timer_mqueue_release(TEA_MSG *m)
+void tea_mqueue_release(TEA_MSG *m)
 {
-  tea_timer_mqueue_push(msg_free, m);
+  tea_mqueue_push(msg_free, m);
 }
 
-void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
+void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
 {
   pthreadex_mutex_begin(&(mq->mutex));
   m->prev = mq->last;
@@ -88,7 +94,7 @@ void tea_timer_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
   pthreadex_mutex_end();
 }
 
-TEA_MSG *tea_timer_mqueue_shift(TEA_MSG_QUEUE *mq)
+TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
 {
   TEA_MSG *m;
 
@@ -108,7 +114,7 @@ TEA_MSG *tea_timer_mqueue_shift(TEA_MSG_QUEUE *mq)
   return m;
 }
 
-static void tea_timer_basic_thread_cleanup(THREAD_WORK *tw)
+static void tea_thread_basic_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
@@ -125,11 +131,11 @@ static void tea_timer_basic_thread_cleanup(THREAD_WORK *tw)
 
   /* destroy mqueue */
   if(mq)
-    tea_timer_mqueue_destroy(mq);
+    tea_mqueue_destroy(mq);
   pthreadex_flag_destroy(&(tw->mwaiting));
 }
 
-static void *tea_timer_thread(void *data)
+static void *tea_thread(void *data)
 {
   int r;
   THREAD_WORK *tw = (THREAD_WORK *) data;
@@ -137,7 +143,7 @@ static void *tea_timer_thread(void *data)
   /* initialize thread */
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
-  pthread_cleanup_push((void *) tea_timer_basic_thread_cleanup, tw);
+  pthread_cleanup_push((void *) tea_thread_basic_cleanup, tw);
 
   /* launch thread */
   if(tw->methods->listen)
@@ -157,7 +163,7 @@ static void *tea_timer_thread(void *data)
   return NULL;
 }
 
-void tea_timer_new_thread(int tid, TEA_OBJECT *to, SNODE *command)
+void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 {
   THREAD_WORK *tw;
 
@@ -175,7 +181,7 @@ void tea_timer_new_thread(int tid, TEA_OBJECT *to, SNODE *command)
 
   /* check methods */
   tw->mqueue = tw->methods->listen
-                 ? tea_timer_mqueue_create()
+                 ? tea_mqueue_create()
                  : NULL;
   pthreadex_flag_init(&(tw->mwaiting), 0);
 
@@ -184,11 +190,11 @@ void tea_timer_new_thread(int tid, TEA_OBJECT *to, SNODE *command)
     tw->methods->configure(tw, command);
 
   /* launch thread */
-  if(pthread_create(&(tw->pthread_id), NULL, tea_timer_thread, tw) != 0)
+  if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
 }
 
-static void tea_timer_fini(void)
+static void tea_fini(void)
 {
   int i;
 
@@ -201,15 +207,15 @@ static void tea_timer_fini(void)
   }
 }
 
-void tea_timer_init(void)
+void tea_init(void)
 {
-  if(atexit(tea_timer_fini))
+  if(atexit(tea_fini))
     D_FAT("Cannot set finalization routine.");
 
   if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
     D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
 
-  msg_free = tea_timer_mqueue_create();
+  msg_free = tea_mqueue_create();
 }
 
 char *tea_getvar(SNODE *n)
@@ -219,19 +225,19 @@ char *tea_getvar(SNODE *n)
   if(n->type != TYPE_VAR)
     D_FAT("Node of type %d is not a var.", n->type);
 
-  r = getenv(n->var.name);
+  r = getenv(n->varname);
   if(!r)
-    D_FAT("Non-existent variable '%s'.", n->var.name);
+    D_FAT("Non-existent variable '%s'.", n->varname);
 
   if((r = strdup(r)) == NULL)
-    D_FAT("No memory for var '%s' content.", n->var.name);
+    D_FAT("No memory for var '%s' content.", n->varname);
 
   return r;
 }
 
 char *tea_getstring(SNODE *n)
 {
-  char *r;
+  char *r = NULL;
 
   switch(n->type)
   {
@@ -249,37 +255,117 @@ char *tea_getstring(SNODE *n)
   return r;
 }
 
+void tea_iter_start(SNODE *s, TEA_ITER *ti)
+{
+  ti->first = s;
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      ti->i1 = ti->first->range.min != NULL
+                 ? tea_get_int(ti->first->range.min);
+                 : 0;
+      ti->i2 = ti->first->range.max != NULL
+                 ? tea_get_int(ti->first->range.min);
+                 : cfg.maxthreads - 1;
+      if(ti->i1 < 0)
+        D_FAT("Bad range minimum value '%d'.", ti->i1);
+      if(ti->i2 >= cfg.maxthreads)
+        D_FAT("Bad range maximum value '%d' (maxthreads set to %d).", ti->i2, cfg.maxthreads);
+      if(ti->i1 > ti->i2)
+        D_FAT("Bad range.");
+      break;
+    case TYPE_LIST_NUM:
+      ti->c = ti->first;
+      break;
+    default:
+      D_FAT("Bad selector node.");
+  }
+}
+
+int tea_iter_finish(TEA_ITER *ti)
+{
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      return ti->i1 <= ti->i2;
+    case TYPE_LIST_NUM:
+      return ti->c != NULL;
+    default:
+      D_FAT("Bad selector node.");
+  }
+}
+
+int tea_iter_next(TEA_ITER *ti)
+{
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      ti->i++;
+      break;
+    case TYPE_LIST_NUM:
+      ti->c = ti->c->next;
+      break;
+    default:
+      D_FAT("Bad selector node.");
+  }
+}
+
 void tea_timer(SNODE *program)
 {
   struct timeval sttime, entime;
   SNODE *cmd;
-  int i;
+  int i, tid;
+  TEA_OBJECT *to = NULL;
+  TEA_ITER ti;
 
         D_DBG("P=U");
   if(cfg.finalize)
     WRN("[TT] Attack cancelled by user.");
 
-  for(cmd = program; !cmd; cmd = cmd->command.next)
+  for(cmd = program; cmd; cmd = cmd->command.next)
   {
     /* wait until command is prepared to be executed */
     /* XXX TODO XXX
     cmd->command.time       = $1;
     */
+    D_DBG("Command line %d type %d.", cmd->line, cmd->type);
     switch(cmd->type)
     {
       case TYPE_CMD_ON:
       case TYPE_CMD_MOD:
+        for(tea_iter_start(cmd->command.thc.selection, &ti);
+            !tea_iter_finish(&ti);
+            tea_iter_next(&ti))
+        {
+          switch(cmd->thc.to->type)
+          {
+          /*case TYPE_TO_LISTEN: to = teaLISTEN; break; */
+          /*case TYPE_TO_TCP:    to = teaTCP;    break; */
+            case TYPE_TO_TCPRAW: to = teaTCPRAW; break;
+          /*case TYPE_TO_UDP:    to = teaUDP;    break; */
+            default:
+              D_FAT("Unknown thread type %d.", cmd->thc.to->type);
+          }
+          tea_timer_new_thread(tea_iter_get(&ti), to, command)
+        }
+        break;
       case TYPE_CMD_OFF:
-      case TYPE_CMD_LISTEN:
+        for(tea_iter_start(cmd->command.thc.selection, &ti);
+            !tea_iter_finish(&ti);
+            tea_iter_next(&ti))
+        {
+        if(!ttable[i])
+          D_ERR("Cannot stop thread %d because it is not running.", tid);
+        to = ttable[i]->to
+        }
         break;
       case TYPE_CMD_SETVAR:
         D_DBG("TYPE_CMD_SETVAR");
         {
-          char *var = tea_getstring(cmd->command.setvar.var);
           char *val = tea_getstring(cmd->command.setvar.val);
-          if(setenv(var, val, 1))
-            D_FAT("Cannot set var '%s' with value '%s'.", var, val);
-          free(var);
+          if(setenv(cmd->command.setvar.var, val, 1))
+            D_FAT("Cannot set var '%s' with value '%s'.",
+                  cmd->command.setvar.var, val);
           free(val);
         }
         break;
@@ -287,6 +373,7 @@ void tea_timer(SNODE *program)
         D_FAT("[TT] Unknown command %d.", cmd->type);
     }
   }
+  D_DBG("Script finished.");
 
   /* cancel all threads */
   /* NOTE: Only cancelations with 'errno' different from zero are real    */
