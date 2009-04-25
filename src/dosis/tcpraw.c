@@ -40,21 +40,33 @@ typedef struct _tag_TCPRAW_CFG {
   char       *req;
   unsigned    req_size;
   double     *hitratio;
-  LN_CONTEXT  lnc;
+  LN_CONTEXT *lnc;
 } TCPRAW_CFG;
 
-static void tcpraw__configure(THREAD_WORK *tw, SNODE *command)
+static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
-  /* default */
-  xxx
+  /* initialize specialized work thread data */
+  if(tc == NULL)
+  {
+    if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
+      D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+    tw->data = (void *) tc;
+
+    /* initialize libnet */
+    DBG("[%02u] Initializing libnet.", tw->id);
+    if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
+      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+    ln_init_context(tc->lnc);
+  }
 
   /* read from SNODE command */
   pthreadex_timer_init(&timer, 0.0);
   if(hitratio > 0)
     pthreadex_timer_set_frequency(&timer, cfg->hits);
 
+  return 0;
 }
 
 static void tcpraw__thread(THREAD_WORK *tw)

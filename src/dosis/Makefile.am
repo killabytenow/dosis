@@ -33,7 +33,8 @@ dosis_SOURCES = dosis.c     dosis.h     \
                 lnet.c      lnet.h      \
                 log.c       log.h       \
                 pthreadex.c pthreadex.h \
-		script.y \
+		script.y    script.h    \
                 tcpopen.c   tcpopen.h   \
+                tcpraw.c    tcpraw.h    \
                 tea.c       tea.h
 

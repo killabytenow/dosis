@@ -75,7 +75,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
-  while((m = tea_timer_mqueue_shift(tw->mqueue)) != NULL)
+  while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
     DBG("[%02u] Received a spoofed connection packet.", tw->id);
     /*
@@ -117,7 +117,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
     }
 
     /* release msg buffer */
-    tea_timer_mqueue_release(m);
+    tea_mqueue_release(m);
   }
 }
 
@@ -130,18 +130,21 @@ static void tcpopen__listen(THREAD_WORK *tw)
 
 static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
-  TCPOPEN_CFG *tc;
+  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
   /* initialize specialized work thread data */
-  if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-    D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
-  tw->data = (void *) tc;
+  if(tc == NULL)
+  {
+    if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
+      D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+    tw->data = (void *) tc;
 
-  /* initialize libnet */
-  DBG("[%02u] Initializing libnet.", tw->id);
-  if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-    D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
-  ln_init_context(tc->lnc);
+    /* initialize libnet */
+    DBG("[%02u] Initializing libnet.", tw->id);
+    if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
+      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+    ln_init_context(tc->lnc);
+  }
 
   return 0;
 }
