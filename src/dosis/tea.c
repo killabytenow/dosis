@@ -34,10 +34,12 @@
 #include "pthreadex.h"
 #include "tea.h"
 
+#include "tcpraw.h"
+
 static THREAD_WORK **ttable;
 static TEA_MSG_QUEUE *msg_free;
 
-struct {
+typedef struct {
   SNODE *first;
   int    i1, i2, i;
   SNODE *c;
@@ -218,7 +220,7 @@ void tea_init(void)
   msg_free = tea_mqueue_create();
 }
 
-char *tea_getvar(SNODE *n)
+char *tea_get_var(SNODE *n)
 {
   char *r;
 
@@ -235,7 +237,7 @@ char *tea_getvar(SNODE *n)
   return r;
 }
 
-char *tea_getstring(SNODE *n)
+char *tea_get_string(SNODE *n)
 {
   char *r = NULL;
 
@@ -246,7 +248,7 @@ char *tea_getstring(SNODE *n)
         D_FAT("Cannot dup string.");
       break;
     case TYPE_VAR:
-      r = tea_getvar(n);
+      r = tea_get_var(n);
       break;
     default:
       D_FAT("Node of type %d cannot be converted to string.", n->type);
@@ -255,17 +257,39 @@ char *tea_getstring(SNODE *n)
   return r;
 }
 
-void tea_iter_start(SNODE *s, TEA_ITER *ti)
+int tea_get_int(SNODE *n)
+{
+  int r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = n->nint;
+      break;
+    case TYPE_VAR:
+      v = tea_get_var(n);
+      r = atoi(v);
+      free(v);
+      break;
+    default:
+      D_FAT("Node of type %d cannot be converted to integer.", n->type);
+  }
+
+  return r;
+}
+
+int tea_iter_start(SNODE *s, TEA_ITER *ti)
 {
   ti->first = s;
   switch(ti->first->type)
   {
     case TYPE_SELECTOR:
       ti->i1 = ti->first->range.min != NULL
-                 ? tea_get_int(ti->first->range.min);
+                 ? tea_get_int(ti->first->range.min)
                  : 0;
       ti->i2 = ti->first->range.max != NULL
-                 ? tea_get_int(ti->first->range.min);
+                 ? tea_get_int(ti->first->range.min)
                  : cfg.maxthreads - 1;
       if(ti->i1 < 0)
         D_FAT("Bad range minimum value '%d'.", ti->i1);
@@ -280,6 +304,8 @@ void tea_iter_start(SNODE *s, TEA_ITER *ti)
     default:
       D_FAT("Bad selector node.");
   }
+
+  return tea_iter_get(ti);
 }
 
 int tea_iter_finish(TEA_ITER *ti)
@@ -293,6 +319,7 @@ int tea_iter_finish(TEA_ITER *ti)
     default:
       D_FAT("Bad selector node.");
   }
+  return -1;
 }
 
 int tea_iter_next(TEA_ITER *ti)
@@ -303,11 +330,30 @@ int tea_iter_next(TEA_ITER *ti)
       ti->i++;
       break;
     case TYPE_LIST_NUM:
-      ti->c = ti->c->next;
+      ti->c = ti->c->list_num.next;
       break;
     default:
       D_FAT("Bad selector node.");
   }
+
+  return tea_iter_get(ti);
+}
+
+int tea_iter_get(TEA_ITER *ti)
+{
+  int i = 0;
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      i = ti->i;
+      break;
+    case TYPE_LIST_NUM:
+      i = tea_get_int(ti->c->list_num.val);
+      break;
+    default:
+      D_FAT("Bad selector node.");
+  }
+  return i;
 }
 
 void tea_timer(SNODE *program)
@@ -333,36 +379,36 @@ void tea_timer(SNODE *program)
     {
       case TYPE_CMD_ON:
       case TYPE_CMD_MOD:
-        for(tea_iter_start(cmd->command.thc.selection, &ti);
+        for(tid = tea_iter_start(cmd->command.thc.selection, &ti);
             !tea_iter_finish(&ti);
-            tea_iter_next(&ti))
+            tid = tea_iter_next(&ti))
         {
-          switch(cmd->thc.to->type)
+          switch(cmd->command.thc.to->type)
           {
-          /*case TYPE_TO_LISTEN: to = teaLISTEN; break; */
-          /*case TYPE_TO_TCP:    to = teaTCP;    break; */
-            case TYPE_TO_TCPRAW: to = teaTCPRAW; break;
-          /*case TYPE_TO_UDP:    to = teaUDP;    break; */
+          /*case TYPE_TO_LISTEN: to = &teaLISTEN; break; */
+          /*case TYPE_TO_TCP:    to = &teaTCP;    break; */
+            case TYPE_TO_TCPRAW: to = &teaTCPRAW; break;
+          /*case TYPE_TO_UDP:    to = &teaUDP;    break; */
             default:
-              D_FAT("Unknown thread type %d.", cmd->thc.to->type);
+              D_FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }
-          tea_timer_new_thread(tea_iter_get(&ti), to, command)
+          tea_thread_new(tid, to, cmd);
         }
         break;
       case TYPE_CMD_OFF:
-        for(tea_iter_start(cmd->command.thc.selection, &ti);
+        for(tid = tea_iter_start(cmd->command.thc.selection, &ti);
             !tea_iter_finish(&ti);
-            tea_iter_next(&ti))
+            tid = tea_iter_next(&ti))
         {
-        if(!ttable[i])
+        if(!ttable[tid])
           D_ERR("Cannot stop thread %d because it is not running.", tid);
-        to = ttable[i]->to
+        //to = ttable[tid]->to
         }
         break;
       case TYPE_CMD_SETVAR:
         D_DBG("TYPE_CMD_SETVAR");
         {
-          char *val = tea_getstring(cmd->command.setvar.val);
+          char *val = tea_get_string(cmd->command.setvar.val);
           if(setenv(cmd->command.setvar.var, val, 1))
             D_FAT("Cannot set var '%s' with value '%s'.",
                   cmd->command.setvar.var, val);

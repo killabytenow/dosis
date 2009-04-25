@@ -99,7 +99,7 @@ void d_log_level(int level, char *file, char *function, char *format, ...)
     exit(1);
 }
 
-void d_debug2(char *file, char *function, char *format, ...)
+void d_db2(char *file, char *function, char *format, ...)
 {
   va_list args;
 
@@ -108,7 +108,7 @@ void d_debug2(char *file, char *function, char *format, ...)
   va_end(args);
 }
 
-void d_debug(char *file, char *function, char *format, ...)
+void d_dbg(char *file, char *function, char *format, ...)
 {
   va_list args;
 
@@ -126,7 +126,7 @@ void d_log(char *file, char *function, char *format, ...)
   va_end(args);
 }
 
-void d_warning(char *file, char *function, char *format, ...)
+void d_wrn(char *file, char *function, char *format, ...)
 {
   va_list args;
 
@@ -135,7 +135,7 @@ void d_warning(char *file, char *function, char *format, ...)
   va_end(args);
 }
 
-void d_error(char *file, char *function, char *format, ...)
+void d_err(char *file, char *function, char *format, ...)
 {
   va_list args;
 
@@ -144,7 +144,7 @@ void d_error(char *file, char *function, char *format, ...)
   va_end(args);
 }
 
-void d_fatal(char *file, char *function, char *format, ...)
+void d_fat(char *file, char *function, char *format, ...)
 {
   va_list args;
 

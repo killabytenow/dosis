@@ -41,12 +41,12 @@ extern "C" {
 
 #define THIS                  (char *) __FILE__, (char *) __FUNCTION__
 
-#define FAT(...)              d_log_level(LOG_LEVEL_FATAL,   THIS, __VA_ARGS__)
-#define ERR(...)              d_log_level(LOG_LEVEL_ERROR,   THIS, __VA_ARGS__)
-#define WRN(...)              d_log_level(LOG_LEVEL_WARNING, THIS, __VA_ARGS__)
-#define LOG(...)              d_log_level(LOG_LEVEL_LOG,     THIS, __VA_ARGS__)
-#define DBG(...)              d_log_level(LOG_LEVEL_DEBUG,   THIS, __VA_ARGS__)
-#define DBG2(...)             d_log_level(LOG_LEVEL_DEBUG2,  THIS, __VA_ARGS__)
+#define FAT(...)              d_fat(THIS, __VA_ARGS__)
+#define ERR(...)              d_err(THIS, __VA_ARGS__)
+#define WRN(...)              d_wrn(THIS, __VA_ARGS__)
+#define LOG(...)              d_log(THIS, __VA_ARGS__)
+#define DBG(...)              d_dbg(THIS, __VA_ARGS__)
+#define DBG2(...)             d_db2(THIS, __VA_ARGS__)
 
 #define D_FAT(...)            FAT(__VA_ARGS__)
 #define D_ERR(...)            ERR(__VA_ARGS__)
@@ -56,12 +56,12 @@ extern "C" {
 #define D_DBG2(...)           DBG2(__VA_ARGS__)
 
 void d_log_level(int level, char *file, char *function, char *format, ...);
-void d_debug(char *file, char *function, char *format, ...);
-void d_debug2(char *file, char *function, char *format, ...);
+void d_dbg(char *file, char *function, char *format, ...);
+void d_db2(char *file, char *function, char *format, ...);
 void d_log(char *file, char *function, char *format, ...);
-void d_warning(char *file, char *function, char *format, ...);
-void d_error(char *file, char *function, char *format, ...);
-void d_fatal(char *file, char *function, char *format, ...);
+void d_wrn(char *file, char *function, char *format, ...);
+void d_err(char *file, char *function, char *format, ...);
+void d_fat(char *file, char *function, char *format, ...) __attribute__ ((__noreturn__));;
 
 void log_init(void);
 
