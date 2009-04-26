@@ -37,5 +37,5 @@ RT="5.0"
 
 # script
 0.0 ON [1:$THREADS] UDP DST $THOST/$TPORT PERIODIC [1.0, 1024]
-$RT OFF 1
+$RT OFF *
 
