@@ -57,6 +57,7 @@ enum TYPES {
   TYPE_TO_LISTEN,
   /* options */
   TYPE_OPT_DST,
+  TYPE_OPT_FLAGS,
   TYPE_OPT_RAW,
   TYPE_OPT_SRC,
   /* patterns */
@@ -97,8 +98,10 @@ typedef struct SNODE_tag {
     /* --------------------------------------------------------------------- */
     /* option snode - Options specified for a certain command                */
     struct {
-      struct SNODE_tag *addr;         /* target/source address             */
-      struct SNODE_tag *port;         /* target/source port                */
+      struct SNODE_tag *addr;         /* target/source address               */
+      struct SNODE_tag *port;         /* target/source port                  */
+      struct SNODE_tag *flags;        /* flags                               */
+
       struct SNODE_tag *next;
     } option;
 

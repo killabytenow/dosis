@@ -58,7 +58,7 @@
 %type  <snode>    input to
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
-%token            OPT_RAW OPT_SRC OPT_DST
+%token            OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
 %token            TO_UDP TO_TCP TO_LISTEN
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
@@ -76,7 +76,7 @@ var:  VAR   { $$ = new_node(TYPE_VAR);
     ;
 
 nint: NINT  { $$ = new_node(TYPE_NINT);
-              $$->nint = $1; }
+               $$->nint = $1; }
     | var
     ;
 
@@ -152,6 +152,8 @@ option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
       | OPT_DST string '/' nint   { $$ = new_node(TYPE_OPT_DST);
                                     $$->option.addr = $2;
                                     $$->option.port = $4; }
+      | OPT_FLAGS string          { $$ = new_node(TYPE_OPT_FLAGS);
+                                    $$->option.flags = $2; }
       /*
       | OPT_PAYLOAD STRING {
       | OPT_PAYLOAD FILE '(' STRING ')' {
@@ -268,16 +270,17 @@ ha_roto_la_olla:
 
 int yylex(void)
 {
-  int c, bi, f;
+  int c, bi, f, i;
   char buff[BUFFLEN], *s;
   struct {
     char *token;
     int  id;
   } tokens[] = {
     { "DST",      OPT_DST    },
+    { "FLAGS",    OPT_FLAGS  },
+    { "LISTEN",   TO_LISTEN  },
     { "MOD",      CMD_MOD    },
     { "OFF",      CMD_OFF    },
-    { "LISTEN",   TO_LISTEN  },
     { "ON",       CMD_ON     },
     { "PERIODIC", PERIODIC   },
     { "RAW",      OPT_RAW    },
@@ -321,30 +324,75 @@ int yylex(void)
     f = 0;
     do {
       SADD(c);
-      if(c == '.') f++;
-    } while(isdigit(c = getchar()) || c == '.');
+      if(c == ':') f = -1;
+      if(f >= 0 && c == '.') f++;
+    } while(isdigit(c = getchar()) || c == '.' || c == ':');
     ungetc(c, stdin);
     /* check if it is a number */
-    if(f <= 1 && bi > f)
+    switch(f)
     {
-      if(f == 0)
-      {
+      case 0:
+        /* hex num ? */
+        if(bi > 2
+        && buff[0] == '0'
+        && (buff[1] == 'x' || buff[1] == 'X'))
+        {
+          for(i = 2; i < bi; i++)
+            if(!isdigit(buff[i])
+            || !strchr(buff[i], "abcdefABCDEF"))
+              D_FAT("%d: Bad hex number.", lineno);
+          sscanf(buff + 2, "%x", &(yylval.nint));
+          D_DBG("TOKEN[NINT] = HEX(%s)", buff);
+          return NINT;
+        }
+        /* bin num ? */
+        if(bi > 2
+        && buff[0] == '0'
+        && (buff[1] == 'b' || buff[1] == 'B'))
+        {
+          yylval.nint = 0;
+          for(i = 2; i < bi; i++)
+          {
+            yylval.nint <<= 1;
+            if(buff[i] != '0' && buff[i] != '1')
+              D_FAT("%d: Bad bin number.", lineno);
+            yylval.nint |= (buff[i] == '1' ? 1 : 0);
+          }
+          D_DBG("TOKEN[NINT] = BIN(%s)", buff);
+          return NINT;
+        }
+        /* octal num ? */
+        if(bi > 1 && buff[0] == '0')
+        {
+          for(i = 1; i < bi; i++)
+            if(buff[i] < '0' || buff[i] > '7')
+              D_FAT("%d: Bad octal number.", lineno);
+          sscanf(buff, "%o", &(yylval.nint));
+          D_DBG("TOKEN[NINT] = OCT(%s)", buff);
+          return NINT;
+        }
+        /* normal integer */
         sscanf(buff, "%d", &(yylval.nint));
-        D_DBG("TOKEN[NINT] = '%s'", buff);
+        D_DBG("TOKEN[NINT] = %s", buff);
         return NINT;
-      }
-      sscanf(buff, "%lf", &(yylval.nfloat));
-      D_DBG("TOKEN[NFLOAT] = '%s'", buff);
-      return NFLOAT;
+
+      case 1:
+        if(bi == 1)
+          D_FAT("%d: Only a dot. WTF?", lineno);
+        sscanf(buff, "%lf", &(yylval.nfloat));
+        D_DBG("TOKEN[NFLOAT] = '%s'", buff);
+        return NFLOAT;
+
+      default:
+        /* oooh... it is not a number; it is a string */
+        while(!isspace(c = getchar()) && c != EOF)
+          SADD(c);
+        ungetc(c, stdin);
+        if((yylval.string = strdup(buff)) == NULL)
+          D_FAT("No mem for string '%s'.", buff);
+        D_DBG("TOKEN[STRING] = '%s'", buff);
+        return STRING;
     }
-    /* oooh... it is not a number; it is a string */
-    while(!isblank(c = getchar()) && c != '\n' && c != EOF)
-      SADD(c);
-    ungetc(c, stdin);
-    if((yylval.string = strdup(buff)) == NULL)
-      D_FAT("No mem for string '%s'.", buff);
-    D_DBG("TOKEN[STRING] = '%s'", buff);
-    return STRING;
   }
 
   /* Process env var */
