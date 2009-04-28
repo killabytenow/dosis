@@ -60,6 +60,7 @@
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
 %token            TO_UDP TO_TCP TO_LISTEN
+%token            TOK_TO
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
       ;
@@ -318,79 +319,98 @@ int yylex(void)
   /* reset */
   SRESET();
 
-  /* Process numbers and network addresses */
+  /* Process token .. and float numbers */
   if(c == '.')
   {
+    /* check if '..' */
     if((c = getchar()) == '.')
       return TOK_TO;
     if(c == EOF)
       D_FAT("Premature end of file.");
-    ungetc('.', c);
-    c = '.';
+
+    /* check if it is a float number */
+    if(isdigit(c))
+    {
+      do {
+        SADD(c);
+      } while(isdigit(c = getchar()));
+      ungetc(c, stdin);
+      sscanf(buff, "%lf", &(yylval.nfloat));
+      D_DBG("TOKEN[NFLOAT] = '%s'", buff);
+      return NFLOAT;
+    }
+
+    /* only a dot ... error */
+    D_FAT("%d: Only a dot. WTF?", lineno);
   }
 
-  if(c == '.' || isdigit(c))
+  /* process hex, bin and octal numbers */
+  if(c == '0')
   {
+    /* one more! */
+    c = getchar();
+
+    /* hex num ? */
+    if(c == 'x' || c == 'X')
+    {
+      while(isdigit(c = getchar())
+         || (c >= 'a' && c <= 'f')
+         || (c >= 'A' && c <= 'F'))
+      {
+        SADD(c);
+      }
+      if(isalpha(c) || bi < 1)
+        D_FAT("%d: Bad hex number.", lineno);
+      sscanf(buff + 2, "%x", &(yylval.nint));
+      D_DBG("TOKEN[NINT] = HEX(%s)", buff);
+      return NINT;
+    }
+
+    /* bin num ? */
+    if(c == 'b' || c == 'B')
+    {
+      yylval.nint = 0;
+      while((c = getchar()) != '0' && c != '1')
+      {
+        yylval.nint <<= 1;
+        yylval.nint |= (c == '1' ? 1 : 0);
+        SADD(c);
+      }
+      if(isalnum(c) || bi < 1)
+        D_FAT("%d: Bad bin number.", lineno);
+      D_DBG("TOKEN[NINT] = BIN(%s)", buff);
+      return NINT;
+    }
+
+    /* octal num ? */
+    while((c = getchar()) >= '0' && c <= '7')
+    {
+      SADD(c);
+    }
+    if(!isalnum(c) && c != '.' && c != ':')
+      D_FAT("%d: Bad octal number.", lineno);
+    sscanf(buff, "%o", &(yylval.nint));
+    D_DBG("TOKEN[NINT] = OCT(%s)", buff);
+    return NINT;
+  }
+
+  if(isdigit(c))
+  {
+    /* get input and count '.' or detect ':' */
     f = 0;
     do {
       SADD(c);
-      if(f >= 0 && c == '.') f++;
-    } while(isdigit(c = getchar()) || c == '.');
+      if(f >= 0)
+      {
+        if(c == ':') f = -1;
+        if(f >= 0 && c == '.') f++;
+      }
+    } while(isdigit(c = getchar()) || c == '.' || c == ':');
+
     /* check if it is a number */
     switch(f)
     {
       case 0:
-        /* hex num ? */
-        SADD(c);
-        if(bi > 2
-        && buff[0] == '0'
-        && (buff[1] == 'x' || buff[1] == 'X'))
-        {
-          SRESET();
-          while(isdigit(c = getchar())
-             || (c >= 'a' && c <= 'f')
-             || (c >= 'A' && c <= 'F'))
-          {
-            SADD(c);
-          }
-          if(isalpha(c))
-            D_FAT("%d: Bad hex number.", lineno);
-          sscanf(buff + 2, "%x", &(yylval.nint));
-          D_DBG("TOKEN[NINT] = HEX(%s)", buff);
-          return NINT;
-        }
-        /* bin num ? */
-        if(bi > 2
-        && buff[0] == '0'
-        && (buff[1] == 'b' || buff[1] == 'B'))
-        {
-          SRESET();
-          yylval.nint = 0;
-          while((c = getchar()) != '0' && c != '1')
-          {
-            yylval.nint <<= 1;
-            yylval.nint |= (c == '1' ? 1 : 0);
-            SADD(c);
-          }
-          if(isalnum(c))
-            D_FAT("%d: Bad bin number.", lineno);
-          D_DBG("TOKEN[NINT] = BIN(%s)", buff);
-          return NINT;
-        }
-        /* octal num ? */
-        if(bi > 1 && buff[0] == '0')
-        {
-          SRESET();
-          while((c = getchar()) >= '0' && c <= '7')
-          {
-            SADD(c);
-          }
-          if(isalnum(c))
-            D_FAT("%d: Bad octal number.", lineno);
-          sscanf(buff, "%o", &(yylval.nint));
-          D_DBG("TOKEN[NINT] = OCT(%s)", buff);
-          return NINT;
-        }
         /* normal integer */
         sscanf(buff, "%d", &(yylval.nint));
         D_DBG("TOKEN[NINT] = %s", buff);
@@ -398,12 +418,6 @@ int yylex(void)
 
     ungetc(c, stdin);
       case 1:
-        if(bi == 1)
-          D_FAT("%d: Only a dot. WTF?", lineno);
-        sscanf(buff, "%lf", &(yylval.nfloat));
-        D_DBG("TOKEN[NFLOAT] = '%s'", buff);
-        return NFLOAT;
-
       default:
         /* oooh... it is not a number; it is a string */
         while(!isspace(c = getchar()) && c != EOF)
