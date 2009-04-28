@@ -128,12 +128,12 @@ list_num: nint                  { $$ = new_node(TYPE_LIST_NUM);
         | '[' list_num_enum ']' { $$ = $2; }
         ;
 
-range: '*'                   { $$ = new_node(TYPE_SELECTOR);
-                               $$->range.min = NULL;
-                               $$->range.max = NULL; }
-     | '[' nint ':' nint ']' { $$ = new_node(TYPE_SELECTOR);
-                               $$->range.min = $2;
-                               $$->range.max = $4; }
+range: '*'                      { $$ = new_node(TYPE_SELECTOR);
+                                  $$->range.min = NULL;
+                                  $$->range.max = NULL; }
+     | '[' nint TOK_TO nint ']' { $$ = new_node(TYPE_SELECTOR);
+                                  $$->range.min = $2;
+                                  $$->range.max = $4; }
      ;
 
 selection: range
@@ -319,28 +319,42 @@ int yylex(void)
   SRESET();
 
   /* Process numbers and network addresses */
+  if(c == '.')
+  {
+    if((c = getchar()) == '.')
+      return TOK_TO;
+    if(c == EOF)
+      D_FAT("Premature end of file.");
+    ungetc('.', c);
+    c = '.';
+  }
+
   if(c == '.' || isdigit(c))
   {
     f = 0;
     do {
       SADD(c);
-      if(c == ':') f = -1;
       if(f >= 0 && c == '.') f++;
-    } while(isdigit(c = getchar()) || c == '.' || c == ':');
-    ungetc(c, stdin);
+    } while(isdigit(c = getchar()) || c == '.');
     /* check if it is a number */
     switch(f)
     {
       case 0:
         /* hex num ? */
+        SADD(c);
         if(bi > 2
         && buff[0] == '0'
         && (buff[1] == 'x' || buff[1] == 'X'))
         {
-          for(i = 2; i < bi; i++)
-            if(!isdigit(buff[i])
-            || !strchr(buff[i], "abcdefABCDEF"))
-              D_FAT("%d: Bad hex number.", lineno);
+          SRESET();
+          while(isdigit(c = getchar())
+             || (c >= 'a' && c <= 'f')
+             || (c >= 'A' && c <= 'F'))
+          {
+            SADD(c);
+          }
+          if(isalpha(c))
+            D_FAT("%d: Bad hex number.", lineno);
           sscanf(buff + 2, "%x", &(yylval.nint));
           D_DBG("TOKEN[NINT] = HEX(%s)", buff);
           return NINT;
@@ -350,23 +364,29 @@ int yylex(void)
         && buff[0] == '0'
         && (buff[1] == 'b' || buff[1] == 'B'))
         {
+          SRESET();
           yylval.nint = 0;
-          for(i = 2; i < bi; i++)
+          while((c = getchar()) != '0' && c != '1')
           {
             yylval.nint <<= 1;
-            if(buff[i] != '0' && buff[i] != '1')
-              D_FAT("%d: Bad bin number.", lineno);
-            yylval.nint |= (buff[i] == '1' ? 1 : 0);
+            yylval.nint |= (c == '1' ? 1 : 0);
+            SADD(c);
           }
+          if(isalnum(c))
+            D_FAT("%d: Bad bin number.", lineno);
           D_DBG("TOKEN[NINT] = BIN(%s)", buff);
           return NINT;
         }
         /* octal num ? */
         if(bi > 1 && buff[0] == '0')
         {
-          for(i = 1; i < bi; i++)
-            if(buff[i] < '0' || buff[i] > '7')
-              D_FAT("%d: Bad octal number.", lineno);
+          SRESET();
+          while((c = getchar()) >= '0' && c <= '7')
+          {
+            SADD(c);
+          }
+          if(isalnum(c))
+            D_FAT("%d: Bad octal number.", lineno);
           sscanf(buff, "%o", &(yylval.nint));
           D_DBG("TOKEN[NINT] = OCT(%s)", buff);
           return NINT;
@@ -376,6 +396,7 @@ int yylex(void)
         D_DBG("TOKEN[NINT] = %s", buff);
         return NINT;
 
+    ungetc(c, stdin);
       case 1:
         if(bi == 1)
           D_FAT("%d: Only a dot. WTF?", lineno);

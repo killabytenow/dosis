@@ -177,6 +177,7 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TEA_OBJECT teaTCPOPEN = {
+  .name         = "TCPOPEN",
   .configure    = tcpopen__configure,
   .cleanup      = tcpopen__cleanup,
   .listen       = tcpopen__listen,

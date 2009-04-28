@@ -297,9 +297,11 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
         D_FAT("Bad range maximum value '%d' (maxthreads set to %d).", ti->i2, cfg.maxthreads);
       if(ti->i1 > ti->i2)
         D_FAT("Bad range.");
+      D_DBG("Iterator for range [%d, %d]", ti->i1, ti->i2);
       break;
     case TYPE_LIST_NUM:
       ti->c = ti->first;
+      D_DBG("Iterator for list.");
       break;
     default:
       D_FAT("Bad selector node.");
@@ -313,9 +315,9 @@ int tea_iter_finish(TEA_ITER *ti)
   switch(ti->first->type)
   {
     case TYPE_SELECTOR:
-      return ti->i1 <= ti->i2;
+      return ti->i1 > ti->i2;
     case TYPE_LIST_NUM:
-      return ti->c != NULL;
+      return ti->c == NULL;
     default:
       D_FAT("Bad selector node.");
   }
@@ -353,6 +355,7 @@ int tea_iter_get(TEA_ITER *ti)
     default:
       D_FAT("Bad selector node.");
   }
+  D_DBG("Iterator current element [%d]", i);
   return i;
 }
 
@@ -392,6 +395,7 @@ void tea_timer(SNODE *program)
             default:
               D_FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }
+          D_DBG("Creating thread of type %s.", to->name);
           tea_thread_new(tid, to, cmd);
         }
         break;

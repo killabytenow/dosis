@@ -126,6 +126,7 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TEA_OBJECT teaTCPRAW = {
+  .name      = "TCPRAW",
   .configure = tcpraw__configure,
   .cleanup   = tcpraw__cleanup,
   .thread    = tcpraw__thread,

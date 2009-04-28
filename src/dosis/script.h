@@ -34,36 +34,33 @@ extern "C" {
 
 /* yep! */
 enum TYPES {
-  TYPE_NULL,
   /* commands */
-  TYPE_CMD_MOD,
+  TYPE_CMD_MOD = 0,
   TYPE_CMD_OFF,
   TYPE_CMD_ON,
   TYPE_CMD_SETVAR,
   TYPE_CMD_LISTEN,
   /* basic types */
-  TYPE_NINT,
+  TYPE_NINT = 1000,
   TYPE_NFLOAT,
   TYPE_NTIME,
   TYPE_STRING,
   TYPE_VAR,
   /* lists and selectors */
-  TYPE_LIST_NUM,
+  TYPE_LIST_NUM = 2000,
   TYPE_SELECTOR,
   /* thread types */
-  TYPE_TO_TCP,
+  TYPE_TO_TCP = 3000,
   TYPE_TO_TCPRAW,
   TYPE_TO_UDP,
   TYPE_TO_LISTEN,
   /* options */
-  TYPE_OPT_DST,
+  TYPE_OPT_DST = 4000,
   TYPE_OPT_FLAGS,
   TYPE_OPT_RAW,
   TYPE_OPT_SRC,
   /* patterns */
-  TYPE_PERIODIC,
-
-  TYPE_LAST
+  TYPE_PERIODIC = 5000,
 };
 
 typedef struct SNODE_tag {
