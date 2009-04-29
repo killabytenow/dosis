@@ -301,6 +301,8 @@ int yylex(void)
     return 0;
   }
 
+  D_DBG("c [%d] [%c]", c, c);
+
   /* ignore comments */
   if(c == '#')
   {
@@ -382,11 +384,19 @@ int yylex(void)
       return NINT;
     }
 
-    /* octal num ? */
+    /* octal num or network-address-like string? */
     while((c = getchar()) >= '0' && c <= '7')
-    {
       SADD(c);
+    if(strchr("89abcdefABCDEF.:", c) != NULL)
+    {
+      do {
+        SADD(c);
+      } while(strchr("89abcdefABCDEF.:", c) != NULL);
+      D_DBG("TOKEN[STRING] = '%s'", buff);
+      return STRING;
     }
+
+    /* definitely it should be an octal number or an error */
     if(!isalnum(c) && c != '.' && c != ':')
       D_FAT("%d: Bad octal number.", lineno);
     sscanf(buff, "%o", &(yylval.nint));

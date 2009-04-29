@@ -26,6 +26,8 @@
 #ifndef __TCPOPEN_H__
 #define __TCPOPEN_H__
 
-void attack_tcpopen(void);
+#include "tea.h"
+
+extern TEA_OBJECT teaTCPOPEN;
 
 #endif
