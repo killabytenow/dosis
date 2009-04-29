@@ -32,6 +32,7 @@
 #include "pthreadex.h"
 #include "log.h"
 #include "ip.h"
+#include "tea.h"
 
 typedef struct _tag_TCPRAW_CFG {
   INET_ADDR          shost;
