@@ -46,6 +46,7 @@ int main(int argc, char *argv[])
   SNODE *script;
 
   log_init();
+  tea_init();
 
   /* install signal handlers */
   signal(SIGHUP,  handle_termination__signal);

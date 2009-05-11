@@ -64,6 +64,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
 
     /* build TCP packet with payload (if requested) */
     DBG("[%02u] Sending %d packets...", tw->id, tc->npackets);
+    sleep(2);
     for(i = 0; i < tc->npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;

@@ -100,6 +100,9 @@ TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
 {
   TEA_MSG *m;
 
+  if(!mq)
+    return NULL;
+
   pthreadex_mutex_begin(&(mq->mutex));
   if(mq->last)
   {
@@ -120,20 +123,25 @@ static void tea_thread_basic_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
-  tw->methods->cleanup(tw);
+  /* do thread cleanup */
+  if(tw->methods->cleanup)
+    tw->methods->cleanup(tw);
 
-  /* disassociate mqueue of tw */
-  pthreadex_mutex_begin(&(tw->mqueue->mutex));
-  if(tw->mqueue)
-    mq = tw->mqueue;
-  else
-    mq = NULL;
-  tw->mqueue = NULL;
-  pthreadex_mutex_end();
+  /* disassociate mqueue of tw and destroy it */
+  if(tw->methods->listen)
+  {
+    pthreadex_mutex_begin(&(tw->mqueue->mutex));
+    if(tw->mqueue)
+      mq = tw->mqueue;
+    else
+      mq = NULL;
+    tw->mqueue = NULL;
+    pthreadex_mutex_end();
 
-  /* destroy mqueue */
-  if(mq)
-    tea_mqueue_destroy(mq);
+    if(mq)
+      tea_mqueue_destroy(mq);
+  }
+
   pthreadex_flag_destroy(&(tw->mwaiting));
 }
 
@@ -191,9 +199,35 @@ void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   if(tw->methods->configure)
     tw->methods->configure(tw, command);
 
+  /* add thread to the list */
+  ttable[tid] = tw;
+
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
+}
+
+void tea_thread_stop(int tid)
+{
+  THREAD_WORK *tw = ttable[tid];
+
+  if(!tw)
+  {
+    ERR("Thread %u does not exist.", tid);
+    return;
+  }
+
+  /* consider it dead */
+  ttable[tid] = NULL;
+
+  /*
+  if(pthread_detach(ttable[tid]->pthread_id))
+    ERR("Cannot detach thread %u: %s", tid, strerror(errno));
+    */
+DBG("XXXXXX");
+  if(pthread_cancel(tw->pthread_id) && errno != 0)
+    ERR("Cannot cancel thread %u: %s", tid, strerror(errno));
+DBG("zzzzzz");
 }
 
 static void tea_fini(void)
@@ -279,6 +313,23 @@ int tea_get_int(SNODE *n)
   return r;
 }
 
+int tea_iter_get(TEA_ITER *ti)
+{
+  int i = 0;
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      i = ti->i;
+      break;
+    case TYPE_LIST_NUM:
+      i = tea_get_int(ti->c->list_num.val);
+      break;
+    default:
+      D_FAT("Bad selector node.");
+  }
+  return i;
+}
+
 int tea_iter_start(SNODE *s, TEA_ITER *ti)
 {
   ti->first = s;
@@ -289,7 +340,7 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
                  ? tea_get_int(ti->first->range.min)
                  : 0;
       ti->i2 = ti->first->range.max != NULL
-                 ? tea_get_int(ti->first->range.min)
+                 ? tea_get_int(ti->first->range.max)
                  : cfg.maxthreads - 1;
       if(ti->i1 < 0)
         D_FAT("Bad range minimum value '%d'.", ti->i1);
@@ -297,6 +348,7 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
         D_FAT("Bad range maximum value '%d' (maxthreads set to %d).", ti->i2, cfg.maxthreads);
       if(ti->i1 > ti->i2)
         D_FAT("Bad range.");
+      ti->i = ti->i1;
       D_DBG("Iterator for range [%d, %d]", ti->i1, ti->i2);
       break;
     case TYPE_LIST_NUM:
@@ -315,7 +367,7 @@ int tea_iter_finish(TEA_ITER *ti)
   switch(ti->first->type)
   {
     case TYPE_SELECTOR:
-      return ti->i1 > ti->i2;
+      return ti->i > ti->i2;
     case TYPE_LIST_NUM:
       return ti->c == NULL;
     default:
@@ -341,40 +393,49 @@ int tea_iter_next(TEA_ITER *ti)
   return tea_iter_get(ti);
 }
 
-int tea_iter_get(TEA_ITER *ti)
+double tea_time_get(void)
 {
-  int i = 0;
-  switch(ti->first->type)
-  {
-    case TYPE_SELECTOR:
-      i = ti->i;
-      break;
-    case TYPE_LIST_NUM:
-      i = tea_get_int(ti->c->list_num.val);
-      break;
-    default:
-      D_FAT("Bad selector node.");
-  }
-  D_DBG("Iterator current element [%d]", i);
-  return i;
+  struct timeval tv;
+
+  gettimeofday(&tv, NULL);
+
+  return ((double) tv.tv_sec) + (((double) tv.tv_usec) / 1000000.0);
 }
 
 void tea_timer(SNODE *program)
 {
-  struct timeval sttime, entime;
+  double stime, ctime, ltime, ntime;
   SNODE *cmd;
   int i, tid;
   TEA_OBJECT *to = NULL;
   TEA_ITER ti;
+  pthreadex_timer_t *teatimer;
 
-        D_DBG("P=U");
-  if(cfg.finalize)
-    WRN("[TT] Attack cancelled by user.");
+  /* get time 0 */
+  stime = tea_time_get();
+  pthreadex_timer_init(t, double secs);
 
-  for(cmd = program; cmd; cmd = cmd->command.next)
+  for(cmd = program; cfg.finalize || cmd; cmd = cmd->command.next)
   {
+    ctime = tea_time_get() - stime;
+    if(cmd->command.time)
+    {
+      ntime = tea_get_float(cmd->command.time->ntime.n);
+      if(cmd->command.time->ntime.rel)
+        ntime += ltime;
+
+      if(ntime > ctime)
+      {
+      } else
+        WRN("Command on line %d happened too fast.", cmd->line);
+    }
+    ltime = ctime;
     /* wait until command is prepared to be executed */
     /* XXX TODO XXX
+    for(gettimeofday(&sttime, NULL), gettimeofday(&entime, NULL);
+    -      entime.tv_sec - sttime.tv_sec < opts.runtime && !opts.finalize;
+    +      entime.tv_sec - sttime.tv_sec < config.runtime && !config.finalize;
+           gettimeofday(&entime, NULL))
     cmd->command.time       = $1;
     */
     D_DBG("Command line %d type %d.", cmd->line, cmd->type);
@@ -404,9 +465,12 @@ void tea_timer(SNODE *program)
             !tea_iter_finish(&ti);
             tid = tea_iter_next(&ti))
         {
-        if(!ttable[tid])
-          D_ERR("Cannot stop thread %d because it is not running.", tid);
-        //to = ttable[tid]->to
+          if(ttable[tid])
+          {
+            D_LOG("Stopping thread %d.", tid);
+DBG("YYYYYY");
+            tea_thread_stop(tid);
+          }
         }
         break;
       case TYPE_CMD_SETVAR:
@@ -423,6 +487,8 @@ void tea_timer(SNODE *program)
         D_FAT("[TT] Unknown command %d.", cmd->type);
     }
   }
+  if(cfg.finalize)
+    WRN("[TT] Attack cancelled by user.");
   D_DBG("Script finished.");
 
   /* cancel all threads */
