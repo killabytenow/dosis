@@ -52,7 +52,7 @@
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
-%type  <snode>    nint nfloat ntime ntime_val string var
+%type  <snode>    nint nfloat ntime string var
 %type  <snode>    o_ntime command option options pattern
 %type  <snode>    list_num selection list_num_enum range
 %type  <snode>    input to
@@ -87,16 +87,12 @@ nfloat: NFLOAT { $$ = new_node(TYPE_NFLOAT);
       | var
       ;
 
-ntime_val: NFLOAT { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.n     = $1; }
-         | NINT   { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.n     = $1; }
-         | var
-         ;
-
-ntime: '+' ntime_val { $$ = $2;
-                       $$->ntime.rel = -1; }
-     | ntime_val
+ntime: '+' nfloat { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.rel = -1;
+                    $$->ntime.n   = $2; }
+     | nfloat     { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.rel = 0;
+                    $$->ntime.n   = $1; }
      ;
 
 string: STRING  { $$ = new_node(TYPE_STRING);
@@ -270,7 +266,7 @@ ha_roto_la_olla:
 
 int yylex(void)
 {
-  int c, bi, f, i;
+  int c, bi, f;
   char buff[BUFFLEN], *s;
   struct {
     char *token;

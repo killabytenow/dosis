@@ -118,8 +118,8 @@ typedef struct SNODE_tag {
       char *value;              /* string or var to be processed             */
     } string;
     struct {
-      int rel;                  /* if !=0, then it is a time-relative offset */
-      double  n;                /* time                                      */
+      int    rel;               /* if !=0, then it is a time-relative offset */
+      struct SNODE_tag *n;      /* time                                      */
     } ntime;
     double  nfloat;             /* float                                     */
     int     nint;               /* int                                       */

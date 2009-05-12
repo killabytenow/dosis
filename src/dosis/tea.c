@@ -313,6 +313,31 @@ int tea_get_int(SNODE *n)
   return r;
 }
 
+double tea_get_float(SNODE *n)
+{
+  double r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = (double) n->nint;
+      break;
+    case TYPE_NFLOAT:
+      r = n->nfloat;
+      break;
+    case TYPE_VAR:
+      v = tea_get_var(n);
+      r = atof(v);
+      free(v);
+      break;
+    default:
+      D_FAT("Node of type %d cannot be converted to float.", n->type);
+  }
+
+  return r;
+}
+
 int tea_iter_get(TEA_ITER *ti)
 {
   int i = 0;
@@ -409,11 +434,11 @@ void tea_timer(SNODE *program)
   int i, tid;
   TEA_OBJECT *to = NULL;
   TEA_ITER ti;
-  pthreadex_timer_t *teatimer;
+  pthreadex_timer_t teatimer;
 
   /* get time 0 */
-  stime = tea_time_get();
-  pthreadex_timer_init(t, double secs);
+  ltime = stime = tea_time_get();
+  pthreadex_timer_init(&teatimer, 0.0);
 
   for(cmd = program; cfg.finalize || cmd; cmd = cmd->command.next)
   {
@@ -426,6 +451,8 @@ void tea_timer(SNODE *program)
 
       if(ntime > ctime)
       {
+        pthreadex_timer_set(&teatimer, ntime - ctime);
+        pthreadex_timer_wait(&teatimer);
       } else
         WRN("Command on line %d happened too fast.", cmd->line);
     }
