@@ -220,14 +220,10 @@ void tea_thread_stop(int tid)
   /* consider it dead */
   ttable[tid] = NULL;
 
-  /*
-  if(pthread_detach(ttable[tid]->pthread_id))
+  if(pthread_detach(tw->pthread_id))
     ERR("Cannot detach thread %u: %s", tid, strerror(errno));
-    */
-DBG("XXXXXX");
   if(pthread_cancel(tw->pthread_id) && errno != 0)
     ERR("Cannot cancel thread %u: %s", tid, strerror(errno));
-DBG("zzzzzz");
 }
 
 static void tea_fini(void)
@@ -442,30 +438,30 @@ void tea_timer(SNODE *program)
 
   for(cmd = program; cfg.finalize || cmd; cmd = cmd->command.next)
   {
+    /* wait until command is prepared to be executed */
     ctime = tea_time_get() - stime;
+
     if(cmd->command.time)
     {
       ntime = tea_get_float(cmd->command.time->ntime.n);
-      if(cmd->command.time->ntime.rel)
-        ntime += ltime;
-
-      if(ntime > ctime)
+      if(ntime > 0)
       {
-        pthreadex_timer_set(&teatimer, ntime - ctime);
-        pthreadex_timer_wait(&teatimer);
-      } else
-        WRN("Command on line %d happened too fast.", cmd->line);
+        if(cmd->command.time->ntime.rel)
+          ntime += ltime;
+
+        if(ntime > ctime)
+        {
+          pthreadex_timer_set(&teatimer, ntime - ctime);
+          pthreadex_timer_wait(&teatimer);
+        } else
+          WRN("Command on line %d happened too fast.", cmd->line);
+      }
+
+      LOG("Now it is %.2f seconds from the begining of time.", tea_time_get() - stime);
     }
     ltime = ctime;
-    /* wait until command is prepared to be executed */
-    /* XXX TODO XXX
-    for(gettimeofday(&sttime, NULL), gettimeofday(&entime, NULL);
-    -      entime.tv_sec - sttime.tv_sec < opts.runtime && !opts.finalize;
-    +      entime.tv_sec - sttime.tv_sec < config.runtime && !config.finalize;
-           gettimeofday(&entime, NULL))
-    cmd->command.time       = $1;
-    */
-    D_DBG("Command line %d type %d.", cmd->line, cmd->type);
+
+    /* launch command */
     switch(cmd->type)
     {
       case TYPE_CMD_ON:
@@ -491,14 +487,8 @@ void tea_timer(SNODE *program)
         for(tid = tea_iter_start(cmd->command.thc.selection, &ti);
             !tea_iter_finish(&ti);
             tid = tea_iter_next(&ti))
-        {
           if(ttable[tid])
-          {
-            D_LOG("Stopping thread %d.", tid);
-DBG("YYYYYY");
             tea_thread_stop(tid);
-          }
-        }
         break;
       case TYPE_CMD_SETVAR:
         D_DBG("TYPE_CMD_SETVAR");
@@ -511,31 +501,31 @@ DBG("YYYYYY");
         }
         break;
       default:
-        D_FAT("[TT] Unknown command %d.", cmd->type);
+        D_FAT("%d: Unknown command %d.", cmd->line, cmd->type);
     }
   }
   if(cfg.finalize)
-    WRN("[TT] Attack cancelled by user.");
-  D_DBG("Script finished.");
+    WRN("Attack cancelled by user.");
 
   /* cancel all threads */
   /* NOTE: Only cancelations with 'errno' different from zero are real    */
   /*       errors. A pthread_cancel return value different from zero, but */
   /*       a zero errno only means that thread is already finished.       */
-  LOG("[TT] Cancelling all threads.");
+  D_DBG("The begining of the end");
+  DBG("  - Cancelling all threads.");
   for(i = 0; i < cfg.maxthreads; i++)
     if(ttable[i])
       if(pthread_cancel(ttable[i]->pthread_id) && errno != 0)
-        ERR("[TT] Cannot cancel thread %02u: %s", i, strerror(errno));
+        ERR("  ! Cannot cancel thread %02u: %s", i, strerror(errno));
 
-  DBG("[TT] Waiting for all to join.");
+  DBG("  - Waiting for all to join.");
   for(i = 0; i < cfg.maxthreads; i++)
     if(ttable[i])
       if(pthread_join(ttable[i]->pthread_id, NULL))
-        ERR("[TT] Cannot join with thread %02u: %s", i, strerror(errno));
+        ERR("  ! Cannot join with thread %02u: %s", i, strerror(errno));
 
   /* free memory */
-  DBG2("[TT]   Free memory.");
+  D_DBG("Script finished.");
   //pthreadex_timer_destroy(&timer);
   //free(tw);
 }
