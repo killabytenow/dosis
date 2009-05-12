@@ -161,9 +161,11 @@ options: /* empty */    { $$ = NULL; }
                           $$->option.next = $2; }
        ;
 
-pattern: PERIODIC '[' nfloat ',' nint ']' { $$ = new_node(TYPE_PERIODIC);
-                                            $$->pattern.periodic.ratio = $3;
-                                            $$->pattern.periodic.n     = $5; }
+pattern: PERIODIC '[' nfloat ',' nint ',' nint ']'
+           { $$ = new_node(TYPE_PERIODIC);
+             $$->pattern.periodic.ratio = $3;
+             $$->pattern.periodic.n     = $5;
+             $$->pattern.periodic.bytes = $7; }
        ;
 
 o_ntime: /* empty */ { $$ = NULL; }

@@ -35,13 +35,18 @@
 #include "tea.h"
 
 typedef struct _tag_TCPRAW_CFG {
+  /* options */
   INET_ADDR          shost;
   INET_ADDR          dhost;
+  int                flags;
+
+  /* parameters */
   unsigned           npackets;
   char               req;
   unsigned           req_size;
   double             hitratio;
 
+  /* other things */
   pthreadex_timer_t  timer;
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
@@ -63,8 +68,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
         ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /* build TCP packet with payload (if requested) */
-    DBG("[%02u] Sending %d packets...", tw->id, tc->npackets);
-    sleep(2);
+    DBG("[%02u] Sending %d packet(s)...", tw->id, tc->npackets);
     for(i = 0; i < tc->npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
@@ -88,8 +92,11 @@ static void tcpraw__thread(THREAD_WORK *tw)
 static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+  SNODE *cn;
+  char *s;
+  int i;
 
-  /* initialize specialized work thread data */
+  /* first initialization (specialized work thread data) */
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
@@ -102,10 +109,69 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
       D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
     ln_init_context(tc->lnc);
 
+    pthreadex_timer_init(&(tc->timer), 0.0);
   }
 
-  /* read from SNODE command */
-  pthreadex_timer_init(&(tc->timer), 0.0);
+  /* read from SNODE command parameters */
+  cn = command->command.thc.to->to.pattern;
+  if(cn->type != TYPE_PERIODIC)
+    FAT("%d: Uknown pattern %d.", cn->line, cn->type);
+  
+  tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+  tc->npackets = tea_get_int(cn->pattern.periodic.n);
+  tc->req_size = tea_get_int(cn->pattern.periodic.bytes);
+  if(tc->hitratio < 0)
+    FAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
+  if(tc->npackets <= 0)
+    FAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
+  if(tc->req_size <= 0)
+    FAT("%d: Bad packet size '%d'.", cn->line, tc->req_size);
+
+  /* read from SNODE command options */
+  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
+    switch(cn->type)
+    {
+      case TYPE_OPT_SRC:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tc->shost))
+          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_DST:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tc->dhost))
+          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_FLAGS:
+        s = tea_get_string(cn->option.flags);
+        tc->flags = 0;
+        for(i = 0; s[i]; i++)
+          switch(toupper(s[i]))
+          {
+            case 'U': tc->flags |= 0x20; break; /* urgent */
+            case 'A': tc->flags |= 0x10; break; /* ack    */
+            case 'P': tc->flags |= 0x08; break; /* push   */
+            case 'R': tc->flags |= 0x04; break; /* reset  */
+            case 'S': tc->flags |= 0x02; break; /* syn    */
+            case 'F': tc->flags |= 0x01; break; /* fin    */
+            default:
+              FAT("%d: Unknown TCP flag '%c'.", cn->line, s[i]);
+          }
+        free(s);
+        break;
+
+      default:
+        FAT("%d: Uknown option %d.", cn->line, cn->type);
+    }
+
+  /* configure timer */
   if(tc->hitratio > 0)
     pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
 
