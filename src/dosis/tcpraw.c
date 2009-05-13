@@ -175,7 +175,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   if(tc->hitratio > 0)
     pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
 
-  /* print configuration */
+  /* (debug) print configuration */
   {
     char buff[255];
 
@@ -189,10 +189,6 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     DBG2("[%02u] config.options.dhost  = %s", tw->id, buff);
     DBG2("[%02u] config.options.flags  = %x", tw->id, tc->flags);
   }
-
-  /* other things */
-  pthreadex_timer_t  timer;
-  LN_CONTEXT        *lnc;
 
   return 0;
 }
