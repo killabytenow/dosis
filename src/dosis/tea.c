@@ -45,6 +45,15 @@ typedef struct {
   SNODE *c;
 } TEA_ITER;
 
+/*---------------------------------------------------------------------------*
+ * MSG AND MQUEUE MANAGAMENT
+ *
+ *   MQUEUE objects are threadsafe queues for making FIFO queues of raw
+ *   network messages. This interface provides a simple message passing
+ *   facility to deliver raw packets from the listener threads to other
+ *   types of threads that need a raw network input.
+ *---------------------------------------------------------------------------*/
+
 static TEA_MSG_QUEUE *tea_mqueue_create(void)
 {
   TEA_MSG_QUEUE *mq;
@@ -118,6 +127,12 @@ TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
 
   return m;
 }
+
+/*---------------------------------------------------------------------------*
+ * THREAD MANAGAMENT
+ *
+ *   Following functions start, stop, and manage tea threads.
+ *---------------------------------------------------------------------------*/
 
 static void tea_thread_basic_cleanup(THREAD_WORK *tw)
 {
@@ -224,30 +239,6 @@ void tea_thread_stop(int tid)
     ERR("Cannot detach thread %u: %s", tid, strerror(errno));
   if(pthread_cancel(tw->pthread_id) && errno != 0)
     ERR("Cannot cancel thread %u: %s", tid, strerror(errno));
-}
-
-static void tea_fini(void)
-{
-  int i;
-
-  if(ttable)
-  {
-    for(i = 0; i < cfg.maxthreads; i++)
-      if(ttable[i])
-        free(ttable[i]);
-    free(ttable);
-  }
-}
-
-void tea_init(void)
-{
-  if(atexit(tea_fini))
-    D_FAT("Cannot set finalization routine.");
-
-  if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
-    D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
-
-  msg_free = tea_mqueue_create();
 }
 
 char *tea_get_var(SNODE *n)
@@ -414,13 +405,43 @@ int tea_iter_next(TEA_ITER *ti)
   return tea_iter_get(ti);
 }
 
-double tea_time_get(void)
+/*---------------------------------------------------------------------------*
+ * THE TEA CORE
+ *
+ *   Dump the tea.
+ *---------------------------------------------------------------------------*/
+
+static double tea_time_get(void)
 {
   struct timeval tv;
 
   gettimeofday(&tv, NULL);
 
   return ((double) tv.tv_sec) + (((double) tv.tv_usec) / 1000000.0);
+}
+
+static void tea_fini(void)
+{
+  int i;
+
+  if(ttable)
+  {
+    for(i = 0; i < cfg.maxthreads; i++)
+      if(ttable[i])
+        free(ttable[i]);
+    free(ttable);
+  }
+}
+
+void tea_init(void)
+{
+  if(atexit(tea_fini))
+    D_FAT("Cannot set finalization routine.");
+
+  if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
+    D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
+
+  msg_free = tea_mqueue_create();
 }
 
 void tea_timer(SNODE *program)

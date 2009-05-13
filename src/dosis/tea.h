@@ -61,13 +61,24 @@ typedef struct _tag_TEA_OBJECT {
   int  (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
 } TEA_OBJECT;
 
-void tea_init(void);
-void tea_timer(SNODE *program);
+/*- THREAD MANAGAMENT -------------------------------------------------------*/
 void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command);
+void tea_thread_stop(int tid);
 
+/*- MQUEUE MANAGAMENT -------------------------------------------------------*/
 void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
 TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq);
 void tea_mqueue_release(TEA_MSG *msg);
 void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+
+/*- NODE UTILITIES ----------------------------------------------------------*/
+char *tea_get_var(SNODE *n);
+char *tea_get_string(SNODE *n);
+int tea_get_int(SNODE *n);
+double tea_get_float(SNODE *n);
+
+/*- CORE --------------------------------------------------------------------*/
+void tea_init(void);
+void tea_timer(SNODE *program);
 
 #endif

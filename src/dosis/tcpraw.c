@@ -175,6 +175,25 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   if(tc->hitratio > 0)
     pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
 
+  /* print configuration */
+  {
+    char buff[255];
+
+    DBG2("[%02u] config.periodic.n     = %d", tw->id, tc->npackets);
+    DBG2("[%02u] config.periodic.bytes = %d", tw->id, tc->req_size);
+    DBG2("[%02u] config.periodic.ratio = %d", tw->id, tc->hitratio);
+
+    ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
+    DBG2("[%02u] config.options.shost  = %s", tw->id, buff);
+    ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
+    DBG2("[%02u] config.options.dhost  = %s", tw->id, buff);
+    DBG2("[%02u] config.options.flags  = %x", tw->id, tc->flags);
+  }
+
+  /* other things */
+  pthreadex_timer_t  timer;
+  LN_CONTEXT        *lnc;
+
   return 0;
 }
 
