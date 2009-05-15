@@ -1,7 +1,7 @@
 /*****************************************************************************
- * dosis.c
+ * tcpraw.h
  *
- * DoS generator.
+ * DoS on TCP servers by raw tcp packets (synflood?).
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -23,48 +23,11 @@
  *
  *****************************************************************************/
 
-#include <config.h>
-#include "dosis.h"
-#include "dosconfig.h"
-#include "log.h"
+#ifndef __TCPRAW_H__
+#define __TCPRAW_H__
+
 #include "tea.h"
 
-void handle_termination__signal(int s)
-{
-  if(!cfg.finalize)
-  {
-    WRN("One more termination signal will force program termination.");
-    cfg.finalize = -1;
-  } else {
-    FAT("Program termination forced.");
-    exit(1);
-  }
-}
+extern TEA_OBJECT teaTCPRAW;
 
-int main(int argc, char *argv[])
-{
-  SNODE *script;
-
-  log_init();
-  tea_init();
-
-  /* install signal handlers */
-  signal(SIGHUP,  handle_termination__signal);
-  signal(SIGINT,  handle_termination__signal);
-  signal(SIGQUIT, handle_termination__signal);
-  signal(SIGTERM, handle_termination__signal);
-
-  /* read command line parameters */
-  dos_config_init(argc, argv);
-
-  /* parse script */
-  if((script = script_parse()) == NULL)
-    D_FAT("Cannot parse input script.");
-
-  tea_timer(script);
-
-  LOG("Finished.");
-
-  return 0;
-}
-
+#endif

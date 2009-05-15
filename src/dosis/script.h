@@ -107,7 +107,8 @@ typedef struct SNODE_tag {
     union {
       struct {
         struct SNODE_tag *ratio; /* nfloat snode specifying packets/s        */
-        struct SNODE_tag *n;     /* nint snode with packet size              */
+        struct SNODE_tag *n;     /* nint snode with packets to send          */
+        struct SNODE_tag *bytes; /* size of packet                           */
       } periodic;
     } pattern;
 
@@ -118,8 +119,8 @@ typedef struct SNODE_tag {
       char *value;              /* string or var to be processed             */
     } string;
     struct {
-      int rel;                  /* if !=0, then it is a time-relative offset */
-      double  n;                /* time                                      */
+      int    rel;               /* if !=0, then it is a time-relative offset */
+      struct SNODE_tag *n;      /* time                                      */
     } ntime;
     double  nfloat;             /* float                                     */
     int     nint;               /* int                                       */

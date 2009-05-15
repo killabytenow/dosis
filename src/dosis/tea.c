@@ -45,6 +45,15 @@ typedef struct {
   SNODE *c;
 } TEA_ITER;
 
+/*---------------------------------------------------------------------------*
+ * MSG AND MQUEUE MANAGAMENT
+ *
+ *   MQUEUE objects are threadsafe queues for making FIFO queues of raw
+ *   network messages. This interface provides a simple message passing
+ *   facility to deliver raw packets from the listener threads to other
+ *   types of threads that need a raw network input.
+ *---------------------------------------------------------------------------*/
+
 static TEA_MSG_QUEUE *tea_mqueue_create(void)
 {
   TEA_MSG_QUEUE *mq;
@@ -100,6 +109,9 @@ TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
 {
   TEA_MSG *m;
 
+  if(!mq)
+    return NULL;
+
   pthreadex_mutex_begin(&(mq->mutex));
   if(mq->last)
   {
@@ -116,24 +128,35 @@ TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
   return m;
 }
 
+/*---------------------------------------------------------------------------*
+ * THREAD MANAGAMENT
+ *
+ *   Following functions start, stop, and manage tea threads.
+ *---------------------------------------------------------------------------*/
+
 static void tea_thread_basic_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
-  tw->methods->cleanup(tw);
+  /* do thread cleanup */
+  if(tw->methods->cleanup)
+    tw->methods->cleanup(tw);
 
-  /* disassociate mqueue of tw */
-  pthreadex_mutex_begin(&(tw->mqueue->mutex));
-  if(tw->mqueue)
-    mq = tw->mqueue;
-  else
-    mq = NULL;
-  tw->mqueue = NULL;
-  pthreadex_mutex_end();
+  /* disassociate mqueue of tw and destroy it */
+  if(tw->methods->listen)
+  {
+    pthreadex_mutex_begin(&(tw->mqueue->mutex));
+    if(tw->mqueue)
+      mq = tw->mqueue;
+    else
+      mq = NULL;
+    tw->mqueue = NULL;
+    pthreadex_mutex_end();
 
-  /* destroy mqueue */
-  if(mq)
-    tea_mqueue_destroy(mq);
+    if(mq)
+      tea_mqueue_destroy(mq);
+  }
+
   pthreadex_flag_destroy(&(tw->mwaiting));
 }
 
@@ -191,33 +214,31 @@ void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   if(tw->methods->configure)
     tw->methods->configure(tw, command);
 
+  /* add thread to the list */
+  ttable[tid] = tw;
+
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
 }
 
-static void tea_fini(void)
+void tea_thread_stop(int tid)
 {
-  int i;
+  THREAD_WORK *tw = ttable[tid];
 
-  if(ttable)
+  if(!tw)
   {
-    for(i = 0; i < cfg.maxthreads; i++)
-      if(ttable[i])
-        free(ttable[i]);
-    free(ttable);
+    ERR("Thread %u does not exist.", tid);
+    return;
   }
-}
 
-void tea_init(void)
-{
-  if(atexit(tea_fini))
-    D_FAT("Cannot set finalization routine.");
+  /* consider it dead */
+  ttable[tid] = NULL;
 
-  if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
-    D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
-
-  msg_free = tea_mqueue_create();
+  if(pthread_detach(tw->pthread_id))
+    ERR("Cannot detach thread %u: %s", tid, strerror(errno));
+  if(pthread_cancel(tw->pthread_id) && errno != 0)
+    ERR("Cannot cancel thread %u: %s", tid, strerror(errno));
 }
 
 char *tea_get_var(SNODE *n)
@@ -279,6 +300,48 @@ int tea_get_int(SNODE *n)
   return r;
 }
 
+double tea_get_float(SNODE *n)
+{
+  double r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = (double) n->nint;
+      break;
+    case TYPE_NFLOAT:
+      r = n->nfloat;
+      break;
+    case TYPE_VAR:
+      v = tea_get_var(n);
+      r = atof(v);
+      free(v);
+      break;
+    default:
+      D_FAT("Node of type %d cannot be converted to float.", n->type);
+  }
+
+  return r;
+}
+
+int tea_iter_get(TEA_ITER *ti)
+{
+  int i = 0;
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      i = ti->i;
+      break;
+    case TYPE_LIST_NUM:
+      i = tea_get_int(ti->c->list_num.val);
+      break;
+    default:
+      D_FAT("Bad selector node.");
+  }
+  return i;
+}
+
 int tea_iter_start(SNODE *s, TEA_ITER *ti)
 {
   ti->first = s;
@@ -289,7 +352,7 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
                  ? tea_get_int(ti->first->range.min)
                  : 0;
       ti->i2 = ti->first->range.max != NULL
-                 ? tea_get_int(ti->first->range.min)
+                 ? tea_get_int(ti->first->range.max)
                  : cfg.maxthreads - 1;
       if(ti->i1 < 0)
         D_FAT("Bad range minimum value '%d'.", ti->i1);
@@ -297,6 +360,7 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
         D_FAT("Bad range maximum value '%d' (maxthreads set to %d).", ti->i2, cfg.maxthreads);
       if(ti->i1 > ti->i2)
         D_FAT("Bad range.");
+      ti->i = ti->i1;
       D_DBG("Iterator for range [%d, %d]", ti->i1, ti->i2);
       break;
     case TYPE_LIST_NUM:
@@ -315,7 +379,7 @@ int tea_iter_finish(TEA_ITER *ti)
   switch(ti->first->type)
   {
     case TYPE_SELECTOR:
-      return ti->i1 > ti->i2;
+      return ti->i > ti->i2;
     case TYPE_LIST_NUM:
       return ti->c == NULL;
     default:
@@ -341,43 +405,84 @@ int tea_iter_next(TEA_ITER *ti)
   return tea_iter_get(ti);
 }
 
-int tea_iter_get(TEA_ITER *ti)
+/*---------------------------------------------------------------------------*
+ * THE TEA CORE
+ *
+ *   Dump the tea.
+ *---------------------------------------------------------------------------*/
+
+static double tea_time_get(void)
 {
-  int i = 0;
-  switch(ti->first->type)
+  struct timeval tv;
+
+  gettimeofday(&tv, NULL);
+
+  return ((double) tv.tv_sec) + (((double) tv.tv_usec) / 1000000.0);
+}
+
+static void tea_fini(void)
+{
+  int i;
+
+  if(ttable)
   {
-    case TYPE_SELECTOR:
-      i = ti->i;
-      break;
-    case TYPE_LIST_NUM:
-      i = tea_get_int(ti->c->list_num.val);
-      break;
-    default:
-      D_FAT("Bad selector node.");
+    for(i = 0; i < cfg.maxthreads; i++)
+      if(ttable[i])
+        free(ttable[i]);
+    free(ttable);
   }
-  D_DBG("Iterator current element [%d]", i);
-  return i;
+}
+
+void tea_init(void)
+{
+  if(atexit(tea_fini))
+    D_FAT("Cannot set finalization routine.");
+
+  if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
+    D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
+
+  msg_free = tea_mqueue_create();
 }
 
 void tea_timer(SNODE *program)
 {
-  struct timeval sttime, entime;
+  double stime, ctime, ltime, ntime;
   SNODE *cmd;
   int i, tid;
   TEA_OBJECT *to = NULL;
   TEA_ITER ti;
+  pthreadex_timer_t teatimer;
 
-        D_DBG("P=U");
-  if(cfg.finalize)
-    WRN("[TT] Attack cancelled by user.");
+  /* get time 0 */
+  ltime = stime = tea_time_get();
+  pthreadex_timer_init(&teatimer, 0.0);
 
-  for(cmd = program; cmd; cmd = cmd->command.next)
+  for(cmd = program; cfg.finalize || cmd; cmd = cmd->command.next)
   {
     /* wait until command is prepared to be executed */
-    /* XXX TODO XXX
-    cmd->command.time       = $1;
-    */
-    D_DBG("Command line %d type %d.", cmd->line, cmd->type);
+    ctime = tea_time_get() - stime;
+
+    if(cmd->command.time)
+    {
+      ntime = tea_get_float(cmd->command.time->ntime.n);
+      if(ntime > 0)
+      {
+        if(cmd->command.time->ntime.rel)
+          ntime += ltime;
+
+        if(ntime > ctime)
+        {
+          pthreadex_timer_set(&teatimer, ntime - ctime);
+          pthreadex_timer_wait(&teatimer);
+        } else
+          WRN("Command on line %d happened too fast.", cmd->line);
+      }
+
+      LOG("Now it is %.2f seconds from the begining of time.", tea_time_get() - stime);
+    }
+    ltime = ctime;
+
+    /* launch command */
     switch(cmd->type)
     {
       case TYPE_CMD_ON:
@@ -403,11 +508,8 @@ void tea_timer(SNODE *program)
         for(tid = tea_iter_start(cmd->command.thc.selection, &ti);
             !tea_iter_finish(&ti);
             tid = tea_iter_next(&ti))
-        {
-        if(!ttable[tid])
-          D_ERR("Cannot stop thread %d because it is not running.", tid);
-        //to = ttable[tid]->to
-        }
+          if(ttable[tid])
+            tea_thread_stop(tid);
         break;
       case TYPE_CMD_SETVAR:
         D_DBG("TYPE_CMD_SETVAR");
@@ -420,29 +522,31 @@ void tea_timer(SNODE *program)
         }
         break;
       default:
-        D_FAT("[TT] Unknown command %d.", cmd->type);
+        D_FAT("%d: Unknown command %d.", cmd->line, cmd->type);
     }
   }
-  D_DBG("Script finished.");
+  if(cfg.finalize)
+    WRN("Attack cancelled by user.");
 
   /* cancel all threads */
   /* NOTE: Only cancelations with 'errno' different from zero are real    */
   /*       errors. A pthread_cancel return value different from zero, but */
   /*       a zero errno only means that thread is already finished.       */
-  LOG("[TT] Cancelling all threads.");
+  D_DBG("The begining of the end");
+  DBG("  - Cancelling all threads.");
   for(i = 0; i < cfg.maxthreads; i++)
     if(ttable[i])
       if(pthread_cancel(ttable[i]->pthread_id) && errno != 0)
-        ERR("[TT] Cannot cancel thread %02u: %s", i, strerror(errno));
+        ERR("  ! Cannot cancel thread %02u: %s", i, strerror(errno));
 
-  DBG("[TT] Waiting for all to join.");
+  DBG("  - Waiting for all to join.");
   for(i = 0; i < cfg.maxthreads; i++)
     if(ttable[i])
       if(pthread_join(ttable[i]->pthread_id, NULL))
-        ERR("[TT] Cannot join with thread %02u: %s", i, strerror(errno));
+        ERR("  ! Cannot join with thread %02u: %s", i, strerror(errno));
 
   /* free memory */
-  DBG2("[TT]   Free memory.");
+  D_DBG("Script finished.");
   //pthreadex_timer_destroy(&timer);
   //free(tw);
 }

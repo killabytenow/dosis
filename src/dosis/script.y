@@ -52,7 +52,7 @@
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
-%type  <snode>    nint nfloat ntime ntime_val string var
+%type  <snode>    nint nfloat ntime string var
 %type  <snode>    o_ntime command option options pattern
 %type  <snode>    list_num selection list_num_enum range
 %type  <snode>    input to
@@ -60,7 +60,6 @@
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
 %token            TO_UDP TO_TCP TO_LISTEN
-%token            TOK_TO
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
       ;
@@ -88,16 +87,12 @@ nfloat: NFLOAT { $$ = new_node(TYPE_NFLOAT);
       | var
       ;
 
-ntime_val: NFLOAT { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.n     = $1; }
-         | NINT   { $$ = new_node(TYPE_NTIME);
-                    $$->ntime.n     = $1; }
-         | var
-         ;
-
-ntime: '+' ntime_val { $$ = $2;
-                       $$->ntime.rel = -1; }
-     | ntime_val
+ntime: '+' nfloat { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.rel = -1;
+                    $$->ntime.n   = $2; }
+     | nfloat     { $$ = new_node(TYPE_NTIME);
+                    $$->ntime.rel = 0;
+                    $$->ntime.n   = $1; }
      ;
 
 string: STRING  { $$ = new_node(TYPE_STRING);
@@ -129,12 +124,12 @@ list_num: nint                  { $$ = new_node(TYPE_LIST_NUM);
         | '[' list_num_enum ']' { $$ = $2; }
         ;
 
-range: '*'                      { $$ = new_node(TYPE_SELECTOR);
-                                  $$->range.min = NULL;
-                                  $$->range.max = NULL; }
-     | '[' nint TOK_TO nint ']' { $$ = new_node(TYPE_SELECTOR);
-                                  $$->range.min = $2;
-                                  $$->range.max = $4; }
+range: '*'                   { $$ = new_node(TYPE_SELECTOR);
+                               $$->range.min = NULL;
+                               $$->range.max = NULL; }
+     | '[' nint '%' nint ']' { $$ = new_node(TYPE_SELECTOR);
+                               $$->range.min = $2;
+                               $$->range.max = $4; }
      ;
 
 selection: range
@@ -166,9 +161,11 @@ options: /* empty */    { $$ = NULL; }
                           $$->option.next = $2; }
        ;
 
-pattern: PERIODIC '[' nfloat ',' nint ']' { $$ = new_node(TYPE_PERIODIC);
-                                            $$->pattern.periodic.ratio = $3;
-                                            $$->pattern.periodic.n     = $5; }
+pattern: PERIODIC '[' nfloat ',' nint ',' nint ']'
+           { $$ = new_node(TYPE_PERIODIC);
+             $$->pattern.periodic.ratio = $3;
+             $$->pattern.periodic.n     = $5;
+             $$->pattern.periodic.bytes = $7; }
        ;
 
 o_ntime: /* empty */ { $$ = NULL; }
@@ -271,7 +268,7 @@ ha_roto_la_olla:
 
 int yylex(void)
 {
-  int c, bi, f, i;
+  int c, bi, f;
   char buff[BUFFLEN], *s;
   struct {
     char *token;
@@ -321,31 +318,6 @@ int yylex(void)
   /* reset */
   SRESET();
 
-  /* Process token .. and float numbers */
-  if(c == '.')
-  {
-    /* check if '..' */
-    if((c = getchar()) == '.')
-      return TOK_TO;
-    if(c == EOF)
-      D_FAT("Premature end of file.");
-
-    /* check if it is a float number */
-    if(isdigit(c))
-    {
-      do {
-        SADD(c);
-      } while(isdigit(c = getchar()));
-      ungetc(c, stdin);
-      sscanf(buff, "%lf", &(yylval.nfloat));
-      D_DBG("TOKEN[NFLOAT] = '%s'", buff);
-      return NFLOAT;
-    }
-
-    /* only a dot ... error */
-    D_FAT("%d: Only a dot. WTF?", lineno);
-  }
-
   /* process hex, bin and octal numbers */
   if(c == '0')
   {
@@ -385,26 +357,33 @@ int yylex(void)
     }
 
     /* octal num or network-address-like string? */
-    while((c = getchar()) >= '0' && c <= '7')
-      SADD(c);
-    if(strchr("89abcdefABCDEF.:", c) != NULL)
+    if(isdigit(c) || strchr("89abcdefABCDEF:", c) != NULL)
     {
+      /* read until non-octal char */
       do {
         SADD(c);
-      } while(strchr("89abcdefABCDEF.:", c) != NULL);
-      D_DBG("TOKEN[STRING] = '%s'", buff);
-      return STRING;
-    }
+      } while((c = getchar()) >= '0' && c <= '7');
+      ungetc(c, stdin);
 
-    /* definitely it should be an octal number or an error */
-    if(!isalnum(c) && c != '.' && c != ':')
-      D_FAT("%d: Bad octal number.", lineno);
-    sscanf(buff, "%o", &(yylval.nint));
-    D_DBG("TOKEN[NINT] = OCT(%s)", buff);
-    return NINT;
+      /* check if it is an address ... */
+      if(strchr("89abcdefABCDEF.:", c) != NULL)
+      {
+        while(strchr("89abcdefABCDEF.:", c) != NULL)
+          SADD(c);
+        ungetc(c, stdin);
+        D_DBG("TOKEN[STRING] = '%s' (network address?)", buff);
+        return STRING;
+      }
+
+      /* it is an octal num */
+      sscanf(buff, "%o", &(yylval.nint));
+      D_DBG("TOKEN[NINT] = OCT(%s)", buff);
+      return NINT;
+    }
+    /* else... it should be a float number or something like that */
   }
 
-  if(isdigit(c))
+  if(isdigit(c) || c == '.')
   {
     /* get input and count '.' or detect ':' */
     f = 0;
@@ -416,6 +395,7 @@ int yylex(void)
         if(f >= 0 && c == '.') f++;
       }
     } while(isdigit(c = getchar()) || c == '.' || c == ':');
+    ungetc(c, stdin);
 
     /* check if it is a number */
     switch(f)
@@ -426,8 +406,11 @@ int yylex(void)
         D_DBG("TOKEN[NINT] = %s", buff);
         return NINT;
 
-    ungetc(c, stdin);
       case 1:
+        sscanf(buff, "%lf", &(yylval.nfloat));
+        D_DBG("TOKEN[NFLOAT] = '%s'", buff);
+        return NFLOAT;
+
       default:
         /* oooh... it is not a number; it is a string */
         while(!isspace(c = getchar()) && c != EOF)
@@ -512,7 +495,8 @@ int yylex(void)
   || c == '='
   || c == '*' || c == '/'
   || c == '[' || c == ']'
-  || c == '(' || c == ')')
+  || c == '(' || c == ')'
+  || c == '%')
   {
     D_DBG("TOKEN[CHAR(%d)] = '%c'", c, c);
     return c;
