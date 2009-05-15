@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * DioNiSio - DNS scanner
- *   (C) 2006-2008 Gerardo García Peña
+ *   (C) 2006-2009 Gerardo García Peña
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
