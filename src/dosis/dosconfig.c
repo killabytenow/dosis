@@ -48,6 +48,7 @@ typedef struct _tag_CMD_OPTION {
 } DOS_CMD_OPTION;
 
 DOS_CMD_OPTION cmd_options[] = {
+  { 'Z', "debug",         0 },
   { 'h', "help",          0 },
   { 'o', "output-file",   1 },
   { 'q', "quiet",         0 },
@@ -105,6 +106,9 @@ static void dos_config_parse_command(int argc, char **argv)
           if(!optarg)
             s = "3";
           cfg.verbosity = atoi(s);
+          break;
+      case 'Z':
+          cfg.verbosity = LOG_LEVEL_ALL;
           break;
       case -1:
           fin = -1;

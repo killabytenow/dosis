@@ -457,7 +457,7 @@ void tea_timer(SNODE *program)
   ltime = stime = tea_time_get();
   pthreadex_timer_init(&teatimer, 0.0);
 
-  for(cmd = program; cfg.finalize || cmd; cmd = cmd->command.next)
+  for(cmd = program; !cfg.finalize && cmd; cmd = cmd->command.next)
   {
     /* wait until command is prepared to be executed */
     ctime = tea_time_get() - stime;

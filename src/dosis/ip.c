@@ -238,7 +238,7 @@ void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in6)
 
 void ip_addr_set_port(INET_ADDR *addr, int port)
 {
-  addr->port = htons(port);
+  addr->port = port;
   addr->port_defined = 1;
 }
 
@@ -272,7 +272,7 @@ int ip_addr_snprintf_ipv4(INET_ADDR *addr, int l, char *str)
                     IPV4_GETP(2, &addr->addr.in),
                     IPV4_GETP(1, &addr->addr.in),
                     IPV4_GETP(0, &addr->addr.in),
-                    ntohs(addr->port));
+                    addr->port);
   } else {
     r = snprintf(str, l, "%d.%d.%d.%d",
                     IPV4_GETP(3, &addr->addr.in),
@@ -392,7 +392,7 @@ int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr)
            | ((b & 0x000000ffl) << 16)
            | ((a & 0x000000ffl) << 24));
   addr->port_defined = port_defined;
-  addr->port = port_defined ? htons(p) : 0;
+  addr->port = port_defined ? p : 0;
   
   return 0;
 }
