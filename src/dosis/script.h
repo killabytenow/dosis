@@ -51,14 +51,19 @@ enum TYPES {
   TYPE_SELECTOR,
   /* thread types */
   TYPE_TO_TCP = 3000,
+  TYPE_TO_TCPOPEN,
   TYPE_TO_TCPRAW,
   TYPE_TO_UDP,
   TYPE_TO_LISTEN,
   /* options */
   TYPE_OPT_DST = 4000,
+  TYPE_OPT_FILE,
   TYPE_OPT_FLAGS,
+  TYPE_OPT_OPEN,
   TYPE_OPT_RAW,
   TYPE_OPT_SRC,
+  TYPE_OPT_PAYLOAD_STR,
+  TYPE_OPT_PAYLOAD_FILE,
   /* patterns */
   TYPE_PERIODIC = 5000,
 };
@@ -98,6 +103,7 @@ typedef struct SNODE_tag {
       struct SNODE_tag *addr;         /* target/source address               */
       struct SNODE_tag *port;         /* target/source port                  */
       struct SNODE_tag *flags;        /* flags                               */
+      struct SNODE_tag *payload;      /* payload for packets                 */
 
       struct SNODE_tag *next;
     } option;

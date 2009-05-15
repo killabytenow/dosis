@@ -58,7 +58,8 @@
 %type  <snode>    input to
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
-%token            OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
+%token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
+%token            OPT_PAYLOAD OPT_FILE
 %token            TO_UDP TO_TCP TO_LISTEN
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
@@ -150,10 +151,11 @@ option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.port = $4; }
       | OPT_FLAGS string          { $$ = new_node(TYPE_OPT_FLAGS);
                                     $$->option.flags = $2; }
-      /*
-      | OPT_PAYLOAD STRING {
-      | OPT_PAYLOAD FILE '(' STRING ')' {
-      */
+      | OPT_PAYLOAD string        { $$ = new_node(TYPE_OPT_PAYLOAD_STR);
+                                    $$->option.payload = $2; }
+      | OPT_PAYLOAD OPT_FILE '(' string ')'
+                                  { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
+                                    $$->option.payload = $4; }
       ;
 
 options: /* empty */    { $$ = NULL; }
@@ -172,18 +174,21 @@ o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-to: TO_TCP options pattern         { $$ = new_node(TYPE_TO_TCP);
-                                     $$->to.options = $2;
-                                     $$->to.pattern = $3; }
-  | TO_UDP options pattern         { $$ = new_node(TYPE_TO_UDP);
-                                     $$->to.options = $2;
-                                     $$->to.pattern = $3; }
-  | TO_TCP OPT_RAW options pattern { $$ = new_node(TYPE_TO_TCPRAW);
-                                     $$->to.options = $3;
-                                     $$->to.pattern = $4; }
-  | TO_LISTEN                      { $$ = new_node(TYPE_TO_LISTEN);
-                                     $$->to.options = NULL;
-                                     $$->to.pattern = NULL; }
+to: TO_TCP options pattern          { $$ = new_node(TYPE_TO_TCP);
+                                      $$->to.options = $2;
+                                      $$->to.pattern = $3; }
+  | TO_UDP options pattern          { $$ = new_node(TYPE_TO_UDP);
+                                      $$->to.options = $2;
+                                      $$->to.pattern = $3; }
+  | TO_TCP OPT_OPEN options         { $$ = new_node(TYPE_TO_TCPOPEN);
+                                      $$->to.options = $3;
+                                      $$->to.pattern = NULL; }
+  | TO_TCP OPT_RAW options pattern  { $$ = new_node(TYPE_TO_TCPRAW);
+                                      $$->to.options = $3;
+                                      $$->to.pattern = $4; }
+  | TO_LISTEN                       { $$ = new_node(TYPE_TO_LISTEN);
+                                      $$->to.options = NULL;
+                                      $$->to.pattern = NULL; }
   ;
 
 command: o_ntime CMD_ON selection to  { $$ = new_node(TYPE_CMD_ON);
@@ -274,18 +279,21 @@ int yylex(void)
     char *token;
     int  id;
   } tokens[] = {
-    { "DST",      OPT_DST    },
-    { "FLAGS",    OPT_FLAGS  },
-    { "LISTEN",   TO_LISTEN  },
-    { "MOD",      CMD_MOD    },
-    { "OFF",      CMD_OFF    },
-    { "ON",       CMD_ON     },
-    { "PERIODIC", PERIODIC   },
-    { "RAW",      OPT_RAW    },
-    { "SRC",      OPT_SRC    },
-    { "TCP",      TO_TCP     },
-    { "UDP",      TO_UDP     },
-    { NULL,       0          }
+    { "DST",      OPT_DST     },
+    { "FILE",     OPT_FILE    },
+    { "FLAGS",    OPT_FLAGS   },
+    { "LISTEN",   TO_LISTEN   },
+    { "MOD",      CMD_MOD     },
+    { "OFF",      CMD_OFF     },
+    { "ON",       CMD_ON      },
+    { "OPEN",     OPT_OPEN    },
+    { "PAYLOAD",  OPT_PAYLOAD },
+    { "PERIODIC", PERIODIC    },
+    { "RAW",      OPT_RAW     },
+    { "SRC",      OPT_SRC     },
+    { "TCP",      TO_TCP      },
+    { "UDP",      TO_UDP      },
+    { NULL,       0           }
   }, *token;
 
   /* Skip white space.  */
@@ -297,8 +305,6 @@ int yylex(void)
     D_DBG("YYLEX EOF!");
     return 0;
   }
-
-  D_DBG("c [%d] [%c]", c, c);
 
   /* ignore comments */
   if(c == '#')
