@@ -35,6 +35,7 @@
 #include "tea.h"
 
 #include "tcpraw.h"
+#include "listener.h"
 
 static THREAD_WORK **ttable;
 static TEA_MSG_QUEUE *msg_free;

