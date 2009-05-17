@@ -37,8 +37,11 @@
 #include "tcpraw.h"
 #include "listener.h"
 
-static THREAD_WORK **ttable;
-static TEA_MSG_QUEUE *msg_free;
+static THREAD_WORK     **ttable;
+static pthreadex_mutex_t ttable_mutex;
+static TEA_MSG_QUEUE    *msg_free;
+
+static THREAD_WORK      *listeners;
 
 typedef struct {
   SNODE *first;
@@ -72,26 +75,10 @@ static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
 
   /* empty queue */
   while((m = tea_mqueue_shift(mq)) != NULL)
-    tea_mqueue_release(m);
+    tea_msg_release(m);
 
   /* free queue */
   free(mq);
-}
-
-TEA_MSG *tea_msg_allocate(void)
-{
-  TEA_MSG *m;
-
-  if((m = tea_mqueue_shift(msg_free)) == NULL)
-    if((m = calloc(1, sizeof(TEA_MSG))) == NULL)
-      D_FAT("No memory for msg.");
-
-  return m;
-}
-
-void tea_mqueue_release(TEA_MSG *m)
-{
-  tea_mqueue_push(msg_free, m);
 }
 
 void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
@@ -130,12 +117,72 @@ TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
 }
 
 /*---------------------------------------------------------------------------*
+ * MESSAGE MANAGAMENT
+ *
+ *   Following functions create, get, release and destroy messages.
+ *---------------------------------------------------------------------------*/
+
+TEA_MSG *tea_msg_allocate(void)
+{
+  TEA_MSG *m;
+
+  if((m = tea_mqueue_shift(msg_free)) == NULL)
+    if((m = calloc(1, sizeof(TEA_MSG))) == NULL)
+      D_FAT("No memory for msg.");
+
+  m->b  = NULL;
+  m->s  = 0;
+  m->bs = 0;
+
+  return m;
+}
+
+void tea_msg_destroy(TEA_MSG *m)
+{
+  free(m->b);
+  m->b  = NULL;
+  m->s  = 0;
+  m->bs = 0;
+}
+
+TEA_MSG *tea_msg_get(void)
+{
+  TEA_MSG *m;
+
+  if((m = tea_mqueue_shift(msg_free)) == NULL)
+    m = tea_msg_allocate();
+
+  return m;
+}
+
+void tea_msg_release(TEA_MSG *m)
+{
+  tea_mqueue_push(msg_free, m);
+}
+
+void tea_msg_fill(TEA_MSG *m, char *b, unsigned int s)
+{
+  /* get moar mem, if necessary */
+  if(s > m->bs)
+  {
+    if((m->b = realloc(m->b, s)) == NULL)
+      FAT("No memory for msg of size %d.", s);
+    m->bs = s;
+  }
+
+  /* copy msg */
+  m->s  = s;
+  if(s > 0)
+    memcpy(m->b, b, s);
+}
+
+/*---------------------------------------------------------------------------*
  * THREAD MANAGAMENT
  *
  *   Following functions start, stop, and manage tea threads.
  *---------------------------------------------------------------------------*/
 
-static void tea_thread_basic_cleanup(THREAD_WORK *tw)
+static void tea_thread_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
@@ -169,7 +216,7 @@ static void *tea_thread(void *data)
   /* initialize thread */
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
-  pthread_cleanup_push((void *) tea_thread_basic_cleanup, tw);
+  pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
   if(tw->methods->listen)
@@ -189,7 +236,7 @@ static void *tea_thread(void *data)
   return NULL;
 }
 
-void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
+static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 {
   THREAD_WORK *tw;
 
@@ -211,6 +258,13 @@ void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
                  : NULL;
   pthreadex_flag_init(&(tw->mwaiting), 0);
 
+  /* global thread initialization here */
+  if(tw->methods->global_init && !tw->methods->initialized)
+  {
+    tw->methods->initialized = -1;
+    tw->methods->global_init();
+  }
+
   /* configure thread here */
   if(tw->methods->configure)
     tw->methods->configure(tw, command);
@@ -223,7 +277,7 @@ void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
 }
 
-void tea_thread_stop(int tid)
+static void tea_thread_stop(int tid)
 {
   THREAD_WORK *tw = ttable[tid];
 
@@ -233,13 +287,54 @@ void tea_thread_stop(int tid)
     return;
   }
 
+  pthreadex_mutex_begin(&ttable_mutex);
+
   /* consider it dead */
   ttable[tid] = NULL;
 
+  /* if this is a listener, then unchain it from the listeners list */
+  if(tw->methods->listen)
+  {
+    if(listeners == tw)
+      listeners = tw->next_listener;
+    tw->prev_listener->next_listener = tw->next_listener;
+  }
+
+  /* kill thread */
   if(pthread_detach(tw->pthread_id))
     ERR("Cannot detach thread %u: %s", tid, strerror(errno));
   if(pthread_cancel(tw->pthread_id) && errno != 0)
     ERR("Cannot cancel thread %u: %s", tid, strerror(errno));
+
+  pthreadex_mutex_end();
+}
+
+int tea_thread_search_listener(char *b, unsigned int l)
+{
+  THREAD_WORK *tw;
+  int r = -1;
+
+  pthreadex_mutex_begin(&ttable_mutex);
+  for(tw = listeners; r < 0 && tw; tw = tw->next_listener)
+    if(tw->methods->listen_check(tw, b, l))
+      r = tw->id;
+  pthreadex_mutex_end();
+
+  return r;
+}
+
+int tea_thread_msg_push(int tid, TEA_MSG *m)
+{
+  int r = 0;
+
+  pthreadex_mutex_begin(&ttable_mutex);
+  if(ttable[tid])
+    tea_mqueue_push(ttable[tid]->mqueue, m);
+  else
+    r = -1;
+  pthreadex_mutex_end();
+  
+  return r;
 }
 
 char *tea_get_var(SNODE *n)
@@ -494,10 +589,10 @@ void tea_timer(SNODE *program)
         {
           switch(cmd->command.thc.to->type)
           {
-          /*case TYPE_TO_LISTEN: to = &teaLISTEN; break; */
-          /*case TYPE_TO_TCP:    to = &teaTCP;    break; */
-            case TYPE_TO_TCPRAW: to = &teaTCPRAW; break;
-          /*case TYPE_TO_UDP:    to = &teaUDP;    break; */
+            case TYPE_TO_LISTEN: to = &teaLISTENER; break;
+          /*case TYPE_TO_TCP:    to = &teaTCP;      break; */
+            case TYPE_TO_TCPRAW: to = &teaTCPRAW;   break;
+          /*case TYPE_TO_UDP:    to = &teaUDP;      break; */
             default:
               D_FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }

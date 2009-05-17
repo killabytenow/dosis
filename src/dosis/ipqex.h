@@ -41,7 +41,7 @@
 
 typedef struct _tag_ipqex_info_t {
   struct ipq_handle *ipqh;    /* ipq handle                  */
-  int                bufsize; /* buffer size                 */
+  unsigned int       bufsize; /* buffer size                 */
 } ipqex_info_t;
 
 typedef struct _tag_ipqex_msg_t {

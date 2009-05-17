@@ -31,6 +31,7 @@
 
 typedef struct _tag_TEA_MSG {
   unsigned int         s;
+  unsigned int         bs;
   unsigned char       *b;
   struct _tag_TEA_MSG *prev;
   struct _tag_TEA_MSG *next;
@@ -44,16 +45,23 @@ typedef struct _tag_TEA_MSG_QUEUE {
 } TEA_MSG_QUEUE;
 
 typedef struct _tag_THREAD_WORK {
-  int                     id;
-  pthread_t               pthread_id;
-  pthreadex_flag_t        mwaiting;
-  TEA_MSG_QUEUE          *mqueue;
-  struct _tag_TEA_OBJECT *methods;
-  void                   *data;
+  /* generic info */
+  int                      id;
+  pthread_t                pthread_id;
+  struct _tag_TEA_OBJECT  *methods;
+  void                    *data;
+
+  /* listener info */
+  TEA_MSG_QUEUE           *mqueue;
+  pthreadex_flag_t         mwaiting;
+  struct _tag_THREAD_WORK *prev_listener;
+  struct _tag_THREAD_WORK *next_listener;
 } THREAD_WORK;
 
 typedef struct _tag_TEA_OBJECT {
   char *name;
+  int   initialized;
+  int  (*global_init)(void);
   int  (*configure)(THREAD_WORK *tw, SNODE *command);
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
@@ -62,20 +70,25 @@ typedef struct _tag_TEA_OBJECT {
 } TEA_OBJECT;
 
 /*- THREAD MANAGAMENT -------------------------------------------------------*/
-void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command);
-void tea_thread_stop(int tid);
+int  tea_thread_msg_push(int tid, TEA_MSG *m);
+int  tea_thread_search_listener(char *b, unsigned int l);
 
 /*- MQUEUE MANAGAMENT -------------------------------------------------------*/
-void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+void     tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
 TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq);
-void tea_mqueue_release(TEA_MSG *msg);
-void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+
+/*- MESSAGE MANAGAMENT ------------------------------------------------------*/
+TEA_MSG *tea_msg_allocate(void);
+void     tea_msg_destroy(TEA_MSG *m);
+void     tea_msg_fill(TEA_MSG *m, char *b, unsigned int s);
+TEA_MSG *tea_msg_get(void);
+void     tea_msg_release(TEA_MSG *msg);
 
 /*- NODE UTILITIES ----------------------------------------------------------*/
-char *tea_get_var(SNODE *n);
-char *tea_get_string(SNODE *n);
-int tea_get_int(SNODE *n);
-double tea_get_float(SNODE *n);
+char    *tea_get_var(SNODE *n);
+char    *tea_get_string(SNODE *n);
+int      tea_get_int(SNODE *n);
+double   tea_get_float(SNODE *n);
 
 /*- CORE --------------------------------------------------------------------*/
 void tea_init(void);

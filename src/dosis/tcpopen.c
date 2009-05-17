@@ -54,7 +54,7 @@ typedef struct _tag_TCPOPEN_CFG {
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned size)
+static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
@@ -117,7 +117,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
     }
 
     /* release msg buffer */
-    tea_mqueue_release(m);
+    tea_msg_release(m);
   }
 }
 
