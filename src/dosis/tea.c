@@ -275,6 +275,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
+DBG("CHUSMA");
 }
 
 static void tea_thread_stop(int tid)
@@ -598,7 +599,9 @@ void tea_timer(SNODE *program)
           }
           D_DBG("Creating thread of type %s.", to->name);
           tea_thread_new(tid, to, cmd);
+D_DBG("ZIPOSTIO");
         }
+D_DBG("ZORROUN");
         break;
       case TYPE_CMD_OFF:
         for(tid = tea_iter_start(cmd->command.thc.selection, &ti);

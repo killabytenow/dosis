@@ -68,11 +68,13 @@ static void listener__global_init(void)
   pthreadex_mutex_init(&ipq_mutex);
 
   /* initialize ipq */
+#if 0
   DBG("[%s] Initializing ipq.", teaLISTENER.name);
   if(ipqex_init(&ipq, BUFSIZE))
     FAT("[%s]  !! Cannot initialize IPQ.", teaLISTENER.name);
 
   DBG("[%s] Initialized.", teaLISTENER.name);
+#endif
 }
 
 /*****************************************************************************
@@ -87,10 +89,15 @@ static void listener__thread(THREAD_WORK *tw)
   int r;
 
   /* get packets and classify */
+DBG("ZITIFLOYER");
   while(!cfg.finalize)
   {
+DBG("JANDERCLANDER");
     pthreadex_mutex_begin(&ipq_mutex);
+DBG("JANDERFLANDER");
+#if 0
     r = ipqex_msg_read(&imsg, 0);
+DBG("ZUSPITOYER");
     if(r < 0)
       ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
     pthreadex_mutex_end();
@@ -125,7 +132,13 @@ repeat_search:
         ERR("[LL_%02u] Cannot ACCEPT IPQ packet.", tw->w->id);
 #endif
     }
+#else
+sleep(2);
+DBG("kinki kinki");
+      pthreadex_mutex_end();
+#endif
   }
+DBG("FUSKARRO");
 }
 
 static void listener__cleanup(THREAD_WORK *tw)
