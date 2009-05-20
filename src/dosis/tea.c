@@ -34,6 +34,7 @@
 #include "pthreadex.h"
 #include "tea.h"
 
+#include "tcpopen.h"
 #include "tcpraw.h"
 #include "listener.h"
 
@@ -202,10 +203,17 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
     pthreadex_mutex_end();
 
     if(mq)
+    {
+DBG("000000000000000000000000000000000000");
       tea_mqueue_destroy(mq);
+DBG("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    }
   }
 
   pthreadex_flag_destroy(&(tw->mwaiting));
+
+  /* free mem */
+  free(tw);
 }
 
 static void *tea_thread(void *data)
@@ -219,6 +227,10 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
+  DBG("[[%p]]", tw);
+  DBG("[[%p]]", tw->methods);
+  DBG("[[%s]]", tw->methods->name);
+
   if(tw->methods->listen)
   {
     while(1)
@@ -256,6 +268,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   tw->mqueue = tw->methods->listen
                  ? tea_mqueue_create()
                  : NULL;
+DBG("==================================== %s %p", to->name, tw->mqueue);
   pthreadex_flag_init(&(tw->mwaiting), 0);
 
   /* global thread initialization here */
@@ -273,6 +286,8 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   ttable[tid] = tw;
 
   /* launch thread */
+DBG(">>>>>%p", tw);
+//DBG(">>>>>%p", tw->methods);
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
 DBG("CHUSMA");
@@ -298,7 +313,8 @@ static void tea_thread_stop(int tid)
   {
     if(listeners == tw)
       listeners = tw->next_listener;
-    tw->prev_listener->next_listener = tw->next_listener;
+    if(tw->prev_listener)
+      tw->prev_listener->next_listener = tw->next_listener;
   }
 
   /* kill thread */
@@ -431,7 +447,9 @@ int tea_iter_get(TEA_ITER *ti)
       i = ti->i;
       break;
     case TYPE_LIST_NUM:
-      i = tea_get_int(ti->c->list_num.val);
+      i = ti->c
+            ? tea_get_int(ti->c->list_num.val)
+            : 0;
       break;
     default:
       D_FAT("Bad selector node.");
@@ -463,6 +481,7 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
     case TYPE_LIST_NUM:
       ti->c = ti->first;
       D_DBG("Iterator for list.");
+      D_DBG("list: %p", ti->c);
       break;
     default:
       D_FAT("Bad selector node.");
@@ -478,6 +497,7 @@ int tea_iter_finish(TEA_ITER *ti)
     case TYPE_SELECTOR:
       return ti->i > ti->i2;
     case TYPE_LIST_NUM:
+      D_DBG("list: %p", ti->c);
       return ti->c == NULL;
     default:
       D_FAT("Bad selector node.");
@@ -493,7 +513,9 @@ int tea_iter_next(TEA_ITER *ti)
       ti->i++;
       break;
     case TYPE_LIST_NUM:
-      ti->c = ti->c->list_num.next;
+      if(ti->c)
+        ti->c = ti->c->list_num.next;
+      D_DBG("list: %p", ti->c);
       break;
     default:
       D_FAT("Bad selector node.");
@@ -523,6 +545,24 @@ static void tea_fini(void)
 
   if(ttable)
   {
+    /* cancel all threads */
+    /* NOTE: Only cancelations with 'errno' different from zero are real    */
+    /*       errors. A pthread_cancel return value different from zero, but */
+    /*       a zero errno only means that thread is already finished.       */
+    D_DBG("The begining of the end");
+    DBG("  - Cancelling all threads.");
+    for(i = 0; i < cfg.maxthreads; i++)
+      if(ttable[i])
+        if(pthread_cancel(ttable[i]->pthread_id) && errno != 0)
+          ERR("  ! Cannot cancel thread %02u: %s", i, strerror(errno));
+
+    DBG("  - Waiting for all to join.");
+    for(i = 0; i < cfg.maxthreads; i++)
+      if(ttable[i])
+        if(pthread_join(ttable[i]->pthread_id, NULL))
+          ERR("  ! Cannot join with thread %02u: %s", i, strerror(errno));
+
+    /* free mem */
     for(i = 0; i < cfg.maxthreads; i++)
       if(ttable[i])
         free(ttable[i]);
@@ -588,12 +628,14 @@ void tea_timer(SNODE *program)
             !tea_iter_finish(&ti);
             tid = tea_iter_next(&ti))
         {
+D_DBG("CHIU");
           switch(cmd->command.thc.to->type)
           {
-            case TYPE_TO_LISTEN: to = &teaLISTENER; break;
-          /*case TYPE_TO_TCP:    to = &teaTCP;      break; */
-            case TYPE_TO_TCPRAW: to = &teaTCPRAW;   break;
-          /*case TYPE_TO_UDP:    to = &teaUDP;      break; */
+            case TYPE_TO_LISTEN:  to = &teaLISTENER; break;
+            case TYPE_TO_TCPOPEN: to = &teaTCPOPEN;  break;
+          /*case TYPE_TO_TCP:     to = &teaTCP;      break; */
+            case TYPE_TO_TCPRAW:  to = &teaTCPRAW;   break;
+          /*case TYPE_TO_UDP:     to = &teaUDP;      break; */
             default:
               D_FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }
@@ -626,23 +668,6 @@ D_DBG("ZORROUN");
   }
   if(cfg.finalize)
     WRN("Attack cancelled by user.");
-
-  /* cancel all threads */
-  /* NOTE: Only cancelations with 'errno' different from zero are real    */
-  /*       errors. A pthread_cancel return value different from zero, but */
-  /*       a zero errno only means that thread is already finished.       */
-  D_DBG("The begining of the end");
-  DBG("  - Cancelling all threads.");
-  for(i = 0; i < cfg.maxthreads; i++)
-    if(ttable[i])
-      if(pthread_cancel(ttable[i]->pthread_id) && errno != 0)
-        ERR("  ! Cannot cancel thread %02u: %s", i, strerror(errno));
-
-  DBG("  - Waiting for all to join.");
-  for(i = 0; i < cfg.maxthreads; i++)
-    if(ttable[i])
-      if(pthread_join(ttable[i]->pthread_id, NULL))
-        ERR("  ! Cannot join with thread %02u: %s", i, strerror(errno));
 
   /* free memory */
   D_DBG("Script finished.");

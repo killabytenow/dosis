@@ -199,7 +199,11 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
 
   /* collect libnet data */
   ln_destroy_context(tc->lnc);
+  free(tc->lnc);
   pthreadex_timer_destroy(&tc->timer);
+
+  free(tc);
+  tw->data = NULL;
 
   DBG("[%02u] Finalized.", tw->id);
 }

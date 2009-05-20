@@ -159,6 +159,7 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
     if(tc->lnc)
     {
       ln_destroy_context(tc->lnc);
+      free(tc->lnc);
       tc->lnc = NULL;
     }
     if(tc->req)
