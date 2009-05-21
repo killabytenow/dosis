@@ -65,6 +65,7 @@ static TEA_MSG_QUEUE *tea_mqueue_create(void)
 
   if((mq = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
     D_FAT("No memory for a tea message queue.");
+D_DBG("NEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEWWWWWWWWWWWWWWWWWw %p", mq);
   pthreadex_mutex_init(&(mq->mutex));
 
   return mq;
@@ -80,6 +81,7 @@ static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
 
   /* free queue */
   free(mq);
+DBG("XXXXXXXXXXXXXXXXXXXXXX ---- %p ----- XXXXXXXXXXXXXXXXXXXX", mq);
 }
 
 void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
@@ -204,9 +206,8 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 
     if(mq)
     {
-DBG("000000000000000000000000000000000000");
+      pthreadex_mutex_destroy(&mq->mutex);
       tea_mqueue_destroy(mq);
-DBG("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     }
   }
 
@@ -553,19 +554,9 @@ static void tea_fini(void)
     DBG("  - Cancelling all threads.");
     for(i = 0; i < cfg.maxthreads; i++)
       if(ttable[i])
-        if(pthread_cancel(ttable[i]->pthread_id) && errno != 0)
-          ERR("  ! Cannot cancel thread %02u: %s", i, strerror(errno));
-
-    DBG("  - Waiting for all to join.");
-    for(i = 0; i < cfg.maxthreads; i++)
-      if(ttable[i])
-        if(pthread_join(ttable[i]->pthread_id, NULL))
-          ERR("  ! Cannot join with thread %02u: %s", i, strerror(errno));
+        tea_thread_stop(i);
 
     /* free mem */
-    for(i = 0; i < cfg.maxthreads; i++)
-      if(ttable[i])
-        free(ttable[i]);
     free(ttable);
   }
 }
@@ -672,6 +663,5 @@ D_DBG("ZORROUN");
   /* free memory */
   D_DBG("Script finished.");
   //pthreadex_timer_destroy(&timer);
-  //free(tw);
 }
 

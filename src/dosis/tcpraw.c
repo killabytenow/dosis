@@ -100,7 +100,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
-      D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+      D_FAT("[%02d] No memory for TCPRAW_CFG.", tw->id);
     tw->data = (void *) tc;
 
     /* initialize libnet */
