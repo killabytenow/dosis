@@ -96,7 +96,8 @@ static void listener__global_fini(void)
       if((f = open(iptables_tmp, O_RDONLY)) < 0)
         FAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
       while((r = read(f, buf, sizeof(buf))) <= 0)
-        write(p[1], buf, r);
+        if(write(p[1], buf, r) < 0)
+          FAT("Cannot write to pipe: %s", strerror(errno));
       close(p[1]);
       close(f);
       waitpid(pid, &r, 0);
@@ -163,7 +164,8 @@ static void listener__global_init(void)
     case 0:
       /* save iptables state */
       close(1);
-      dup(f);
+      if(dup(f) < 0)
+        FAT("Cannot dup: %s", strerror(errno));
       close(f);
       execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
       /* if this code is executed, we have an error */

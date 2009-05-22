@@ -78,8 +78,6 @@ void ipqex_msg_destroy(ipqex_msg_t *m)
 
 int ipqex_msg_read(ipqex_msg_t *m, int timeout)
 {
-  ipq_packet_msg_t *packet;
-
   if((m->s = ipq_read(m->i->ipqh, m->b, m->i->bufsize, timeout)) != 0)
   { 
     switch(ipq_message_type(m->b))
