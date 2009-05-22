@@ -585,7 +585,7 @@ void tea_timer(SNODE *program)
 {
   double stime, ctime, ltime, ntime;
   SNODE *cmd;
-  int i, tid;
+  int tid;
   TEA_OBJECT *to = NULL;
   TEA_ITER ti;
   pthreadex_timer_t teatimer;
