@@ -141,6 +141,8 @@ static void dos_config_fini(void)
     free(short_options);
   if(long_options)
     free(long_options);
+
+  DBG("dosconfig finished.");
 }
 
 void dos_config_init(int argc, char **argv)

@@ -64,6 +64,8 @@ static void listener__global_fini(void)
   char buf[100];
   int p[2];
 
+  DBG("(global) listener threads finishing.");
+
   if(pipe(p) < 0)
     FAT("Cannot create pipe: %s", iptables_tmp, strerror(errno));
 
@@ -110,6 +112,8 @@ static void listener__global_fini(void)
   /* finish ipq */
   ipqex_destroy(&ipq);
   pthreadex_mutex_destroy(&ipq_mutex);
+
+  DBG("(global) listener threads finished.");
 }
 
 static void listener__global_init(void)
@@ -125,10 +129,6 @@ static void listener__global_init(void)
       "/sbin/iptables", "-A", "INPUT",   "-j", "QUEUE", NULL,
       "/sbin/iptables", "-L", NULL,
       NULL };
-
-  /* set the finalization routine */
-  if(atexit(listener__global_fini))
-    D_FAT("Cannot set finalization routine.");
 
   /* init mutex */
   pthreadex_mutex_init(&ipq_mutex);
@@ -167,6 +167,8 @@ static void listener__global_init(void)
       if(dup(f) < 0)
         FAT("Cannot dup: %s", strerror(errno));
       close(f);
+DBG("XXXXXXXXXXXXXXXX --- die son, die");
+      exit(1);
       execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
       /* if this code is executed, we have an error */
       FAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
@@ -206,6 +208,10 @@ static void listener__global_init(void)
   DBG("[%s] Initializing ipq.", teaLISTENER.name);
   if(ipqex_init(&ipq, BUFSIZE))
     FAT("[%s]  !! Cannot initialize IPQ.", teaLISTENER.name);
+
+  /* set the finalization routine */
+  if(atexit(listener__global_fini))
+    D_FAT("Cannot set finalization routine.");
 
   DBG("[%s] Initialized.", teaLISTENER.name);
 }

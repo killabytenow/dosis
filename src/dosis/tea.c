@@ -559,6 +559,8 @@ static void tea_fini(void)
     /* free mem */
     free(ttable);
   }
+
+  DBG("tea timer finished.");
 }
 
 void tea_init(void)
