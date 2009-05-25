@@ -64,11 +64,6 @@ static void listener__global_fini(void)
   char buf[100];
   int p[2];
 
-  DBG("(global) listener threads finishing.");
-
-  if(pipe(p) < 0)
-    FAT("Cannot create pipe: %s", iptables_tmp, strerror(errno));
-
   /* restore ipforward */
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
     FAT("Cannot open /proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
@@ -79,41 +74,39 @@ static void listener__global_fini(void)
   close(f);
 
   /* restore iptables */
-  switch(pid = fork())
+  if(pipe(p) < 0)
+    FAT("Cannot create pipe: %s", iptables_tmp, strerror(errno));
+  if((pid = dosis_fork()) == 0)
   {
-    case -1:
-      FAT("Cannot fork: %s", strerror(errno));
-      break;
-
-    case 0:
-      /* save iptables state */
-      close(p[1]);
-      execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
-      /* if this code is executed, we have an error */
-      FAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
-      break;
-
-    default:
-      close(p[0]);
-      if((f = open(iptables_tmp, O_RDONLY)) < 0)
-        FAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
-      while((r = read(f, buf, sizeof(buf))) <= 0)
-        if(write(p[1], buf, r) < 0)
-          FAT("Cannot write to pipe: %s", strerror(errno));
-      close(p[1]);
-      close(f);
-      waitpid(pid, &r, 0);
-      if(r != 0)
-        FAT("iptables-restore failed.");
-      if(unlink(iptables_tmp) < 0)
-        FAT("Cannot unlink %s: %s", iptables_tmp, strerror(errno));
+    /* child */
+    /* save iptables state */
+    close(0);
+    close(p[1]);
+    dup(p[0]);
+    close(p[0]);
+    execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
+    /* if this code is executed, we have an error */
+    FAT("Cannot execute /sbin/iptables-restore: %s", strerror(errno));
   }
+  /* parent */
+  close(p[0]);
+  if((f = open(iptables_tmp, O_RDONLY)) < 0)
+    FAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
+  while((r = read(f, buf, sizeof(buf))) > 0)
+    if(write(p[1], buf, r) < 0)
+      FAT("Cannot write to pipe: %s", strerror(errno));
+  close(p[1]);
+  close(f);
+  if(r != 0)
+    FAT("iptables-restore failed.");
+  if(unlink(iptables_tmp) < 0)
+    FAT("Cannot unlink %s: %s", iptables_tmp, strerror(errno));
 
   /* finish ipq */
   ipqex_destroy(&ipq);
   pthreadex_mutex_destroy(&ipq_mutex);
 
-  DBG("(global) listener threads finished.");
+  DBG("[%s] (global) listener threads finished.", teaLISTENER.name);
 }
 
 static void listener__global_init(void)
@@ -134,17 +127,14 @@ static void listener__global_init(void)
   pthreadex_mutex_init(&ipq_mutex);
 
   /* read/change ipforward */
+  DBG("[%s] Enable ip_forward flag.", teaLISTENER.name);
   if((f = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY)) < 0)
     FAT("Cannot open /proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
-  switch(read(f, &ip_forward_status, 1))
-  {
-    case 0:
-      FAT("Invalid ip_forward content.");
-    case -1:
-      FAT("Cannot read ip_forward status: %s", strerror(errno));
-    default:
-      DBG("ip_forward status %c.", ip_forward_status);
-  }
+  r = read(f, &ip_forward_status, 1);
+  if(r == 0)
+    FAT("Invalid ip_forward content.");
+  if(r < 0)
+    FAT("Cannot read ip_forward status: %s", strerror(errno));
   close(f);
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
     FAT("Cannot open /proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
@@ -153,42 +143,33 @@ static void listener__global_init(void)
   close(f);
 
   /* prepare the ipqueue */
+  DBG("[%s] save iptables config.", teaLISTENER.name);
   strcpy(iptables_tmp, "iptables-state-XXXXXX");
   f = mkstemp(iptables_tmp);
-  switch(pid = fork())
+  if((pid = dosis_fork()) == 0)
   {
-    case -1:
-      FAT("Cannot fork: %s", strerror(errno));
-      break;
-
-    case 0:
+      /* child */
       /* save iptables state */
       close(1);
       if(dup(f) < 0)
         FAT("Cannot dup: %s", strerror(errno));
       close(f);
-DBG("XXXXXXXXXXXXXXXX --- die son, die");
-      exit(1);
       execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
       /* if this code is executed, we have an error */
       FAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
-      break;
-
-    default:
-      close(f);
-      waitpid(pid, &r, 0);
-      if(r != 0)
-        FAT("iptables-save failed.");
   }
-  DBG("init iptables config.");
+  /* here continues parent */
+  close(f);
+  waitpid(pid, &r, 0);
+  if(r != 0)
+    FAT("iptables-save failed.");
+
+  DBG("[%s] Init iptables config.", teaLISTENER.name);
   for(a = iscript; *a; )
   {
-    if((pid = fork()) < 0)
-        FAT("Cannot fork: %s", strerror(errno));
-
-    /* child */
-    if(!pid)
+    if((pid = dosis_fork()) == 0)
     {
+      /* child */
       execv(a[0], a);
       FAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
     }
@@ -202,7 +183,6 @@ DBG("XXXXXXXXXXXXXXXX --- die son, die");
     while(*a++ != NULL)
       ;
   }
-  DBG("finished iptables config.");
 
   /* initialize ipq */
   DBG("[%s] Initializing ipq.", teaLISTENER.name);
@@ -210,8 +190,7 @@ DBG("XXXXXXXXXXXXXXXX --- die son, die");
     FAT("[%s]  !! Cannot initialize IPQ.", teaLISTENER.name);
 
   /* set the finalization routine */
-  if(atexit(listener__global_fini))
-    D_FAT("Cannot set finalization routine.");
+  dosis_atexit(teaLISTENER.name, listener__global_fini);
 
   DBG("[%s] Initialized.", teaLISTENER.name);
 }
@@ -228,11 +207,9 @@ static void listener__thread(THREAD_WORK *tw)
   int r;
 
   /* get packets and classify */
-DBG("ZITIFLOYER");
   while(!cfg.finalize)
   {
     pthreadex_mutex_begin(&ipq_mutex);
-#if 1
 DBG(" ----------------------------------------------------------- imsg");
     r = ipqex_msg_read(&lcfg->imsg, 0);
 DBG("ZUSPITOYER ==================================================");
@@ -268,16 +245,10 @@ repeat_search:
 #if 0
       /* policy: accept anything unknown */
       if(ipqex_set_verdict(&tw->msg, NF_ACCEPT) <= 0)
-        ERR("[LL_%02u] Cannot ACCEPT IPQ packet.", tw->w->id);
+        ERR("[%d/%s] Cannot ACCEPT IPQ packet.", tw->w->id, tw->methods->name);
 #endif
     }
-#else
-sleep(2);
-DBG("kinki kinki");
-      pthreadex_mutex_end();
-#endif
   }
-DBG("FUSKARRO");
 }
 
 static void listener__cleanup(THREAD_WORK *tw)
@@ -291,7 +262,7 @@ static void listener__cleanup(THREAD_WORK *tw)
   free(tw->data);
   tw->data = NULL;
 
-  DBG("[%02u] Finalized.", tw->id);
+  DBG("[%d/%s] Finalized.", tw->id, tw->methods->name);
 }
 
 static int listener__configure(THREAD_WORK *tw, SNODE *command)
@@ -301,7 +272,7 @@ static int listener__configure(THREAD_WORK *tw, SNODE *command)
   if(lcfg == NULL)
   {
     if((lcfg = calloc(1, sizeof(LISTENER_CFG))) == NULL)
-      D_FAT("[%02d] No memory for LISTENER_CFG.", tw->id);
+      D_FAT("[%d/%s] No memory for LISTENER_CFG.", tw->id, tw->methods->name);
     tw->data = (void *) lcfg;
 
     pthreadex_mutex_begin(&ipq_mutex);

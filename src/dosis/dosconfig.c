@@ -37,6 +37,16 @@ DOS_CONFIG cfg = {
   /* max threads      */ 100,
 };
 
+/* unix wrappers */
+typedef struct tag_DOSIS_ATEXIT {
+  char *name;
+  void (*func)(void);
+  struct tag_DOSIS_ATEXIT *next;
+} DOSIS_ATEXIT;
+
+static int dosis_forked;
+DOSIS_ATEXIT *dosis_atexit_list = NULL;
+
 /* private object's global variables */
 static struct option *long_options = NULL;
 static char *short_options = NULL;
@@ -131,8 +141,52 @@ static void dos_config_parse_command(int argc, char **argv)
  * Initialization and finalization routines
  *****************************************************************************/
 
+int dosis_fork(void)
+{
+  int r;
+
+  r = fork();
+  if(r < 0)
+    FAT("Cannot fork: %s", strerror(errno));
+  if(r == 0)
+    dosis_forked = -1;
+
+  return r;
+}
+
+void dosis_atexit(char *name, void (*func)(void))
+{
+  DOSIS_ATEXIT *a;
+
+  if((a = calloc(1, sizeof(DOSIS_ATEXIT))) == NULL)
+    FAT("Cannot alloc a DOSIS_ATEXIT node.");
+  a->name = strdup(name);
+  a->func = func;
+  a->next = dosis_atexit_list;
+  dosis_atexit_list = a;
+}
+
 static void dos_config_fini(void)
 {
+  DOSIS_ATEXIT *a, *a2;
+
+  if(dosis_forked)
+  {
+    DBG("Ignoring atexit on fork.");
+    return;
+  }
+
+  for(a = dosis_atexit_list; a; )
+  {
+    DBG("Executing atexit [%s]", a->name);
+    a->func();
+    a2 = a->next;
+    free(a->name);
+    free(a);
+    a = a2;
+  }
+  DBG("Atexit finished.");
+
   if(cfg.output)       free(cfg.output);
   if(cfg.script)       free(cfg.script);
   if(cfg.of != stdout) fclose(cfg.of);

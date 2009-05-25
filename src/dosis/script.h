@@ -146,8 +146,12 @@ typedef struct SNODE_tag {
       struct SNODE_tag *max;    /* a snode specifying max range value        */
     } range;
   };
+
+  /* memory management pointer (lazy free) */
+  struct SNODE_tag *next_allocated;
 } SNODE;
 
+extern void script_init(void);
 extern SNODE *script_parse(void);
 
 #define IPADDR      

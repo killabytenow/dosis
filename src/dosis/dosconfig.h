@@ -46,6 +46,8 @@ typedef struct __TAG_config {
 extern DOS_CONFIG cfg;
 
 void dos_config_init(int argc, char **argv);
+int dosis_fork(void);
+void dosis_atexit(char *name, void (*func)(void));
 
 /*****************************************************************************
  * LOGFILE

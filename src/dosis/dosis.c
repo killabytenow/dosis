@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
 
   log_init();
   tea_init();
+  script_init();
 
   /* install signal handlers */
   signal(SIGHUP,  handle_termination__signal);

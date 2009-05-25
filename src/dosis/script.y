@@ -34,13 +34,15 @@
   #include "script.h"
   #include "log.h"
   #include "ip.h"
+  #include "dosconfig.h"
 
   int yylex (void);
   void yyerror (char const *);
   SNODE *new_node(int type);
 
-  static int lineno = 1;
+  static int lineno;
   static SNODE *script;
+  static SNODE *allocated_list;
 %}
 %union {
   SNODE     *snode;
@@ -216,7 +218,45 @@ SNODE *new_node(int type)
     D_FAT("Cannot alloc SNODE (%d).", type);
   n->type = type;
   n->line = lineno;
+
+  n->next_allocated = allocated_list;
+  allocated_list = n;
+
   return n;
+}
+
+static void script_fini(void)
+{
+  SNODE *n, *n2;
+
+  for(n = allocated_list; n; )
+  {
+    n2 = n->next_allocated;
+    switch(n->type)
+    {
+      case TYPE_CMD_SETVAR:
+        free(n->command.setvar.var);
+        break;
+
+      case TYPE_STRING:
+        free(n->string.value);
+        break;
+
+      case TYPE_VAR:
+        free(n->varname);
+        break;
+    }
+    free(n);
+    n = n2;
+  }
+}
+
+void script_init(void)
+{
+  lineno = 1;
+  allocated_list = NULL;
+
+  dosis_atexit("SCRIPT", script_fini);
 }
 
 /* The lexical analyzer returns a double floating point

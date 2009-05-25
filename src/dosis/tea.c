@@ -565,8 +565,7 @@ static void tea_fini(void)
 
 void tea_init(void)
 {
-  if(atexit(tea_fini))
-    D_FAT("Cannot set finalization routine.");
+  dosis_atexit("TEA", tea_fini);
 
   if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
     D_FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);

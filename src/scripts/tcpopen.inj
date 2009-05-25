@@ -32,7 +32,7 @@
 # configuration
 THOST="127.0.0.1"
 TPORT="80"
-RT="5.0"
+RT="2.0"
 
 # script
 0.0 ON 1 LISTEN
