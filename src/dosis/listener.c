@@ -223,6 +223,7 @@ repeat_search:
     id = tea_thread_search_listener((char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
     if(id >= 0)
     {
+DBG("Listener found (%d)", id);
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
       tmsg = tea_msg_get();
       tea_msg_fill(tmsg, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
@@ -238,15 +239,11 @@ repeat_search:
       }
     } else {
 #warning "decide here the best policy for not handled packets in IPQ."
+DBG("Listener NOT FOUND");
       pthreadex_mutex_begin(&ipq_mutex);
-      if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
-        ERR("Cannot DROP IPQ packet.");
+      if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
+        ERR("Cannot ACCEPT IPQ packet.");
       pthreadex_mutex_end();
-#if 0
-      /* policy: accept anything unknown */
-      if(ipqex_set_verdict(&tw->msg, NF_ACCEPT) <= 0)
-        ERR("[%d/%s] Cannot ACCEPT IPQ packet.", tw->w->id, tw->methods->name);
-#endif
     }
   }
 }

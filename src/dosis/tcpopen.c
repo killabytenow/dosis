@@ -59,6 +59,10 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
   /* check msg size and headers */
+DBG("size     = %d", size);
+DBG("ip proto = %d", ip_protocol(msg));
+DBG("daddr    = %d", ip_header(msg)->daddr);
+DBG("source p = %d", tcp_header(msg)->source);
   if(size < sizeof(struct iphdr)
   || ip_protocol(msg) != 6
   || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
