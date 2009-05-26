@@ -62,7 +62,6 @@ static void listener__global_fini(void)
 {
   int f, pid, r;
   char buf[100];
-  int p[2];
 
   /* restore ipforward */
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
@@ -74,29 +73,19 @@ static void listener__global_fini(void)
   close(f);
 
   /* restore iptables */
-  if(pipe(p) < 0)
-    FAT("Cannot create pipe: %s", iptables_tmp, strerror(errno));
   if((pid = dosis_fork()) == 0)
   {
     /* child */
-    /* save iptables state */
+    /* restore iptables state */
     close(0);
-    close(p[1]);
-    dup(p[0]);
-    close(p[0]);
+    if(open(iptables_tmp, O_RDONLY) < 0)
+      FAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
     execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
     /* if this code is executed, we have an error */
     FAT("Cannot execute /sbin/iptables-restore: %s", strerror(errno));
   }
   /* parent */
-  close(p[0]);
-  if((f = open(iptables_tmp, O_RDONLY)) < 0)
-    FAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
-  while((r = read(f, buf, sizeof(buf))) > 0)
-    if(write(p[1], buf, r) < 0)
-      FAT("Cannot write to pipe: %s", strerror(errno));
-  close(p[1]);
-  close(f);
+  waitpid(pid, &r, 0);
   if(r != 0)
     FAT("iptables-restore failed.");
   if(unlink(iptables_tmp) < 0)
@@ -113,6 +102,8 @@ static void listener__global_init(void)
 {
   int f, pid, r;
   char **a, *iscript[] = {
+      "/sbin/iptables", "-L", NULL,
+      NULL,
       "/sbin/iptables", "-t", "filter", "-F", NULL,
       "/sbin/iptables", "-t", "nat",    "-F", NULL,
       "/sbin/iptables", "-t", "mangle", "-F", NULL,
@@ -244,6 +235,7 @@ DBG("Listener NOT FOUND");
       if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
         ERR("Cannot ACCEPT IPQ packet.");
       pthreadex_mutex_end();
+DBG("   ------------------ done");
     }
   }
 }

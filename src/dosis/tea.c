@@ -42,8 +42,6 @@ static THREAD_WORK     **ttable;
 static pthreadex_mutex_t ttable_mutex;
 static TEA_MSG_QUEUE    *msg_free;
 
-static THREAD_WORK      *listeners;
-
 typedef struct {
   SNODE *first;
   int    i1, i2, i;
@@ -81,7 +79,6 @@ static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
 
   /* free queue */
   free(mq);
-DBG("XXXXXXXXXXXXXXXXXXXXXX ---- %p ----- XXXXXXXXXXXXXXXXXXXX", mq);
 }
 
 void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
@@ -309,15 +306,6 @@ static void tea_thread_stop(int tid)
   /* consider it dead */
   ttable[tid] = NULL;
 
-  /* if this is a listener, then unchain it from the listeners list */
-  if(tw->methods->listen)
-  {
-    if(listeners == tw)
-      listeners = tw->next_listener;
-    if(tw->prev_listener)
-      tw->prev_listener->next_listener = tw->next_listener;
-  }
-
   /* kill thread */
   if(pthread_detach(tw->pthread_id))
     ERR("Cannot detach thread %u: %s", tid, strerror(errno));
@@ -329,16 +317,31 @@ static void tea_thread_stop(int tid)
 
 int tea_thread_search_listener(char *b, unsigned int l)
 {
-  THREAD_WORK *tw;
-  int r = -1;
+  int tid, prio, stid, sprio;
+
+  stid = -1;
+  sprio = 0;
 
   pthreadex_mutex_begin(&ttable_mutex);
-  for(tw = listeners; r < 0 && tw; tw = tw->next_listener)
-    if(tw->methods->listen_check(tw, b, l))
-      r = tw->id;
+  for(tid = 0; tid < cfg.maxthreads; tid++)
+  {
+    if(ttable[tid]
+    && ttable[tid]->methods->listen_check
+    && (prio = ttable[tid]->methods->listen_check(ttable[tid], b, l)) != 0)
+    {
+      if(prio > 0)
+        FAT("Positive priority? Not in my wolrd. Die motherfucker.");
+      if(prio == -1)
+        return tid;
+      if(sprio < prio)
+        continue;
+      sprio = prio;
+      stid  = tid;
+    }
+  }
   pthreadex_mutex_end();
 
-  return r;
+  return stid;
 }
 
 int tea_thread_msg_push(int tid, TEA_MSG *m)

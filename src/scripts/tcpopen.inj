@@ -31,6 +31,7 @@
 
 # configuration
 THOST="127.0.0.1"
+THOST="192.168.2.1"
 TPORT="80"
 RT="5.0"
 
