@@ -175,6 +175,9 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   if(tc->hitratio > 0)
     pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
 
+  /* configure src address (if not defined) */
+#warning "TODO: Configure SRC address."
+
   /* (debug) print configuration */
   {
     char buff[255];
