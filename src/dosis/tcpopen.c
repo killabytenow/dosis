@@ -61,8 +61,8 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   /* check msg size and headers */
 DBG("size       = %d", size);
 DBG("ip proto   = %d", ip_protocol(msg));
-DBG("daddr      = %x", ip_header(msg)->daddr);
-DBG("source p   = %d", tcp_header(msg)->source);
+DBG("saddr:srcp = %x:%d (%x:%d)", ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->dhost.addr.in.addr, tc->dhost.port);
+DBG("daddr:dstp = %x:%d (%x:%d)", ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest));
 DBG("flags(fin) = %x", tcp_header(msg)->fin);
 DBG("flags(syn) = %x", tcp_header(msg)->syn);
 DBG("flags(rst) = %x", tcp_header(msg)->rst);
@@ -76,8 +76,8 @@ DBG("flags(urg) = %x", tcp_header(msg)->urg);
     return 0;
 
   /* check msg */
-  return ip_header(msg)->daddr   == tc->shost.addr.in.addr
-      && tcp_header(msg)->source == tc->dhost.port;
+  return ip_header(msg)->daddr == tc->dhost.addr.in.addr
+      && tcp_header(msg)->dest == tc->dhost.port;
 }
 
 static void tcpopen__listen(THREAD_WORK *tw)

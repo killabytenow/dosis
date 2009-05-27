@@ -102,8 +102,6 @@ static void listener__global_init(void)
 {
   int f, pid, r;
   char **a, *iscript[] = {
-      "/sbin/iptables", "-L", NULL,
-      NULL,
       "/sbin/iptables", "-t", "filter", "-F", NULL,
       "/sbin/iptables", "-t", "nat",    "-F", NULL,
       "/sbin/iptables", "-t", "mangle", "-F", NULL,
