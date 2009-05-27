@@ -63,7 +63,6 @@ static TEA_MSG_QUEUE *tea_mqueue_create(void)
 
   if((mq = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
     D_FAT("No memory for a tea message queue.");
-D_DBG("NEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEWWWWWWWWWWWWWWWWWw %p", mq);
   pthreadex_mutex_init(&(mq->mutex));
 
   return mq;
@@ -225,10 +224,6 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
-  DBG("[[%p]]", tw);
-  DBG("[[%p]]", tw->methods);
-  DBG("[[%s]]", tw->methods->name);
-
   if(tw->methods->listen)
   {
     while(1)
@@ -266,7 +261,6 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   tw->mqueue = tw->methods->listen
                  ? tea_mqueue_create()
                  : NULL;
-DBG("==================================== %s %p", to->name, tw->mqueue);
   pthreadex_flag_init(&(tw->mwaiting), 0);
 
   /* global thread initialization here */
@@ -284,11 +278,8 @@ DBG("==================================== %s %p", to->name, tw->mqueue);
   ttable[tid] = tw;
 
   /* launch thread */
-DBG(">>>>>%p", tw);
-//DBG(">>>>>%p", tw->methods);
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
     FAT("Error creating thread %d: %s", tid, strerror(errno));
-DBG("CHUSMA");
 }
 
 static void tea_thread_stop(int tid)
@@ -563,6 +554,8 @@ static void tea_fini(void)
     free(ttable);
   }
 
+  tea_mqueue_destroy(msg_free);
+
   DBG("tea timer finished.");
 }
 
@@ -623,7 +616,6 @@ void tea_timer(SNODE *program)
             !tea_iter_finish(&ti);
             tid = tea_iter_next(&ti))
         {
-D_DBG("CHIU");
           switch(cmd->command.thc.to->type)
           {
             case TYPE_TO_LISTEN:  to = &teaLISTENER; break;
@@ -636,9 +628,7 @@ D_DBG("CHIU");
           }
           D_DBG("Creating thread of type %s.", to->name);
           tea_thread_new(tid, to, cmd);
-D_DBG("ZIPOSTIO");
         }
-D_DBG("ZORROUN");
         break;
       case TYPE_CMD_OFF:
         for(tid = tea_iter_start(cmd->command.thc.selection, &ti);

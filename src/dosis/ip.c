@@ -140,6 +140,39 @@ int ip_read_range(char *network, INET_IPV4_RANGE *range)
   return ret;
 }
 
+void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr)
+{
+  switch(saddr->sa_family)
+  {
+    case AF_INET:
+      {
+        struct sockaddr_in *sin = (struct sockaddr_in *) saddr;
+        addr->addr.in.addr = sin->sin_addr.s_addr;
+        addr->type = INET_FAMILY_IPV4;
+        addr->port = sin->sin_port;
+        addr->port_defined = -1;
+      }
+      break;
+
+    case AF_INET6:
+#if HAVE_STRUCT_SOCKADDR_IN6
+      {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) saddr;
+        memcpy(addr->addr.in6.addr, &sin6->sin6_addr, sizeof(addr->addr.in6));
+        addr->type = INET_FAMILY_IPV6;
+        addr->port = sin6->sin6_port;
+        addr->port_defined = -1;
+      }
+#else
+      D_FAT("This platform does not support IPv6.");
+#endif
+      break;
+
+    default:
+      D_FAT("Unknown internet protocol %d.", saddr->sa_family);
+  }
+}
+
 void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
 {
   char tmp[INET_ADDR_MAXLEN_STR];

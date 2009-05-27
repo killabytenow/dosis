@@ -141,6 +141,94 @@ static void dos_config_parse_command(int argc, char **argv)
  * Initialization and finalization routines
  *****************************************************************************/
 
+#define inaddrr(x) (*(struct in_addr *) &ifr->x[sizeof sa.sin_port])
+#define IFRSIZE   ((int)(size * sizeof (struct ifreq)))
+
+void dos_get_addresses(void)
+{
+  int                sockfd, size  = 0;
+  struct ifreq       *ifr;
+  struct ifconf      ifc;
+  DOS_ADDR_INFO *a;
+  char buff[255];
+
+  if((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) < 0)
+    FAT("Cannot open socket.\n");
+
+  ifc.ifc_len = IFRSIZE;
+  ifc.ifc_req = NULL;
+
+  /* get buffer for all the interfaces */
+  size = sizeof(struct ifreq);
+  do {
+    size <<= 1;
+    ifc.ifc_len = size;
+    if((ifc.ifc_req = realloc(ifc.ifc_req, ifc.ifc_len)) == NULL)
+      FAT("Out of memory.\n");
+    if(ioctl(sockfd, SIOCGIFCONF, &ifc))
+      FAT("Cannot ioctl SIOCFIFCONF: %s", strerror(errno));
+    DBG("ifc.ifc_len = %d", ifc.ifc_len / sizeof(struct ifreq));
+  } while(size <= ifc.ifc_len);
+
+  /* get the info! */
+  cfg.addr = NULL;
+  for(ifr = ifc.ifc_req; 
+      ifr < (struct ifreq *) (((void *) ifc.ifc_req) + ifc.ifc_len);
+      ifr++)
+  {
+    /* check flags */
+    if(ioctl(sockfd, SIOCGIFFLAGS, ifr))
+      continue;  /* failed to get flags, skip it */
+
+    if(!(ifr->ifr_flags & IFF_UP))
+      DBG("Interface %s is down.", ifr->ifr_name);
+
+    /* alloc a new address info structure */
+    if((a = calloc(1, sizeof(DOS_ADDR_INFO))) == NULL)
+      FAT("Cannot alloc a DOS_ADDR_INFO struct.");
+    a->next = cfg.addr;
+    cfg.addr = a;
+    a->name = strdup(ifr->ifr_name);
+
+    /* get PA */
+    if(!ioctl(sockfd, SIOCGIFADDR, ifr))
+    {
+      ip_socket_to_addr(&ifr->ifr_addr, &a->addr);
+      ip_addr_unset_port(&a->addr);
+    } else
+      DBG("Interface %s has not a primary address.", a->name);
+
+    /* get PA netmask */
+    if(!ioctl(sockfd, SIOCGIFNETMASK, ifr))
+    {
+      ip_socket_to_addr(&ifr->ifr_addr, &a->mask);
+      ip_addr_unset_port(&a->mask);
+    } else
+      DBG("Interface %s has not a PA network mask.", a->name);
+
+    /* get HW address */
+    if(ioctl(sockfd, SIOCGIFHWADDR, ifr) == 0
+    && (ifr->ifr_hwaddr.sa_family == ARPHRD_NETROM
+     || ifr->ifr_hwaddr.sa_family == ARPHRD_ETHER
+     || ifr->ifr_hwaddr.sa_family == ARPHRD_PPP
+     || ifr->ifr_hwaddr.sa_family == ARPHRD_EETHER
+     || ifr->ifr_hwaddr.sa_family == ARPHRD_IEEE802))
+      memcpy(a->hwaddr, &ifr->ifr_addr.sa_data, sizeof(a->hwaddr));
+
+    DBG("Interface:  %s", a->name);
+    DBG("HW Address: %02x:%02x:%02x:%02x:%02x:%02x",
+        a->hwaddr[0], a->hwaddr[1], a->hwaddr[2],
+        a->hwaddr[3], a->hwaddr[4], a->hwaddr[5]);
+    ip_addr_snprintf(&a->addr, 255, buff);
+    DBG("IP Address: %s", buff);
+    ip_addr_snprintf(&a->mask, 255, buff);
+    DBG("IP Mask:    %s", buff);
+  }
+
+  free(ifc.ifc_req);
+  close(sockfd);
+}
+
 int dosis_fork(void)
 {
   int r;
@@ -168,7 +256,8 @@ void dosis_atexit(char *name, void (*func)(void))
 
 static void dos_config_fini(void)
 {
-  DOSIS_ATEXIT *a, *a2;
+  DOSIS_ATEXIT *atx;
+  DOS_ADDR_INFO *addr;
 
   if(dosis_forked)
   {
@@ -176,20 +265,26 @@ static void dos_config_fini(void)
     return;
   }
 
-  for(a = dosis_atexit_list; a; )
+  while((atx = dosis_atexit_list) != NULL)
   {
-    DBG("Executing atexit [%s]", a->name);
-    a->func();
-    a2 = a->next;
-    free(a->name);
-    free(a);
-    a = a2;
+    DBG("Executing atexit [%s]", atx->name);
+    dosis_atexit_list = atx->next;
+    atx->func();
+    free(atx->name);
+    free(atx);
   }
   DBG("Atexit finished.");
 
   if(cfg.output)       free(cfg.output);
   if(cfg.script)       free(cfg.script);
   if(cfg.of != stdout) fclose(cfg.of);
+
+  while((addr = cfg.addr) != NULL)
+  {
+    cfg.addr = addr->next;
+    free(addr->name);
+    free(addr);
+  }
 
   if(short_options)
     free(short_options);
@@ -256,6 +351,9 @@ void dos_config_init(int argc, char **argv)
     D_WRN("Writing to standard output.");
     cfg.of = stdout;
   }
+
+  /* get network interfaces and ip addresses */
+  dos_get_addresses();
 
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();

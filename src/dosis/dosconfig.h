@@ -31,12 +31,23 @@ extern "C" {
 #endif
 
 #include <config.h>
+#include "ip.h"
 
-typedef struct __TAG_config {
+typedef struct _tag_DOS_ADDR_INFO {
+  char          *name;
+  unsigned char  hwaddr[6];
+  INET_ADDR      addr;
+  INET_ADDR      mask;
+
+  struct _tag_DOS_ADDR_INFO *next;
+} DOS_ADDR_INFO;
+
+typedef struct _tag_DOS_CONFIG {
   int             verbosity;
   char           *output;
   char           *script;
   int             maxthreads;
+  DOS_ADDR_INFO  *addr;
 
   /* configuration data set by application based on user options */
   FILE           *of;

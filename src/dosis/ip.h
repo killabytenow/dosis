@@ -94,6 +94,7 @@ void ip_addr_set_port(INET_ADDR *addr, int port);
 void ip_addr_unset_port(INET_ADDR *addr);
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from);
 
+void             ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr);
 void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
 struct sockaddr *ip_addr_get_socket(INET_ADDR *addr);
 

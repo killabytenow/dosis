@@ -67,6 +67,9 @@ extern "C" {
 #include <libnet.h>
 #include <libipq.h>
 #include <linux/netfilter.h>
+#include <net/if.h>
+#include <net/if_arp.h>
+#include <arpa/inet.h>
 
 /* Some functions as log functions (d_debug, d_log, d_error ...)     */
 /* have a variable number of parameters so 'stdarg.h' will be needed */
