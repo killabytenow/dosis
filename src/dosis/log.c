@@ -60,13 +60,9 @@ static char *d_log_get_level_desc(int level)
 
 static void d_log_prefix_print(int level, char *file, char *function)
 {
-  char *type = NULL;
-
-  type = d_log_get_level_desc(level);
-
+  fputs(d_log_get_level_desc(level), logfile);
   if(file)     fprintf(logfile, "%s:", file);
   if(function) fprintf(logfile, "%s:", function);
-  fputs(type, logfile);
 }
 
 static void d_log_level_print(int level, char *file, char *function, char *format, va_list args)

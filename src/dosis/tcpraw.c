@@ -176,7 +176,19 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
 
   /* configure src address (if not defined) */
-#warning "TODO: Configure SRC address."
+  if(tc->dhost.type == INET_FAMILY_NONE)
+    FAT("I need a target address.");
+  if(tc->shost.type == INET_FAMILY_NONE)
+  {
+    DOS_ADDR_INFO *ai;
+    if((ai = dos_get_interface(&tc->dhost)) == NULL)
+    {
+      char buff[255];
+      ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
+      WRN("Cannot find a suitable source address for '%s'.", buff);
+    } else
+      ip_addr_copy(&tc->shost, &ai->addr);
+  }
 
   /* (debug) print configuration */
   {

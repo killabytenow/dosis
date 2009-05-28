@@ -60,6 +60,8 @@ void dos_config_init(int argc, char **argv);
 int dosis_fork(void);
 void dosis_atexit(char *name, void (*func)(void));
 
+DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta);
+
 /*****************************************************************************
  * LOGFILE
  *

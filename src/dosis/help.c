@@ -41,7 +41,7 @@ void dos_help_program_header(void)
   char **i;
 
   for(i = msg; *i; i++)
-    D_LOG(NULL, NULL, *i);
+    LOG("%s", *i);
 }
 
 void print_help(void)

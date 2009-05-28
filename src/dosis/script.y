@@ -70,7 +70,6 @@ script: input       { script = $1; }
 input: /* empty */        { $$ = NULL; }
      | '\n' input         { $$ = $2;   }
      | command '\n' input { $$ = $1;
-                            D_DBG("$$=%p $3=%p", $$, $3);
                             $$->command.next = $3; }
      ;
 
@@ -215,7 +214,7 @@ SNODE *new_node(int type)
 {
   SNODE *n;
   if((n = calloc(1, sizeof(SNODE))) == NULL)
-    D_FAT("Cannot alloc SNODE (%d).", type);
+    FAT("Cannot alloc SNODE (%d).", type);
   n->type = type;
   n->line = lineno;
 
@@ -284,23 +283,21 @@ void readvar(char *buff, int *real_bi)
   v = buff + bi;
   c = getchar();
   if(c == EOF)
-    D_FAT("Bad identifier.");
+    FAT("Bad identifier.");
   SADD(c);
   if(c == '{')
   {
     while((c = getchar()) != '}' && isalnum(c) && c != '\n' && c != EOF)
       SADD(c);
     if(c == '\n')
-      D_FAT("Non-terminated var.");
+      FAT("Non-terminated var.");
     if(isblank(c) || c == EOF)
-      D_FAT("Bad identifier.");
+      FAT("Bad identifier.");
   } else {
     while(isalnum(c = getchar()) && c != EOF)
       SADD(c);
   }
   ungetc(c, stdin);
-
-  D_DBG("Readed var name '%s'.", v);
 
   /* update real_bi */
   *real_bi = bi;
@@ -308,7 +305,7 @@ void readvar(char *buff, int *real_bi)
   return;
 
 ha_roto_la_olla:
-  D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
+  FAT("You have agoted my pedazo of buffer (%s...).", buff);
 }
 
 int yylex(void)
@@ -342,7 +339,7 @@ int yylex(void)
   /* Return end-of-input.  */
   if(c == EOF)
   {
-    D_DBG("YYLEX EOF!");
+    DBG("Readed a script of %d lines.", lineno - 1);
     return 0;
   }
 
@@ -353,11 +350,10 @@ int yylex(void)
       ;
     if(c == '\n')
     {
-      D_DBG("TOKEN[NEWLINE]");
       lineno++;
       return c;
     }
-    D_DBG("YYLEX EOF!");
+    DBG("Readed a script of %d lines.", lineno - 1);
     return 0;
   }
 
@@ -380,9 +376,8 @@ int yylex(void)
         SADD(c);
       }
       if(isalpha(c) || bi < 1)
-        D_FAT("%d: Bad hex number.", lineno);
+        FAT("%d: Bad hex number.", lineno);
       sscanf(buff + 2, "%x", &(yylval.nint));
-      D_DBG("TOKEN[NINT] = HEX(%s)", buff);
       return NINT;
     }
 
@@ -397,8 +392,7 @@ int yylex(void)
         SADD(c);
       }
       if(isalnum(c) || bi < 1)
-        D_FAT("%d: Bad bin number.", lineno);
-      D_DBG("TOKEN[NINT] = BIN(%s)", buff);
+        FAT("%d: Bad bin number.", lineno);
       return NINT;
     }
 
@@ -417,13 +411,12 @@ int yylex(void)
         while(strchr("89abcdefABCDEF.:", c) != NULL)
           SADD(c);
         ungetc(c, stdin);
-        D_DBG("TOKEN[STRING] = '%s' (network address?)", buff);
+DBG("TOKEN[STRING] = '%s' (network address?)", buff);
         return STRING;
       }
 
       /* it is an octal num */
       sscanf(buff, "%o", &(yylval.nint));
-      D_DBG("TOKEN[NINT] = OCT(%s)", buff);
       return NINT;
     }
     /* else... it should be a float number or something like that */
@@ -449,12 +442,10 @@ int yylex(void)
       case 0:
         /* normal integer */
         sscanf(buff, "%d", &(yylval.nint));
-        D_DBG("TOKEN[NINT] = %s", buff);
         return NINT;
 
       case 1:
         sscanf(buff, "%lf", &(yylval.nfloat));
-        D_DBG("TOKEN[NFLOAT] = '%s'", buff);
         return NFLOAT;
 
       default:
@@ -463,8 +454,7 @@ int yylex(void)
           SADD(c);
         ungetc(c, stdin);
         if((yylval.string = strdup(buff)) == NULL)
-          D_FAT("No mem for string '%s'.", buff);
-        D_DBG("TOKEN[STRING] = '%s'", buff);
+          FAT("No mem for string '%s'.", buff);
         return STRING;
     }
   }
@@ -474,8 +464,7 @@ int yylex(void)
   {
     readvar(buff, &bi);
     if((yylval.string = strdup(buff)) == NULL)
-      D_FAT("No mem for string '%s'.", buff);
-    D_DBG("TOKEN[VAR] = '$%s'", buff);
+      FAT("No mem for string '%s'.", buff);
     return VAR;
   }
 
@@ -493,12 +482,11 @@ int yylex(void)
         SADD(c);
       }
     if(c == '\n')
-      D_FAT("%d: Non-terminated string.", lineno);
+      FAT("%d: Non-terminated string.", lineno);
     s = strdup(buff);
     if(!s)
-      D_FAT("No mem for string '%s'.", buff);
+      FAT("No mem for string '%s'.", buff);
     yylval.string = s;
-    D_DBG("TOKEN['LITERAL'] = '%s'", buff);
     return LITERAL;
   }
 
@@ -520,19 +508,17 @@ int yylex(void)
         SADD(c);
       }
     if(c == '\n')
-      D_FAT("Non-terminated string.");
+      FAT("Non-terminated string.");
     s = strdup(buff);
     if(!s)
-      D_FAT("No mem for string \"%s\".", buff);
+      FAT("No mem for string \"%s\".", buff);
     yylval.string = s;
-    D_DBG("TOKEN[\"STRING\"] = '%s'", buff);
     return STRING;
   }
 
   /* special chars (chocolate minitokens) */
   if(c == '\n')
   {
-    D_DBG("TOKEN[NEWLINE]");
     lineno++;
     return c;
   }
@@ -543,10 +529,7 @@ int yylex(void)
   || c == '[' || c == ']'
   || c == '(' || c == ')'
   || c == '%')
-  {
-    D_DBG("TOKEN[CHAR(%d)] = '%c'", c, c);
     return c;
-  }
 
   /* ummm.. read word (string) or token */
   do {
@@ -556,26 +539,22 @@ int yylex(void)
   /* is a language token? */
   for(token = tokens; token->token; token++)
     if(!strcasecmp(buff, token->token))
-    {
-      D_DBG("TOKEN[%s]", buff);
       return token->id;
-    }
   /* return string */
   s = strdup(buff);
   if(!s)
-    D_FAT("No mem for string \"%s\".", buff);
+    FAT("No mem for string \"%s\".", buff);
   yylval.string = s;
-  D_DBG("TOKEN[LITERAL] = '%s'", buff);
   return LITERAL;
 
 ha_roto_la_olla:
-  D_FAT("You have agoted my pedazo of buffer (%s...).", buff);
+  FAT("You have agoted my pedazo of buffer (%s...).", buff);
   return 0;
 }
 
 void yyerror(char const *str)
 {
-  D_ERR("parsing error: %s", str);
+  ERR("parsing error: %s", str);
 }
 
 SNODE *script_parse(void)

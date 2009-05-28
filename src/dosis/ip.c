@@ -123,7 +123,7 @@ int ip_read_range(char *network, INET_IPV4_RANGE *range)
   int ret = 0;
 
   if((s = strdup(network)) == NULL)
-    D_FAT("No memory for network.");
+    FAT("No memory for network.");
 
   if(strrchr(s, '/') != NULL)
     ret = ip_read_network(network, s, range);
@@ -164,12 +164,12 @@ void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr)
         addr->port_defined = -1;
       }
 #else
-      D_FAT("This platform does not support IPv6.");
+      FAT("This platform does not support IPv6.");
 #endif
       break;
 
     default:
-      D_FAT("Unknown internet protocol %d.", saddr->sa_family);
+      FAT("Unknown internet protocol %d.", saddr->sa_family);
   }
 }
 
@@ -211,12 +211,12 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
         memcpy(&sin6->sin6_addr, addr->addr.in6.addr, sizeof(addr->addr.in6));
       }
 #else
-      D_FAT("This platform does not support IPv6.");
+      FAT("This platform does not support IPv6.");
 #endif
       break;
 
     default:
-      D_FAT("Unknown internet protocol %d.", addr->type);
+      FAT("Unknown internet protocol %d.", addr->type);
   }
 }
 
@@ -236,15 +236,15 @@ struct sockaddr *ip_addr_get_socket(INET_ADDR *addr)
       bytes = sizeof(struct sockaddr_in6);
       break;
 #else
-      D_FAT("This platform does not implement IPv6.");
+      FAT("This platform does not implement IPv6.");
 #endif
     default:
-      D_FAT("Unknown internet protocol %d.", addr->type);
+      FAT("Unknown internet protocol %d.", addr->type);
   }
 
   /* get memory */
   if((saddr = malloc(bytes)) == NULL)
-    D_FAT("No memory for a sockaddr_in structure.");
+    FAT("No memory for a sockaddr_in structure.");
 
   /* fill sockaddr structure */
   ip_addr_to_socket(addr, saddr);
@@ -454,7 +454,7 @@ unsigned int ip_addr_get_part_ipv4(INET_ADDR *addr, int part)
   if(addr->type != INET_FAMILY_IPV4 || part < 1 || part > 4)
   {
     ip_addr_snprintf(addr, sizeof(buff), buff);
-    D_FAT("Bad IPv4 address '%s' or invalid part number (%d).", buff, part);
+    FAT("Bad IPv4 address '%s' or invalid part number (%d).", buff, part);
   }
 
   return IPV4_GETP(part-1, &addr->addr.in);
@@ -468,7 +468,7 @@ unsigned int ip_addr_get_part_ipv6_nibble(INET_ADDR *addr, int part)
   if(addr->type != INET_FAMILY_IPV6 || part < 1 || part > 32)
   {
     ip_addr_snprintf(addr, sizeof(buff), buff);
-    D_FAT("Bad IPv6 address '%s' or invalid nibble-part number (%d).", buff, part);
+    FAT("Bad IPv6 address '%s' or invalid nibble-part number (%d).", buff, part);
   }
 
   byte = (part - 1) >> 1;
@@ -484,7 +484,7 @@ unsigned int ip_addr_get_part_ipv6_byte(INET_ADDR *addr, int part)
   if(addr->type != INET_FAMILY_IPV6 || part < 1 || part > 16)
   {
     ip_addr_snprintf(addr, sizeof(buff), buff);
-    D_FAT("Bad IPv6 address '%s' or invalid byte-part number (%d).", buff, part);
+    FAT("Bad IPv6 address '%s' or invalid byte-part number (%d).", buff, part);
   }
 
   return IPV6_GETB(part - 1, &addr->addr.in6);
@@ -497,10 +497,38 @@ unsigned int ip_addr_get_part_ipv6_word(INET_ADDR *addr, int part)
   if(addr->type != INET_FAMILY_IPV6 || part < 1 || part > 8)
   {
     ip_addr_snprintf(addr, sizeof(buff), buff);
-    D_FAT("Bad IPv6 address '%s' or invalid word-part number (%d).", buff, part);
+    FAT("Bad IPv6 address '%s' or invalid word-part number (%d).", buff, part);
   }
 
   return IPV6_GETB(((part - 1) * 2) + 0, &addr->addr.in6) << 8
        | IPV6_GETB(((part - 1) * 2) + 1, &addr->addr.in6);
+}
+
+int ip_addr_check_mask(INET_ADDR *addr, INET_ADDR *netw, INET_ADDR *mask)
+{
+  int i;
+
+  /* check compatibility */
+  if(addr->type != netw->type)
+    return 0;
+
+  /* check mask */
+  if(addr->type == INET_FAMILY_NONE)
+    return -1;
+
+  if(addr->type == INET_FAMILY_IPV4)
+    return (netw->addr.in.addr & mask->addr.in.addr)
+        == (addr->addr.in.addr & mask->addr.in.addr);
+
+  if(addr->type == INET_FAMILY_IPV6)
+  {
+    for(i = 15; i >= 0 && mask->addr.in6.addr[i]; i--)
+      if((netw->addr.in6.addr[i] & addr->addr.in6.addr[i])
+      != (addr->addr.in6.addr[i] & addr->addr.in6.addr[i]))
+        return 0;
+    return -1;
+  }
+
+  FAT("Unknown network family %d.", addr->type);
 }
 

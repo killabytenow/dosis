@@ -32,7 +32,7 @@ dnl Set DioNiSio version
 dnl ---------------------------------------------------------------------------
 
 define(DOS_AC_VERSION_MAJOR,   1)
-define(DOS_AC_VERSION_MINOR,   3)
+define(DOS_AC_VERSION_MINOR,   0)
 define(DOS_AC_VERSION_RELEASE, 0)
 define(DOS_AC_VERSION, DOS_AC_VERSION_MAJOR.DOS_AC_VERSION_MINOR.DOS_AC_VERSION_RELEASE)
 

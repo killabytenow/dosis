@@ -229,6 +229,17 @@ void dos_get_addresses(void)
   close(sockfd);
 }
 
+DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta)
+{
+  DOS_ADDR_INFO *sa;
+
+  for(sa = cfg.addr; sa; sa = sa->next)
+    if(ip_addr_check_mask(ta, &sa->addr, &sa->mask))
+      return sa;
+
+  return NULL;
+}
+
 int dosis_fork(void)
 {
   int r;
@@ -352,14 +363,14 @@ void dos_config_init(int argc, char **argv)
     cfg.of = stdout;
   }
 
-  /* get network interfaces and ip addresses */
-  dos_get_addresses();
-
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();
   D_DBG("Configuration");
   D_DBG("  verbosity level = %d", cfg.verbosity);
   D_DBG("  script file     = %s", cfg.script ? cfg.script : "<standard input>");
   D_DBG("  output file     = %s", cfg.output ? cfg.output : "<standard output>");
+
+  /* get network interfaces and ip addresses */
+  dos_get_addresses();
 }
 

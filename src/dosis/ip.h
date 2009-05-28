@@ -106,6 +106,8 @@ unsigned int ip_addr_get_part_ipv6_nibble(INET_ADDR *addr, int part);
 unsigned int ip_addr_get_part_ipv6_byte(INET_ADDR *addr, int part);
 unsigned int ip_addr_get_part_ipv6_word(INET_ADDR *addr, int part);
 
+int ip_addr_check_mask(INET_ADDR *addr, INET_ADDR *net, INET_ADDR *mask);
+
 #ifdef __cplusplus
 }
 #endif
