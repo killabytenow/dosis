@@ -321,7 +321,7 @@ int tea_thread_search_listener(char *b, unsigned int l)
     && (prio = ttable[tid]->methods->listen_check(ttable[tid], b, l)) != 0)
     {
       if(prio > 0)
-        FAT("Positive priority? Not in my wolrd. Die motherfucker.");
+        FAT("Positive priority? Not in my world. Die motherfucker.");
       if(prio == -1)
         return tid;
       if(sprio < prio)
@@ -341,8 +341,12 @@ int tea_thread_msg_push(int tid, TEA_MSG *m)
 
   pthreadex_mutex_begin(&ttable_mutex);
   if(ttable[tid])
-    tea_mqueue_push(ttable[tid]->mqueue, m);
-  else
+  {
+    if(ttable[tid]->mqueue)
+      tea_mqueue_push(ttable[tid]->mqueue, m);
+    else
+      tea_msg_release(m);
+  } else
     r = -1;
   pthreadex_mutex_end();
   

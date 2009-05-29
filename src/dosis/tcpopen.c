@@ -59,16 +59,26 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
   /* check msg size and headers */
-DBG("size       = %d", size);
-DBG("ip proto   = %d", ip_protocol(msg));
-DBG("saddr:srcp = %x:%d (%x:%d)", ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->dhost.addr.in.addr, tc->dhost.port);
-DBG("daddr:dstp = %x:%d (%x:%d)", ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest));
-DBG("flags(fin) = %x", tcp_header(msg)->fin);
-DBG("flags(syn) = %x", tcp_header(msg)->syn);
-DBG("flags(rst) = %x", tcp_header(msg)->rst);
-DBG("flags(psh) = %x", tcp_header(msg)->psh);
-DBG("flags(ack) = %x", tcp_header(msg)->ack);
-DBG("flags(urg) = %x", tcp_header(msg)->urg);
+DBG("[%s] size       = %d", tw->methods->name, size);
+if(size >= sizeof(struct iphdr))
+{
+DBG("[%s] ip proto   = %d", tw->methods->name, ip_protocol(msg));
+if(ip_protocol(msg) == 6)
+{
+DBG("[%s] iphdr size = %d", tw->methods->name, sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2));
+if(size >= sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+{
+DBG("[%s] saddr:srcp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->dhost.addr.in.addr, tc->dhost.port);
+DBG("[%s] daddr:dstp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest));
+DBG("[%s] flags(fin) = %x", tw->methods->name, tcp_header(msg)->fin);
+DBG("[%s] flags(syn) = %x", tw->methods->name, tcp_header(msg)->syn);
+DBG("[%s] flags(rst) = %x", tw->methods->name, tcp_header(msg)->rst);
+DBG("[%s] flags(psh) = %x", tw->methods->name, tcp_header(msg)->psh);
+DBG("[%s] flags(ack) = %x", tw->methods->name, tcp_header(msg)->ack);
+DBG("[%s] flags(urg) = %x", tw->methods->name, tcp_header(msg)->urg);
+}
+}
+}
 
   if(size < sizeof(struct iphdr)
   || ip_protocol(msg) != 6
@@ -77,7 +87,7 @@ DBG("flags(urg) = %x", tcp_header(msg)->urg);
 
   /* check msg */
   return ip_header(msg)->daddr == tc->dhost.addr.in.addr
-      && tcp_header(msg)->dest == tc->dhost.port;
+      && tcp_header(msg)->dest == tc->dhost.port ? -1 : 0;
 }
 
 static void tcpopen__listen(THREAD_WORK *tw)

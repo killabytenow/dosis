@@ -51,6 +51,50 @@ typedef struct _tag_TCPRAW_CFG {
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
 
+#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
+#define ip_header(x)   ((struct iphdr *)  (x))
+#define tcp_header(x)  ((struct tcphdr *) ((x) \
+                       + (((struct iphdr *) (x))->ihl << 2)))
+
+static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+{
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+
+  /* check msg size and headers */
+DBG("[%s] size       = %d", tw->methods->name, size);
+if(size >= sizeof(struct iphdr))
+{
+DBG("[%s] ip proto   = %d", tw->methods->name, ip_protocol(msg));
+if(ip_protocol(msg) == 6)
+{
+DBG("[%s] iphdr size = %d", tw->methods->name, sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2));
+if(size >= sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+{
+DBG("[%s] saddr:srcp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->shost.addr.in.addr, tc->shost.port);
+DBG("[%s] daddr:dstp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest),   tc->dhost.addr.in.addr, tc->dhost.port);
+DBG("[%s] flags(fin) = %x", tw->methods->name, tcp_header(msg)->fin);
+DBG("[%s] flags(syn) = %x", tw->methods->name, tcp_header(msg)->syn);
+DBG("[%s] flags(rst) = %x", tw->methods->name, tcp_header(msg)->rst);
+DBG("[%s] flags(psh) = %x", tw->methods->name, tcp_header(msg)->psh);
+DBG("[%s] flags(ack) = %x", tw->methods->name, tcp_header(msg)->ack);
+DBG("[%s] flags(urg) = %x", tw->methods->name, tcp_header(msg)->urg);
+DBG("[%s]   VEREDICT: %d", tw->methods->name, ip_header(msg)->saddr == tc->dhost.addr.in.addr
+                        && ntohs(tcp_header(msg)->source) == tc->dhost.port);
+}
+}
+}
+
+  if(size < sizeof(struct iphdr)
+  || ip_protocol(msg) != 6
+  || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+    return 0;
+
+  /* check msg */
+  return ip_header(msg)->saddr == tc->dhost.addr.in.addr
+      && ntohs(tcp_header(msg)->source) == tc->dhost.port
+         ? -255 : 0;
+}
+
 static void tcpraw__thread(THREAD_WORK *tw)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
@@ -194,15 +238,15 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   {
     char buff[255];
 
-    DBG2("[%02u] config.periodic.n     = %d", tw->id, tc->npackets);
-    DBG2("[%02u] config.periodic.bytes = %d", tw->id, tc->req_size);
-    DBG2("[%02u] config.periodic.ratio = %d", tw->id, tc->hitratio);
+    DBG2("[%d] config.periodic.n     = %d", tw->id, tc->npackets);
+    DBG2("[%d] config.periodic.bytes = %d", tw->id, tc->req_size);
+    DBG2("[%d] config.periodic.ratio = %d", tw->id, tc->hitratio);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
-    DBG2("[%02u] config.options.shost  = %s", tw->id, buff);
+    DBG2("[%d] config.options.shost  = %s", tw->id, buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    DBG2("[%02u] config.options.dhost  = %s", tw->id, buff);
-    DBG2("[%02u] config.options.flags  = %x", tw->id, tc->flags);
+    DBG2("[%d] config.options.dhost  = %s", tw->id, buff);
+    DBG2("[%d] config.options.flags  = %x", tw->id, tc->flags);
   }
 
   return 0;
@@ -220,7 +264,7 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
   free(tc);
   tw->data = NULL;
 
-  DBG("[%02u] Finalized.", tw->id);
+  DBG("[%d] Finalized.", tw->id);
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -228,9 +272,10 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TEA_OBJECT teaTCPRAW = {
-  .name      = "TCPRAW",
-  .configure = tcpraw__configure,
-  .cleanup   = tcpraw__cleanup,
-  .thread    = tcpraw__thread,
+  .name         = "TCPRAW",
+  .configure    = tcpraw__configure,
+  .cleanup      = tcpraw__cleanup,
+  .listen_check = tcpraw__listen_check,
+  .thread       = tcpraw__thread,
 };
 
