@@ -59,35 +59,19 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
   /* check msg size and headers */
-DBG("[%s] size       = %d", tw->methods->name, size);
-if(size >= sizeof(struct iphdr))
-{
-DBG("[%s] ip proto   = %d", tw->methods->name, ip_protocol(msg));
-if(ip_protocol(msg) == 6)
-{
-DBG("[%s] iphdr size = %d", tw->methods->name, sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2));
-if(size >= sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
-{
-DBG("[%s] saddr:srcp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->dhost.addr.in.addr, tc->dhost.port);
-DBG("[%s] daddr:dstp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest));
-DBG("[%s] flags(fin) = %x", tw->methods->name, tcp_header(msg)->fin);
-DBG("[%s] flags(syn) = %x", tw->methods->name, tcp_header(msg)->syn);
-DBG("[%s] flags(rst) = %x", tw->methods->name, tcp_header(msg)->rst);
-DBG("[%s] flags(psh) = %x", tw->methods->name, tcp_header(msg)->psh);
-DBG("[%s] flags(ack) = %x", tw->methods->name, tcp_header(msg)->ack);
-DBG("[%s] flags(urg) = %x", tw->methods->name, tcp_header(msg)->urg);
-}
-}
-}
-
   if(size < sizeof(struct iphdr)
   || ip_protocol(msg) != 6
   || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
     return 0;
 
   /* check msg */
-  return ip_header(msg)->daddr == tc->dhost.addr.in.addr
-      && tcp_header(msg)->dest == tc->dhost.port ? -1 : 0;
+DBG("[%s]   VEREDICT: %d",
+    tw->methods->name,
+    ip_header(msg)->saddr == tc->dhost.addr.in.addr
+    && ntohs(tcp_header(msg)->source) == tc->dhost.port);
+  return ip_header(msg)->saddr == tc->dhost.addr.in.addr
+      && ntohs(tcp_header(msg)->source) == tc->dhost.port
+         ? -1 : 0;
 }
 
 static void tcpopen__listen(THREAD_WORK *tw)
@@ -143,15 +127,17 @@ static void tcpopen__listen(THREAD_WORK *tw)
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GENERIC HTTP THREAD
- *   This thread specializes in different tasks depending on thread number
- *     0 - listener
- *     x - sender
+ * CONFIGURATION. 
+ *   Is important to consider that this function could be
+ *   called several times during thread live: initial
+ *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  SNODE *cn;
+  char *s;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
@@ -165,6 +151,67 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
       D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
     ln_init_context(tc->lnc);
+  }
+
+  /* read from SNODE command parameters */
+DBG("pito %x", command->command.thc.to);
+  if(command->command.thc.to != NULL)
+  if(command->command.thc.to->to.pattern != NULL)
+    FAT("%d: TCPOPEN does not accept a pattern.",
+        command->command.thc.to->to.pattern->line);
+DBG("pato");
+  
+  /* read from SNODE command options */
+  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
+    switch(cn->type)
+    {
+      case TYPE_OPT_SRC:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tc->shost))
+          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_DST:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tc->dhost))
+          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+        break;
+
+      default:
+        FAT("%d: Uknown option %d.", cn->line, cn->type);
+    }
+
+  /* configure src address (if not defined) */
+  if(tc->dhost.type == INET_FAMILY_NONE)
+    FAT("I need a target address.");
+  if(tc->shost.type == INET_FAMILY_NONE)
+  {
+    DOS_ADDR_INFO *ai;
+    if((ai = dos_get_interface(&tc->dhost)) == NULL)
+    {
+      char buff[255];
+      ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
+      WRN("Cannot find a suitable source address for '%s'.", buff);
+    } else
+      ip_addr_copy(&tc->shost, &ai->addr);
+  }
+
+  /* (debug) print configuration */
+  {
+    char buff[255];
+
+    DBG2("[%d] config.periodic.bytes = %d", tw->id, tc->req_size);
+
+    ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
+    DBG2("[%d] config.options.shost  = %s", tw->id, buff);
+    ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
+    DBG2("[%d] config.options.dhost  = %s", tw->id, buff);
   }
 
   return 0;

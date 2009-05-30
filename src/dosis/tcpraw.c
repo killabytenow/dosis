@@ -56,40 +56,25 @@ typedef struct _tag_TCPRAW_CFG {
 #define tcp_header(x)  ((struct tcphdr *) ((x) \
                        + (((struct iphdr *) (x))->ihl << 2)))
 
+/*****************************************************************************
+ * THREAD IMPLEMENTATION
+ *****************************************************************************/
+
 static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
   /* check msg size and headers */
-DBG("[%s] size       = %d", tw->methods->name, size);
-if(size >= sizeof(struct iphdr))
-{
-DBG("[%s] ip proto   = %d", tw->methods->name, ip_protocol(msg));
-if(ip_protocol(msg) == 6)
-{
-DBG("[%s] iphdr size = %d", tw->methods->name, sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2));
-if(size >= sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
-{
-DBG("[%s] saddr:srcp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->shost.addr.in.addr, tc->shost.port);
-DBG("[%s] daddr:dstp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest),   tc->dhost.addr.in.addr, tc->dhost.port);
-DBG("[%s] flags(fin) = %x", tw->methods->name, tcp_header(msg)->fin);
-DBG("[%s] flags(syn) = %x", tw->methods->name, tcp_header(msg)->syn);
-DBG("[%s] flags(rst) = %x", tw->methods->name, tcp_header(msg)->rst);
-DBG("[%s] flags(psh) = %x", tw->methods->name, tcp_header(msg)->psh);
-DBG("[%s] flags(ack) = %x", tw->methods->name, tcp_header(msg)->ack);
-DBG("[%s] flags(urg) = %x", tw->methods->name, tcp_header(msg)->urg);
-DBG("[%s]   VEREDICT: %d", tw->methods->name, ip_header(msg)->saddr == tc->dhost.addr.in.addr
-                        && ntohs(tcp_header(msg)->source) == tc->dhost.port);
-}
-}
-}
-
   if(size < sizeof(struct iphdr)
   || ip_protocol(msg) != 6
   || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
     return 0;
 
   /* check msg */
+DBG("[%s]   VEREDICT: %d",
+    tw->methods->name,
+    ip_header(msg)->saddr == tc->dhost.addr.in.addr
+    && ntohs(tcp_header(msg)->source) == tc->dhost.port);
   return ip_header(msg)->saddr == tc->dhost.addr.in.addr
       && ntohs(tcp_header(msg)->source) == tc->dhost.port
          ? -255 : 0;
@@ -127,10 +112,10 @@ static void tcpraw__thread(THREAD_WORK *tw)
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GENERIC HHTP THREAD
- *   This thread specializes in different tasks depending on thread number
- *     0 - listener
- *     x - sender
+ * CONFIGURATION. 
+ *   Is important to consider that this function could be
+ *   called several times during thread live: initial
+ *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
