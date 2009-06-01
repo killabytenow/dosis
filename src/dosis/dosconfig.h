@@ -34,6 +34,7 @@ extern "C" {
 #include "ip.h"
 
 #define MAX_INCLUDE_DIRS    10
+#define MAX_INTERFACES      10
 
 typedef struct _tag_DOS_ADDR_INFO {
   char          *name;
@@ -50,6 +51,7 @@ typedef struct _tag_DOS_CONFIG {
   char           *script;
   int             maxthreads;
   char           *includedir[MAX_INCLUDE_DIRS+1];
+  char           *interfaces[MAX_INTERFACES+1];
   DOS_ADDR_INFO  *addr;
 
   /* configuration data set by application based on user options */

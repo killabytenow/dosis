@@ -71,10 +71,12 @@ static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
     return 0;
 
   /* check msg */
-DBG("[%s]   VEREDICT: %d",
+DBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
     tw->methods->name,
     ip_header(msg)->saddr == tc->dhost.addr.in.addr
-    && ntohs(tcp_header(msg)->source) == tc->dhost.port);
+    && ntohs(tcp_header(msg)->source) == tc->dhost.port,
+    ip_header(msg)->saddr, ntohs(tcp_header(msg)->source),
+    tc->dhost.addr.in.addr, tc->dhost.port);
   return ip_header(msg)->saddr == tc->dhost.addr.in.addr
       && ntohs(tcp_header(msg)->source) == tc->dhost.port
          ? -255 : 0;

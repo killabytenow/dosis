@@ -98,19 +98,53 @@ static void listener__global_fini(void)
   DBG("[%s] (global) listener threads finished.", teaLISTENER.name);
 }
 
+static void apply_iptables_script(char **script)
+{
+  int pid, r;
+  char **a;
+
+  for(a = script; *a; )
+  {
+    if((pid = dosis_fork()) == 0)
+    {
+      /* child */
+      execv(a[0], a);
+      FAT("Cannot execute /sbin/iptables: %s", strerror(errno));
+    }
+
+    /* parent */
+    waitpid(pid, &r, 0);
+    if(r != 0)
+      FAT("Command failed.");
+
+    /* next command */
+    while(*a++ != NULL)
+      ;
+  }
+}
+
 static void listener__global_init(void)
 {
   int f, pid, r;
-  char **a, *iscript[] = {
-      "/sbin/iptables", "-t", "filter", "-F", NULL,
-      "/sbin/iptables", "-t", "nat",    "-F", NULL,
-      "/sbin/iptables", "-t", "mangle", "-F", NULL,
-      "/sbin/iptables", "-t", "raw",    "-F", NULL,
-      "/sbin/iptables", "-F", NULL,
-      "/sbin/iptables", "-A", "FORWARD", "-j", "QUEUE", NULL,
-      "/sbin/iptables", "-A", "INPUT",   "-j", "QUEUE", NULL,
-      "/sbin/iptables", "-L", NULL,
-      NULL };
+  char **a,
+       *iscript[] = {
+          "/sbin/iptables", "-t", "filter", "-F", NULL,
+          "/sbin/iptables", "-t", "nat",    "-F", NULL,
+          "/sbin/iptables", "-t", "mangle", "-F", NULL,
+          "/sbin/iptables", "-t", "raw",    "-F", NULL,
+          "/sbin/iptables", "-F", NULL,
+          NULL },
+       *igscript[] = {
+          "/sbin/iptables", "-A", "FORWARD", "-j", "QUEUE", NULL,
+          "/sbin/iptables", "-A", "INPUT",   "-j", "QUEUE", NULL,
+          NULL },
+       *isscript[] = {
+          "/sbin/iptables", "-A", "FORWARD", "-i", NULL, "-j", "QUEUE", NULL,
+          "/sbin/iptables", "-A", "INPUT",   "-i", NULL, "-j", "QUEUE", NULL,
+          NULL },
+       *ifscript[] = {
+          "/sbin/iptables", "-L", "-v", NULL,
+          NULL };
 
   /* init mutex */
   pthreadex_mutex_init(&ipq_mutex);
@@ -154,24 +188,20 @@ static void listener__global_init(void)
     FAT("iptables-save failed.");
 
   DBG("[%s] Init iptables config.", teaLISTENER.name);
-  for(a = iscript; *a; )
+  if(cfg.interfaces[0] == NULL)
   {
-    if((pid = dosis_fork()) == 0)
-    {
-      /* child */
-      execv(a[0], a);
-      FAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
-    }
-
-    /* parent */
-    waitpid(pid, &r, 0);
-    if(r != 0)
-      FAT("Command failed.");
-
-    /* next command */
-    while(*a++ != NULL)
-      ;
+    apply_iptables_script(iscript);
+    apply_iptables_script(igscript);
+  } else {
+    for(a = cfg.interfaces; *a; a++)
+      if(*a)
+      {
+        isscript[4] = *a;
+        isscript[12] = *a;
+        apply_iptables_script(isscript);
+      }
   }
+  apply_iptables_script(ifscript);
 
   /* initialize ipq */
   DBG("[%s] Initializing ipq.", teaLISTENER.name);
@@ -199,9 +229,7 @@ static void listener__thread(THREAD_WORK *tw)
   while(!cfg.finalize)
   {
     pthreadex_mutex_begin(&ipq_mutex);
-DBG(" ----------------------------------------------------------- imsg");
     r = ipqex_msg_read(&lcfg->imsg, 0);
-DBG("ZUSPITOYER ==================================================");
     if(r < 0)
       ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
     pthreadex_mutex_end();
@@ -230,6 +258,7 @@ repeat_search:
       if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
         ERR("Cannot ACCEPT IPQ packet.");
       pthreadex_mutex_end();
+      DBG2("  - Package dropped.");
     } else {
       pthreadex_mutex_begin(&ipq_mutex);
       if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)

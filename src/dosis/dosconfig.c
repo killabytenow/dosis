@@ -62,6 +62,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'h', "help",          0 },
   { 'o', "output-file",   1 },
   { 'q', "quiet",         0 },
+  { 'i', "interface",     1 },
   { 'I', "include-dir",   1 },
   { 't', "max-threads",   1 },
   { 'v', "verbose",       2 },
@@ -107,6 +108,16 @@ static void dos_config_parse_command(int argc, char **argv)
           break;
       case 'q':
           cfg.verbosity = 0;
+          break;
+      case 'i':
+          if(!optarg || strlen(optarg) == 0)
+            FAT("Required interface.");
+          for(i = 0; i < MAX_INTERFACES && cfg.interfaces[i]; i++)
+            ;
+          if(i >= MAX_INTERFACES)
+            FAT("No space for more interfaces.");
+          if((cfg.interfaces[i] = strdup(optarg)) == NULL)
+            FAT("No mem for interface.");
           break;
       case 'I':
           if(!optarg || strlen(optarg) == 0)
@@ -279,7 +290,7 @@ void dosis_atexit(char *name, void (*func)(void))
 char *dosis_search_file(char *file)
 {
   struct stat buf;
-  char tmp[PATH_MAX], *r, *t;
+  char tmp[PATH_MAX], *r;
   char **paths;
 
   /* in the worst case (file not found) we will return NULL */
@@ -351,6 +362,13 @@ static void dos_config_fini(void)
       cfg.includedir[i] = NULL;
     }
 
+  for(i = 0; i < MAX_INTERFACES; i++)
+    if(cfg.interfaces[i])
+    {
+      free(cfg.interfaces[i]);
+      cfg.interfaces[i] = NULL;
+    }
+
   if(short_options)
     free(short_options);
   if(long_options)
@@ -368,8 +386,9 @@ void dos_config_init(int argc, char **argv)
   if(atexit(dos_config_fini))
     FAT("Cannot set finalization routine.");
 
-  /* zero include dirs */
+  /* zero include dirs and interfaces array */
   memset(cfg.includedir, 0, sizeof(cfg.includedir));
+  memset(cfg.interfaces, 0, sizeof(cfg.interfaces));
 
   /* initialize getopt tables */
   if(!(short_options = calloc((CMD_OPTIONS_N * 2) + 1, sizeof(char)))
@@ -412,12 +431,32 @@ void dos_config_init(int argc, char **argv)
     cfg.of = stdout;
   }
 
+  /* get network interfaces and ip addresses */
+  dos_get_addresses();
+
+  /* check selected interfaces */
+  for(i = 0; i < MAX_INTERFACES; i++)
+  {
+    if(cfg.interfaces[i])
+    {
+      DOS_ADDR_INFO *a;
+      for(a = cfg.addr; a; a = a->next)
+        if(!strcmp(cfg.interfaces[i], a->name))
+          break;
+      if(!a)
+        FAT("Interface '%s' not found.", cfg.interfaces[i]);
+    }
+  }
+
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();
   DBG("Configuration");
   DBG("  verbosity level = %d", cfg.verbosity);
   DBG("  script file     = %s", cfg.script ? cfg.script : "<standard input>");
   DBG("  output file     = %s", cfg.output ? cfg.output : "<standard output>");
+  for(i = 0; i < MAX_INTERFACES; i++)
+    if(cfg.interfaces[i])
+      DBG("  interface[%d]   = %s", i, cfg.interfaces[i]);
   for(i = 0; i < MAX_INCLUDE_DIRS; i++)
     if(cfg.includedir[i])
       DBG("  include dir[%d] = %s", i, cfg.includedir[i]);
@@ -430,8 +469,5 @@ void dos_config_init(int argc, char **argv)
       FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
   } else
     D_WRN("Reading standard input.");
-
-  /* get network interfaces and ip addresses */
-  dos_get_addresses();
 }
 

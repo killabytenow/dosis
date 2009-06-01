@@ -228,7 +228,9 @@ static void *tea_thread(void *data)
   {
     while(1)
     {
+DBG("WAITING FOR INPUT");
       pthreadex_flag_wait(&(tw->mwaiting));
+DBG("I HAVE INPUT");
       tw->methods->listen(tw);
     }
   } else
@@ -348,8 +350,11 @@ int tea_thread_msg_push(int tid, TEA_MSG *m)
   if(ttable[tid])
   {
     if(ttable[tid]->mqueue)
+    {
+      DBG("  - package queued to %d", tid);
       tea_mqueue_push(ttable[tid]->mqueue, m);
-    else
+      pthreadex_flag_up(&(ttable[tid]->mwaiting));
+    } else
       tea_msg_release(m);
   } else
     r = -1;

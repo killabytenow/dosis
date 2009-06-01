@@ -65,10 +65,12 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
     return 0;
 
   /* check msg */
-DBG("[%s]   VEREDICT: %d",
+DBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
     tw->methods->name,
     ip_header(msg)->saddr == tc->dhost.addr.in.addr
-    && ntohs(tcp_header(msg)->source) == tc->dhost.port);
+    && ntohs(tcp_header(msg)->source) == tc->dhost.port,
+    ip_header(msg)->saddr, ntohs(tcp_header(msg)->source),
+    tc->dhost.addr.in.addr, tc->dhost.port);
   return ip_header(msg)->saddr == tc->dhost.addr.in.addr
       && ntohs(tcp_header(msg)->source) == tc->dhost.port
          ? -1 : 0;
@@ -80,29 +82,27 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
+DBG("EATING INPUT");
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
-    DBG("[%02u] Received a spoofed connection packet.", tw->id);
-    /*
-    DBG2("[%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+    DBG("[%d] Received a spoofed connection packet.", tw->id);
+    DBG2("[%d] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
             tw->id,
-            identify_ip_protocol(m->b),
+            ip_protocol(m->b),
             (ip_header(m->b)->saddr >>  0) & 0x00ff,
             (ip_header(m->b)->saddr >>  8) & 0x00ff,
             (ip_header(m->b)->saddr >> 16) & 0x00ff,
             (ip_header(m->b)->saddr >> 24) & 0x00ff,
-            tcp_header(m->b)->dest, cfg->dhost.port,
+            tcp_header(m->b)->dest, tc->dhost.port,
             tcp_header(m->b)->rst,
-            ip_header(m->b)->saddr,
-            cfg->shost.s_addr);
-    */
+            ip_header(m->b)->saddr, tc->shost.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
     if(tcp_header(m->b)->syn != 0
     && tcp_header(m->b)->ack != 0)
     {
       /* send handshake and data TCP packet */
-      DBG("[%02u]   - Request packet sending...", tw->id);
+      DBG("[%d]   - Request packet sending...", tw->id);
       ln_send_packet(tc->lnc,
                      &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
                      &tc->dhost.addr.in.inaddr, tc->dhost.port,
@@ -124,6 +124,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
     /* release msg buffer */
     tea_msg_release(m);
   }
+DBG("NO MOAR INPUT");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -145,13 +146,13 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-      D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+      D_FAT("[%d] No memory for TCPOPEN_CFG.", tw->id);
     tw->data = (void *) tc;
 
     /* initialize libnet */
-    DBG("[%02u] Initializing libnet.", tw->id);
+    DBG("[%d] Initializing libnet.", tw->id);
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+      D_FAT("[%d] No memory for LN_CONTEXT.", tw->id);
     ln_init_context(tc->lnc);
   }
 
@@ -262,7 +263,7 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
     free(tc);
     tw->data = NULL;
   }
-  DBG("[%02u] Finalized.", tw->id);
+  DBG("[%d] Finalized.", tw->id);
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
