@@ -62,6 +62,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'h', "help",          0 },
   { 'o', "output-file",   1 },
   { 'q', "quiet",         0 },
+  { 'I', "include-dir",   1 },
   { 't', "max-threads",   1 },
   { 'v', "verbose",       2 },
   {   0, NULL,            0 },
@@ -78,7 +79,7 @@ DOS_CMD_OPTION cmd_options[] = {
 
 static void dos_config_parse_command(int argc, char **argv)
 {
-  int c, fin,
+  int c, i, fin,
       option_index = 0;
   char *s;
 
@@ -100,17 +101,27 @@ static void dos_config_parse_command(int argc, char **argv)
           break;
       case 'o':
           if(!optarg || strlen(optarg) == 0)
-            D_FAT("Required a valid filename.");
+            FAT("Required a valid filename.");
           if((cfg.output = strdup(optarg)) == NULL)
-            D_FAT("No mem for ouput filename.");
+            FAT("No mem for ouput filename.");
           break;
       case 'q':
           cfg.verbosity = 0;
           break;
+      case 'I':
+          if(!optarg || strlen(optarg) == 0)
+            FAT("Required pathname.");
+          for(i = 0; i < MAX_INCLUDE_DIRS && cfg.includedir[i]; i++)
+            ;
+          if(i >= MAX_INCLUDE_DIRS)
+            FAT("No space for more include directories.");
+          if((cfg.includedir[i] = strdup(optarg)) == NULL)
+            FAT("No mem for pathname.");
+          break;
       case 't':
           cfg.maxthreads = atoi(optarg);
           if(cfg.maxthreads < 1)
-            D_FAT("A minimum of 1 thread is needed.");
+            FAT("A minimum of 1 thread is needed.");
           break;
       case 'v':
           if(!optarg)
@@ -124,17 +135,17 @@ static void dos_config_parse_command(int argc, char **argv)
           fin = -1;
           break;
       default:
-          D_FAT("Invalid option '%c'.", c); 
+          FAT("Invalid option '%c'.", c); 
     }
   }
 
   if(argc - optind > 1)
-    D_FAT("Specify only one script file.");
+    FAT("Specify only one script file.");
   if(argc - optind < 1)
     cfg.script = NULL;
   else
-    if((cfg.script = strdup(argv[optind])) == NULL)
-      D_FAT("No mem for script filename.");
+    if((cfg.script = dosis_search_file(argv[optind])) == NULL)
+      FAT("Script '%s' not found.", argv[optind]);
 }
 
 /*****************************************************************************
@@ -265,10 +276,46 @@ void dosis_atexit(char *name, void (*func)(void))
   dosis_atexit_list = a;
 }
 
+char *dosis_search_file(char *file)
+{
+  struct stat buf;
+  char tmp[PATH_MAX], *r, *t;
+  char **paths;
+
+  /* in the worst case (file not found) we will return NULL */
+  r = NULL;
+
+  /* if absolute path, then return the same file */
+  if(*file == '/')
+    r = file;
+
+  /* if file is present in current dir, then return the same file */
+  if(!stat(file, &buf) && S_ISREG(buf.st_mode))
+    r = file;
+
+  /* search file 'file' in the list of 'paths' */
+  for(paths = cfg.includedir; !r && *paths; paths++)
+  {
+    if(snprintf(tmp, PATH_MAX, "%s/%s", *paths, file) > PATH_MAX)
+      FAT("String '%s/%s' is longer than PATH_MAX characters (%d).",
+          *paths, file, PATH_MAX);
+    if(!stat(tmp, &buf) && S_ISREG(buf.st_mode))
+      r = tmp;
+  }
+
+  /* return a copy */
+  if(r)
+    if((r = strdup(r)) == NULL)
+      FAT("No memory for path '%s'.", tmp);
+
+  return r;
+}
+
 static void dos_config_fini(void)
 {
   DOSIS_ATEXIT *atx;
   DOS_ADDR_INFO *addr;
+  int i;
 
   if(dosis_forked)
   {
@@ -297,6 +344,13 @@ static void dos_config_fini(void)
     free(addr);
   }
 
+  for(i = 0; i < MAX_INCLUDE_DIRS; i++)
+    if(cfg.includedir[i])
+    {
+      free(cfg.includedir[i]);
+      cfg.includedir[i] = NULL;
+    }
+
   if(short_options)
     free(short_options);
   if(long_options)
@@ -312,12 +366,15 @@ void dos_config_init(int argc, char **argv)
 
   /* first of all get concious about dead */
   if(atexit(dos_config_fini))
-    D_FAT("Cannot set finalization routine.");
+    FAT("Cannot set finalization routine.");
+
+  /* zero include dirs */
+  memset(cfg.includedir, 0, sizeof(cfg.includedir));
 
   /* initialize getopt tables */
   if(!(short_options = calloc((CMD_OPTIONS_N * 2) + 1, sizeof(char)))
   || !(long_options = calloc(CMD_OPTIONS_N + 1, sizeof(struct option))))
-    D_FAT("No memory for getopt tables.");
+    FAT("No memory for getopt tables.");
 
   s = short_options;
   j = 0;
@@ -345,19 +402,11 @@ void dos_config_init(int argc, char **argv)
   /* read config and command from command line */
   dos_config_parse_command(argc, argv);
 
-  /* open files */
-  if(cfg.script)
-  {
-    close(0);
-    if(open(argv[optind], O_RDONLY) < 0)
-      D_FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
-  } else
-    D_WRN("Reading standard input.");
-
+  /* open output file */
   if(cfg.output)
   {
     if((cfg.of = fopen(cfg.output, "w")) == NULL)
-      D_FAT("Cannot write output file '%s'.", cfg.output);
+      FAT("Cannot write output file '%s'.", cfg.output);
   } else {
     D_WRN("Writing to standard output.");
     cfg.of = stdout;
@@ -365,10 +414,22 @@ void dos_config_init(int argc, char **argv)
 
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();
-  D_DBG("Configuration");
-  D_DBG("  verbosity level = %d", cfg.verbosity);
-  D_DBG("  script file     = %s", cfg.script ? cfg.script : "<standard input>");
-  D_DBG("  output file     = %s", cfg.output ? cfg.output : "<standard output>");
+  DBG("Configuration");
+  DBG("  verbosity level = %d", cfg.verbosity);
+  DBG("  script file     = %s", cfg.script ? cfg.script : "<standard input>");
+  DBG("  output file     = %s", cfg.output ? cfg.output : "<standard output>");
+  for(i = 0; i < MAX_INCLUDE_DIRS; i++)
+    if(cfg.includedir[i])
+      DBG("  include dir[%d] = %s", i, cfg.includedir[i]);
+
+  /* open script file */
+  if(cfg.script)
+  {
+    close(0);
+    if(open(cfg.script, O_RDONLY) < 0)
+      FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
+  } else
+    D_WRN("Reading standard input.");
 
   /* get network interfaces and ip addresses */
   dos_get_addresses();

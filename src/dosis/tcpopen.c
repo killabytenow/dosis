@@ -40,8 +40,8 @@ typedef struct _tag_TCPOPEN_CFG {
   INET_ADDR   shost;
   INET_ADDR   dhost;
   unsigned    npackets;
-  char       *req;
-  unsigned    req_size;
+  char       *payload;
+  unsigned    payload_size;
   LN_CONTEXT *lnc;
 } TCPOPEN_CFG;
 
@@ -118,7 +118,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
                      ntohs(tcp_header(m->b)->window),
                      ntohl(tcp_header(m->b)->ack_seq),
                      ntohl(tcp_header(m->b)->seq) + 1,
-                     (char *) tc->req, tc->req_size);
+                     (char *) tc->payload, tc->payload_size);
     }
 
     /* release msg buffer */
@@ -137,7 +137,9 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
   SNODE *cn;
-  char *s;
+  char *s, *s2;
+  int f;
+  struct stat pls;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
@@ -183,6 +185,27 @@ DBG("pato");
           ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
         break;
 
+      case TYPE_OPT_PAYLOAD_STR:
+        break;
+        
+      case TYPE_OPT_PAYLOAD_FILE:
+        s2 = tea_get_string(cn->option.payload);
+        s = dosis_search_file(s2);
+        free(s2);
+        DBG("********************************** Reading %s.", s);
+        if(stat(s, &pls) < 0)
+          FAT("%d: Cannot stat file '%s': %s", cn->line, s, strerror(errno));
+        tc->payload_size = pls.st_size;
+        if((tc->payload = malloc(tc->payload_size)) == NULL)
+          FAT("%d: Cannot alloc %d bytes for payload.", cn->line, tc->payload_size);
+        if((f = open(s, O_RDONLY)) < 0)
+          FAT("%d: Cannot open payload: %s", cn->line, strerror(errno));
+        if(read(f, tc->payload, tc->payload_size) < tc->payload_size)
+          FAT("%d: Cannot read the payload file: %s", cn->line, strerror(errno));
+        close(f);
+        free(s);
+        break;
+
       default:
         FAT("%d: Uknown option %d.", cn->line, cn->type);
     }
@@ -206,12 +229,13 @@ DBG("pato");
   {
     char buff[255];
 
-    DBG2("[%d] config.periodic.bytes = %d", tw->id, tc->req_size);
+    DBG2("[%d] config.periodic.bytes  = %d", tw->id, tc->payload_size);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.shost  = %s", tw->id, buff);
+    DBG2("[%d] config.options.shost   = %s", tw->id, buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.dhost  = %s", tw->id, buff);
+    DBG2("[%d] config.options.dhost   = %s", tw->id, buff);
+    DBG2("[%d] config.options.payload = %d bytes", tw->id, tc->payload_size);
   }
 
   return 0;
@@ -230,10 +254,10 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
       free(tc->lnc);
       tc->lnc = NULL;
     }
-    if(tc->req)
+    if(tc->payload)
     {
-      free(tc->req);
-      tc->req = NULL;
+      free(tc->payload);
+      tc->payload = NULL;
     }
     free(tc);
     tw->data = NULL;

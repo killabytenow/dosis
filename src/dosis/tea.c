@@ -292,7 +292,9 @@ static void tea_thread_stop(int tid)
     return;
   }
 
+DBG("Going to kill %d", tid);
   pthreadex_mutex_begin(&ttable_mutex);
+DBG("Killing %d", tid);
 
   /* consider it dead */
   ttable[tid] = NULL;
@@ -323,7 +325,10 @@ int tea_thread_search_listener(char *b, unsigned int l)
       if(prio > 0)
         FAT("Positive priority? Not in my world. Die motherfucker.");
       if(prio == -1)
-        return tid;
+      {
+        stid = tid;
+        break;
+      }
       if(sprio < prio)
         continue;
       sprio = prio;

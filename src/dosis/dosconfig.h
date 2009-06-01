@@ -33,6 +33,8 @@ extern "C" {
 #include <config.h>
 #include "ip.h"
 
+#define MAX_INCLUDE_DIRS    10
+
 typedef struct _tag_DOS_ADDR_INFO {
   char          *name;
   unsigned char  hwaddr[6];
@@ -47,6 +49,7 @@ typedef struct _tag_DOS_CONFIG {
   char           *output;
   char           *script;
   int             maxthreads;
+  char           *includedir[MAX_INCLUDE_DIRS+1];
   DOS_ADDR_INFO  *addr;
 
   /* configuration data set by application based on user options */
@@ -61,6 +64,7 @@ int dosis_fork(void);
 void dosis_atexit(char *name, void (*func)(void));
 
 DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta);
+char *dosis_search_file(char *file);
 
 /*****************************************************************************
  * LOGFILE
