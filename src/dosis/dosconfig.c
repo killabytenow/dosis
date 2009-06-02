@@ -189,7 +189,6 @@ void dos_get_addresses(void)
       FAT("Out of memory.\n");
     if(ioctl(sockfd, SIOCGIFCONF, &ifc))
       FAT("Cannot ioctl SIOCFIFCONF: %s", strerror(errno));
-    DBG("ifc.ifc_len = %d", ifc.ifc_len / sizeof(struct ifreq));
   } while(size <= ifc.ifc_len);
 
   /* get the info! */
@@ -203,7 +202,7 @@ void dos_get_addresses(void)
       continue;  /* failed to get flags, skip it */
 
     if(!(ifr->ifr_flags & IFF_UP))
-      DBG("Interface %s is down.", ifr->ifr_name);
+      WRN("Interface %s is down.", ifr->ifr_name);
 
     /* alloc a new address info structure */
     if((a = calloc(1, sizeof(DOS_ADDR_INFO))) == NULL)
@@ -218,7 +217,7 @@ void dos_get_addresses(void)
       ip_socket_to_addr(&ifr->ifr_addr, &a->addr);
       ip_addr_unset_port(&a->addr);
     } else
-      DBG("Interface %s has not a primary address.", a->name);
+      WRN("Interface %s has not a primary address.", a->name);
 
     /* get PA netmask */
     if(!ioctl(sockfd, SIOCGIFNETMASK, ifr))
@@ -226,7 +225,7 @@ void dos_get_addresses(void)
       ip_socket_to_addr(&ifr->ifr_addr, &a->mask);
       ip_addr_unset_port(&a->mask);
     } else
-      DBG("Interface %s has not a PA network mask.", a->name);
+      WRN("Interface %s has not a PA network mask.", a->name);
 
     /* get HW address */
     if(ioctl(sockfd, SIOCGIFHWADDR, ifr) == 0
@@ -427,7 +426,7 @@ void dos_config_init(int argc, char **argv)
     if((cfg.of = fopen(cfg.output, "w")) == NULL)
       FAT("Cannot write output file '%s'.", cfg.output);
   } else {
-    D_WRN("Writing to standard output.");
+    WRN("Writing to standard output.");
     cfg.of = stdout;
   }
 

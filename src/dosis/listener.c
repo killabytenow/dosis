@@ -38,7 +38,8 @@
 #include "ip.h"
 #endif
 
-#define BUFSIZE 65535
+#define MODNAME        teaLISTENER.name
+#define BUFSIZE        65535
 
 #define ip_protocol(x) (((struct iphdr *) (x))->protocol)
 #define ip_header(x)   ((struct iphdr *)  (x))
@@ -65,11 +66,11 @@ static void listener__global_fini(void)
 
   /* restore ipforward */
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    FAT("Cannot open /proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
+    FAT("[%s] /proc/sys/net/ipv4/ip_forward: %s", MODNAME, strerror(errno));
   buf[0] = ip_forward_status;
   buf[1] = '\n';
   if(write(f, buf, 2) < 0)
-    FAT("Cannot write ip_forward status: %s", strerror(errno));
+    FAT("[%s] Cannot set ip_forward: %s", MODNAME, strerror(errno));
   close(f);
 
   /* restore iptables */
@@ -79,23 +80,23 @@ static void listener__global_fini(void)
     /* restore iptables state */
     close(0);
     if(open(iptables_tmp, O_RDONLY) < 0)
-      FAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
+      FAT("[%s] Cannot read %s: %s", MODNAME, iptables_tmp, strerror(errno));
     execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
     /* if this code is executed, we have an error */
-    FAT("Cannot execute /sbin/iptables-restore: %s", strerror(errno));
+    FAT("[%s] /sbin/iptables-restore: %s", MODNAME, strerror(errno));
   }
   /* parent */
   waitpid(pid, &r, 0);
   if(r != 0)
-    FAT("iptables-restore failed.");
+    FAT("[%s] iptables-restore failed.", MODNAME);
   if(unlink(iptables_tmp) < 0)
-    FAT("Cannot unlink %s: %s", iptables_tmp, strerror(errno));
+    FAT("[%s] Cannot unlink %s: %s", MODNAME, iptables_tmp, strerror(errno));
 
   /* finish ipq */
   ipqex_destroy(&ipq);
   pthreadex_mutex_destroy(&ipq_mutex);
 
-  DBG("[%s] (global) listener threads finished.", teaLISTENER.name);
+  DBG("[%s] (global) listener threads finished.", MODNAME);
 }
 
 static void apply_iptables_script(char **script)
@@ -109,13 +110,13 @@ static void apply_iptables_script(char **script)
     {
       /* child */
       execv(a[0], a);
-      FAT("Cannot execute /sbin/iptables: %s", strerror(errno));
+      FAT("[%s] Cannot execute /sbin/iptables: %s", MODNAME, strerror(errno));
     }
 
     /* parent */
     waitpid(pid, &r, 0);
     if(r != 0)
-      FAT("Command failed.");
+      FAT("[%s] Command failed.", MODNAME);
 
     /* next command */
     while(*a++ != NULL)
@@ -150,23 +151,23 @@ static void listener__global_init(void)
   pthreadex_mutex_init(&ipq_mutex);
 
   /* read/change ipforward */
-  DBG("[%s] Enable ip_forward flag.", teaLISTENER.name);
+  DBG("[%s] Enable ip_forward flag.", MODNAME);
   if((f = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY)) < 0)
-    FAT("Cannot open /proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
+    FAT("[%s] /proc/sys/net/ipv4/ip_forward: %s", MODNAME, strerror(errno));
   r = read(f, &ip_forward_status, 1);
   if(r == 0)
-    FAT("Invalid ip_forward content.");
+    FAT("[%s] Invalid ip_forward content.", MODNAME);
   if(r < 0)
-    FAT("Cannot read ip_forward status: %s", strerror(errno));
+    FAT("[%s] Cannot read ip_forward status: %s", MODNAME, strerror(errno));
   close(f);
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    FAT("Cannot open /proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
+    FAT("[%s] /proc/sys/net/ipv4/ip_forward: %s", MODNAME, strerror(errno));
   if(write(f, "1\n", 2) < 0)
-    FAT("Cannot write ip_forward status: %s", strerror(errno));
+    FAT("[%s] Cannot write ip_forward status: %s", MODNAME, strerror(errno));
   close(f);
 
   /* prepare the ipqueue */
-  DBG("[%s] save iptables config.", teaLISTENER.name);
+  DBG("[%s] save iptables config.", MODNAME);
   strcpy(iptables_tmp, "iptables-state-XXXXXX");
   f = mkstemp(iptables_tmp);
   if((pid = dosis_fork()) == 0)
@@ -175,19 +176,19 @@ static void listener__global_init(void)
       /* save iptables state */
       close(1);
       if(dup(f) < 0)
-        FAT("Cannot dup: %s", strerror(errno));
+        FAT("[%s] Cannot dup: %s", MODNAME, strerror(errno));
       close(f);
       execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
       /* if this code is executed, we have an error */
-      FAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
+      FAT("[%s] Cannot execute /sbin/iptables-save: %s", MODNAME, strerror(errno));
   }
   /* here continues parent */
   close(f);
   waitpid(pid, &r, 0);
   if(r != 0)
-    FAT("iptables-save failed.");
+    FAT("[%s] iptables-save failed.", MODNAME);
 
-  DBG("[%s] Init iptables config.", teaLISTENER.name);
+  DBG("[%s] Init iptables config.", MODNAME);
   if(cfg.interfaces[0] == NULL)
   {
     apply_iptables_script(iscript);
@@ -204,14 +205,14 @@ static void listener__global_init(void)
   apply_iptables_script(ifscript);
 
   /* initialize ipq */
-  DBG("[%s] Initializing ipq.", teaLISTENER.name);
+  DBG("[%s] Initializing ipq.", MODNAME);
   if(ipqex_init(&ipq, BUFSIZE))
-    FAT("[%s]  !! Cannot initialize IPQ.", teaLISTENER.name);
+    FAT("[%s]  !! Cannot initialize IPQ.", MODNAME);
 
   /* set the finalization routine */
-  dosis_atexit(teaLISTENER.name, listener__global_fini);
+  dosis_atexit(MODNAME, listener__global_fini);
 
-  DBG("[%s] Initialized.", teaLISTENER.name);
+  DBG("[%s] Initialized.", MODNAME);
 }
 
 /*****************************************************************************
