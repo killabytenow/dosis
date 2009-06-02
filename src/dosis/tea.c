@@ -74,7 +74,13 @@ static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
 
   /* empty queue */
   while((m = tea_mqueue_shift(mq)) != NULL)
-    tea_msg_release(m);
+    if(mq == msg_free)
+      tea_msg_destroy(m);
+    else
+      tea_msg_release(m);
+
+  /* destroy mutex */
+  pthreadex_mutex_destroy(&mq->mutex);
 
   /* free queue */
   free(mq);
@@ -83,12 +89,13 @@ static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
 void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
 {
   pthreadex_mutex_begin(&(mq->mutex));
+  m->next = NULL;
   m->prev = mq->last;
   if(mq->last)
     mq->last->next = m;
   else
     mq->first = m;
-  m->next = NULL;
+  mq->last = m;
   pthreadex_mutex_end();
 }
 
@@ -100,16 +107,17 @@ TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
     return NULL;
 
   pthreadex_mutex_begin(&(mq->mutex));
-  if(mq->last)
+  m = mq->first;
+  if(m)
   {
-    m = mq->first;
     mq->first = m->next;
-    if(!mq->first)
+    if(mq->first)
+      mq->first->prev = NULL;
+    else
       mq->last = NULL;
     m->prev = NULL;
     m->next = NULL;
-  } else
-    m = NULL;
+  }
   pthreadex_mutex_end();
 
   return m;
@@ -185,6 +193,8 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
+  DBG("Cleanup on thread %d.", tw->id);
+
   /* do thread cleanup */
   if(tw->methods->cleanup)
     tw->methods->cleanup(tw);
@@ -202,14 +212,16 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 
     if(mq)
     {
-      pthreadex_mutex_destroy(&mq->mutex);
+      DBG("SAS");
       tea_mqueue_destroy(mq);
+      DBG("SIS");
     }
   }
 
   pthreadex_flag_destroy(&(tw->mwaiting));
 
   /* free mem */
+  DBG("Thread %d finished.", tw->id);
   free(tw);
 }
 
@@ -286,25 +298,37 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 
 static void tea_thread_stop(int tid)
 {
-  THREAD_WORK *tw = ttable[tid];
-
-  if(!tw)
-  {
-    ERR("Thread %u does not exist.", tid);
-    return;
-  }
+  THREAD_WORK *tw;
+  int r;
 
 DBG("Going to kill %d", tid);
   pthreadex_mutex_begin(&ttable_mutex);
 DBG("Killing %d", tid);
 
+  if(!(tw = ttable[tid]))
+  {
+    ERR("Thread %u does not exist.", tid);
+    return;
+  }
+
   /* consider it dead */
   ttable[tid] = NULL;
 
   /* kill thread */
-  if(pthread_detach(tw->pthread_id))
-    ERR("Cannot detach thread %u: %s", tid, strerror(errno));
-  if(pthread_cancel(tw->pthread_id) && errno != 0)
+  DBG("FUSKY on thread %d (%x)", tw->id, tw);
+  while((r = pthread_detach(tw->pthread_id)) != 0 && errno == EINTR)
+  {
+    DBG("Detach EINTR; repeating pthread_detach() on thread %d", tw->id);
+    errno = 0;
+  }
+  if(r != 0)
+    ERR("Cannot detach thread %u:(%d) %s", tid, errno, strerror(errno));
+  while((r = pthread_cancel(tw->pthread_id)) != 0 && errno == EINTR)
+  {
+    DBG("Cancel EINTR; repeating pthread_cancel() on thread %d", tw->id);
+    errno = 0;
+  }
+  if(r != 0)
     ERR("Cannot cancel thread %u: %s", tid, strerror(errno));
 
   pthreadex_mutex_end();
@@ -563,12 +587,15 @@ static void tea_fini(void)
     for(i = 0; i < cfg.maxthreads; i++)
       if(ttable[i])
         tea_thread_stop(i);
+    DBG("  - All threads cancelled.");
 
     /* free mem */
     free(ttable);
   }
 
+      DBG("SAS free");
   tea_mqueue_destroy(msg_free);
+      DBG("SIS free");
 
   DBG("tea timer finished.");
 }

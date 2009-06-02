@@ -226,7 +226,7 @@ static void listener__thread(THREAD_WORK *tw)
   int r;
 
   /* get packets and classify */
-  while(!cfg.finalize)
+  while(1)
   {
     pthreadex_mutex_begin(&ipq_mutex);
     r = ipqex_msg_read(&lcfg->imsg, 0);
