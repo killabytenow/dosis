@@ -108,6 +108,7 @@ void pthreadex_barrier_wait(pthreadex_barrier_t *barrier)
   } else {
     barrier->Count[Par] = 0;
     barrier->EvenOdd = 1 - Par;
+    /* ¿¿ pthread_cond_broadcast ?? */
     for(i = 0; i < barrier->NNodes; i++)
       pthread_cond_signal(&(barrier->CV));
   }
@@ -258,5 +259,29 @@ void pthreadex_flag_destroy(pthreadex_flag_t *flag)
 {
   pthread_mutex_destroy(&(flag->lock));
   pthread_cond_destroy(&(flag->flag_up));
+}
+
+/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  + EXCLUSIVE ACCESS
+  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+void pthreadex_excl_lock_init(pthreadex_excl_t *ex)
+{
+}
+
+void pthreadex_excl_lock_shared(pthreadex_excl_t *ex)
+{
+}
+
+void pthreadex_excl_lock_exclusive(pthreadex_excl_t *ex)
+{
+}
+
+void pthreadex_excl_unlock(pthreadex_excl_t *ex)
+{
+}
+
+void pthreadex_excl_lock_fini(pthreadex_excl_t *ex)
+{
 }
 
