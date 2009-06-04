@@ -111,6 +111,16 @@ typedef struct _tag_pthreadex_semaphore_t
 } pthreadex_semaphore_t;
 #define PTHREADEX_SEMAPHORE_INITIALIZER  { 0, 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
+typedef struct _tag_pthreadex_lock_t
+{
+  int             lock_count;    /* Current count of exclusive/shared locks. */
+  pthread_mutex_t lock;          /* Serialize access to struct fields        */
+  pthread_cond_t  lock_zero;     /* Cond variable that adverts of zero locks */
+} pthreadex_lock_t;
+#define PTHREADEX_LOCK_INITIALIZER  { 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
+#define PTHREADEX_LOCK_SHARED       0
+#define PTHREADEX_LOCK_EXCLUSIVE    1
+
 typedef struct timespec pthreadex_timer_t;
 
 void pthreadex_barrier_init(pthreadex_barrier_t *barrier, int n);
@@ -122,6 +132,18 @@ void pthreadex_semaphore_destroy(pthreadex_semaphore_t *sema);
 void pthreadex_semaphore_wait(pthreadex_semaphore_t *sema);
 int  pthreadex_semaphore_post(pthreadex_semaphore_t *sema);
 int  pthreadex_semaphore_set(pthreadex_semaphore_t *sema, int new_count);
+
+void pthreadex_lock_init(pthreadex_lock_t *ex);
+void pthreadex_lock_get_raw(pthreadex_lock_t *ex, int type);
+void pthreadex_lock_release_raw(pthreadex_lock_t *ex);
+void pthreadex_lock_fini(pthreadex_lock_t *ex);
+#define pthreadex_lock_get(x,y)         pthread_cleanup_push_defer_np(             \
+                                          (void *) pthreadex_lock_release_raw, x); \
+                                        pthreadex_lock_get_raw(x,y)
+#define pthreadex_lock_release()        pthread_cleanup_pop_restore_np(1)
+
+#define pthreadex_lock_get_shared(x)    pthreadex_lock_get(x, PTHREADEX_LOCK_SHARED)
+#define pthreadex_lock_get_exclusive(x) pthreadex_lock_get(x, PTHREADEX_LOCK_EXCLUSIVE)
 
 void   pthreadex_timer_init(pthreadex_timer_t *t, double secs);
 void   pthreadex_timer_set(pthreadex_timer_t *t, double secs);

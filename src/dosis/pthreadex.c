@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <string.h>
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -262,26 +263,60 @@ void pthreadex_flag_destroy(pthreadex_flag_t *flag)
 }
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  + EXCLUSIVE ACCESS
+  + LOCK SHARED/EXCLUSIVE
   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-void pthreadex_excl_lock_init(pthreadex_excl_t *ex)
+void pthreadex_lock_init(pthreadex_lock_t *l)
 {
+  l->lock_count = 0;
+  pthread_mutex_init(&l->lock, NULL);
+  pthread_cond_init(&l->lock_zero, NULL);
 }
 
-void pthreadex_excl_lock_shared(pthreadex_excl_t *ex)
+void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
 {
+  /* lock semaphore data */
+  pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &l->lock);
+  pthread_mutex_lock(&l->lock);
+
+  switch(type)
+  {
+    case PTHREADEX_LOCK_SHARED:
+      while(l->lock_count < 0)
+        pthread_cond_wait(&l->lock_zero, &l->lock);
+      l->lock_count++;
+      break;
+
+    default:
+      fprintf(stderr, "pthreadex_lock_get(): warning: Unknown type '%d'.\n", type);
+
+    case PTHREADEX_LOCK_EXCLUSIVE:
+      while(l->lock_count != 0)
+        pthread_cond_wait(&l->lock_zero, &l->lock);
+      l->lock_count--;
+  }
+
+  /* unlock */
+  pthread_cleanup_pop_restore_np(1);
 }
 
-void pthreadex_excl_lock_exclusive(pthreadex_excl_t *ex)
+void pthreadex_lock_release_raw(pthreadex_lock_t *l)
 {
+  /* lock semaphore data */
+  pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &l->lock);
+  pthread_mutex_lock(&l->lock);
+
+  l->lock_count += (l->lock_count >= 0) ? -1 : 1;
+  if(l->lock_count == 0)
+    pthread_cond_signal(&l->lock_zero);
+
+  /* unlock */
+  pthread_cleanup_pop_restore_np(1);
 }
 
-void pthreadex_excl_unlock(pthreadex_excl_t *ex)
+void pthreadex_lock_fini(pthreadex_lock_t *l)
 {
-}
-
-void pthreadex_excl_lock_fini(pthreadex_excl_t *ex)
-{
+  pthread_mutex_destroy(&l->lock);
+  pthread_cond_destroy(&l->lock_zero);
 }
 

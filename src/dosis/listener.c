@@ -229,7 +229,9 @@ static void listener__thread(THREAD_WORK *tw)
   /* get packets and classify */
   while(1)
   {
+DBG("before mutex");
     pthreadex_mutex_begin(&ipq_mutex);
+DBG("in mutex");
     r = ipqex_msg_read(&lcfg->imsg, 0);
     if(r < 0)
       ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
@@ -266,6 +268,7 @@ repeat_search:
         ERR("Cannot ACCEPT IPQ packet.");
       pthreadex_mutex_end();
     }
+DBG("after mutex");
   }
 }
 
