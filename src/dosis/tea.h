@@ -71,7 +71,7 @@ typedef struct _tag_TEA_OBJECT {
 
 /*- THREAD MANAGAMENT -------------------------------------------------------*/
 int  tea_thread_msg_push(int tid, TEA_MSG *m);
-int  tea_thread_search_listener(char *b, unsigned int l);
+int  tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
 
 /*- MQUEUE MANAGAMENT -------------------------------------------------------*/
 void     tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);

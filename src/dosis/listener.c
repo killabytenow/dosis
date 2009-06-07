@@ -48,6 +48,7 @@
 
 static char              iptables_tmp[255];
 static char              ip_forward_status;
+static int               ipq_on;
 static ipqex_info_t      ipq;
 static pthreadex_mutex_t ipq_mutex;
 
@@ -63,6 +64,12 @@ static void listener__global_fini(void)
 {
   int f, pid, r;
   char buf[100];
+
+  /* finish ipq */
+  pthreadex_mutex_begin(&ipq_mutex);
+  ipq_on = 0;
+  ipqex_destroy(&ipq);
+  pthreadex_mutex_end();
 
   /* restore ipforward */
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
@@ -92,9 +99,8 @@ static void listener__global_fini(void)
   if(unlink(iptables_tmp) < 0)
     FAT("[%s] Cannot unlink %s: %s", MODNAME, iptables_tmp, strerror(errno));
 
-  /* finish ipq */
-  ipqex_destroy(&ipq);
-  pthreadex_mutex_destroy(&ipq_mutex);
+  /* XXX: commented... is necesary until program exit */
+  /* pthreadex_mutex_destroy(&ipq_mutex); */
 
   DBG("[%s] (global) listener threads finished.", MODNAME);
 }
@@ -208,6 +214,7 @@ static void listener__global_init(void)
   DBG("[%s] Initializing ipq.", MODNAME);
   if(ipqex_init(&ipq, BUFSIZE))
     FAT("[%s]  !! Cannot initialize IPQ.", MODNAME);
+  ipq_on = -1;
 
   /* set the finalization routine */
   dosis_atexit(MODNAME, listener__global_fini);
@@ -223,7 +230,7 @@ static void listener__thread(THREAD_WORK *tw)
 {
   LISTENER_CFG *lcfg = (LISTENER_CFG *) tw->data;
   TEA_MSG *tmsg;
-  int id;
+  int id = 0;
   int r;
 
   /* get packets and classify */
@@ -232,15 +239,19 @@ static void listener__thread(THREAD_WORK *tw)
 DBG("before mutex");
     pthreadex_mutex_begin(&ipq_mutex);
 DBG("in mutex");
-    r = ipqex_msg_read(&lcfg->imsg, 0);
-    if(r < 0)
-      ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
+    if(ipq_on)
+    {
+      r = ipqex_msg_read(&lcfg->imsg, 0);
+      if(r < 0)
+        ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
+    } else
+      r = -1;
     pthreadex_mutex_end();
     if(r <= 0)
       continue;
 
 repeat_search:
-    id = tea_thread_search_listener((char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+    id = tea_thread_search_listener((char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len, id+1);
     if(id >= 0)
     {
       DBG2("Package accepted by thread %d", id);
@@ -258,14 +269,20 @@ repeat_search:
       }
       /* ok... msg pushed (accepted) so drop package */
       pthreadex_mutex_begin(&ipq_mutex);
-      if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
-        ERR("Cannot ACCEPT IPQ packet.");
+      if(ipq_on)
+      {
+        if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
+          ERR("Cannot ACCEPT IPQ packet.");
+        DBG2("  - Package dropped.");
+      }
       pthreadex_mutex_end();
-      DBG2("  - Package dropped.");
     } else {
       pthreadex_mutex_begin(&ipq_mutex);
-      if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
-        ERR("Cannot ACCEPT IPQ packet.");
+      if(ipq_on)
+      {
+        if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
+          ERR("Cannot ACCEPT IPQ packet.");
+      }
       pthreadex_mutex_end();
     }
 DBG("after mutex");

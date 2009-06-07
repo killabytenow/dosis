@@ -342,17 +342,20 @@ DBG("KILLED %d", tid);
   pthreadex_lock_release();
 }
 
-int tea_thread_search_listener(char *b, unsigned int l)
+int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
 {
   int tid, prio, stid, sprio;
 
   stid = -1;
   sprio = 0;
 
+  if(pivot_id < 0 || pivot_id >= cfg.maxthreads)
+    pivot_id = 0;
+
   pthreadex_lock_get_shared(&ttable_lock);
 
-  for(tid = 0; tid < cfg.maxthreads; tid++)
-  {
+  tid = pivot_id;
+  do {
     if(ttable[tid]
     && ttable[tid]->methods->listen_check
     && (prio = ttable[tid]->methods->listen_check(ttable[tid], b, l)) != 0)
@@ -369,7 +372,10 @@ int tea_thread_search_listener(char *b, unsigned int l)
       sprio = prio;
       stid  = tid;
     }
-  }
+    tid++;
+    if(tid >= cfg.maxthreads)
+      tid = 0;
+  } while(tid != pivot_id);
 
   pthreadex_lock_release();
 
