@@ -33,6 +33,7 @@ void ln_init_context(LN_CONTEXT *lnc)
 
   if((lnc->ln = libnet_init(LIBNET_RAW4, NULL, lnet_errbuf)) == NULL)
     FAT("Cannot initialize libnet: %s", lnet_errbuf);
+  lnc->udp_p = LIBNET_PTAG_INITIALIZER;
   lnc->tcp_p = LIBNET_PTAG_INITIALIZER;
   lnc->ipv4_p = LIBNET_PTAG_INITIALIZER;
   lnc->ip_id = libnet_get_prand(LIBNET_PRu32);
@@ -47,12 +48,12 @@ void ln_destroy_context(LN_CONTEXT *lnc)
     libnet_destroy(lnc->ln);
 }
 
-void ln_send_packet(LN_CONTEXT *lnc,
-                    struct in_addr *shost, int sport,
-                    struct in_addr *dhost, int dport,
-                    int flags, int window,
-                    int seq, int ack,
-                    char *data, int data_sz)
+void ln_send_tcp_packet(LN_CONTEXT *lnc,
+                        struct in_addr *shost, int sport,
+                        struct in_addr *dhost, int dport,
+                        int flags, int window,
+                        int seq, int ack,
+                        char *data, int data_sz)
 {
   int ip_size, tcp_size;
 
@@ -89,6 +90,56 @@ void ln_send_packet(LN_CONTEXT *lnc,
         0x4000,              /* fragmentation bits and offset           */
         64,                  /* time to live in the network             */
         IPPROTO_TCP,         /* upper layer protocol                    */
+        0,                   /* checksum (0 for libnet to autofill)     */
+        shost->s_addr,       /* source IPv4 address (little endian)     */
+        dhost->s_addr,       /* destination IPv4 address (little endian)*/
+        NULL,                /* payload                                 */
+        0,                   /* payload length                          */
+        lnc->ln,             /* libnet context                          */
+        lnc->ipv4_p);        /* tag to modify an existing header        */
+  if(lnc->ipv4_p == -1)
+    FAT("Can't build IP header: %s", libnet_geterror(lnc->ln));
+
+  /* send! */
+  if(libnet_write(lnc->ln) == -1)
+    FAT("Error sending packet: %s", libnet_geterror(lnc->ln));
+}
+
+void ln_send_udp_packet(LN_CONTEXT *lnc,
+                        struct in_addr *shost, int sport,
+                        struct in_addr *dhost, int dport,
+                        char *data, int data_sz)
+{
+  int ip_size, udp_size;
+
+  if(!data_sz)
+    data = NULL;
+  udp_size = LIBNET_UDP_H + data_sz;
+  ip_size  = LIBNET_IPV4_H + udp_size;
+
+  /* build UDP packet with payload (if requested) */
+  lnc->udp_p =
+    libnet_build_udp(
+      sport,                    /* source port                               */
+      dport,                    /* destination port                          */
+      udp_size,                 /* len total length of the UDP packet        */
+      0,                        /* sum checksum (0 for libnet to autofill)   */
+      (unsigned char *) data,   /* payload                                   */
+      data_sz,                  /* payload size                              */
+      lnc->ln,                  /* libnet context                            */
+      lnc->udp_p);              /* protocol tag to modify an existing header */
+  if(lnc->udp_p == -1)
+    FAT("Can't build UDP header: %s", libnet_geterror(lnc->ln));
+
+  /* build container IP packet */
+  lnc->ipv4_p =
+      libnet_build_ipv4(
+        ip_size,             /* total length of packet (including data) */
+        0x00,                /* type of service bits                    */
+        lnc->ip_id++,        /* IP identification number                */
+        0x4000,              /* fragmentation bits and offset           */
+        64,                  /* time to live in the network             */
+        IPPROTO_UDP,         /* upper layer protocol                    */
         0,                   /* checksum (0 for libnet to autofill)     */
         shost->s_addr,       /* source IPv4 address (little endian)     */
         dhost->s_addr,       /* destination IPv4 address (little endian)*/

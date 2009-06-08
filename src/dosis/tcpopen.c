@@ -103,22 +103,22 @@ DBG("EATING INPUT");
     {
       /* send handshake and data TCP packet */
       DBG("[%d]   - Request packet sending...", tw->id);
-      ln_send_packet(tc->lnc,
-                     &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                     TH_ACK,
-                     ntohs(tcp_header(m->b)->window),
-                     ntohl(tcp_header(m->b)->ack_seq),
-                     ntohl(tcp_header(m->b)->seq) + 1,
-                     NULL, 0);
-      ln_send_packet(tc->lnc,
-                     &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                     TH_ACK | TH_PUSH,
-                     ntohs(tcp_header(m->b)->window),
-                     ntohl(tcp_header(m->b)->ack_seq),
-                     ntohl(tcp_header(m->b)->seq) + 1,
-                     (char *) tc->payload, tc->payload_size);
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_ACK,
+                         ntohs(tcp_header(m->b)->window),
+                         ntohl(tcp_header(m->b)->ack_seq),
+                         ntohl(tcp_header(m->b)->seq) + 1,
+                         NULL, 0);
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_ACK | TH_PUSH,
+                         ntohs(tcp_header(m->b)->window),
+                         ntohl(tcp_header(m->b)->ack_seq),
+                         ntohl(tcp_header(m->b)->seq) + 1,
+                         (char *) tc->payload, tc->payload_size);
     }
 
     /* release msg buffer */

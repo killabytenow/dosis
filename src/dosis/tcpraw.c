@@ -103,12 +103,12 @@ static void tcpraw__thread(THREAD_WORK *tw)
     for(i = 0; i < tc->npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-      ln_send_packet(tc->lnc,
-                     &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                     TH_SYN, 13337,
-                     seq, 0,
-                     NULL, 0);
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_SYN, 13337,
+                         seq, 0,
+                         NULL, 0);
     }
   }
 }
