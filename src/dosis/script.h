@@ -62,8 +62,10 @@ enum TYPES {
   TYPE_OPT_OPEN,
   TYPE_OPT_RAW,
   TYPE_OPT_SRC,
-  TYPE_OPT_PAYLOAD_STR,
   TYPE_OPT_PAYLOAD_FILE,
+  TYPE_OPT_PAYLOAD_NULL,
+  TYPE_OPT_PAYLOAD_RANDOM,
+  TYPE_OPT_PAYLOAD_STR,
   /* patterns */
   TYPE_PERIODIC = 5000,
 };
@@ -153,8 +155,6 @@ typedef struct SNODE_tag {
 
 extern void script_init(void);
 extern SNODE *script_parse(void);
-
-#define IPADDR      
 
 #ifdef __cplusplus
 }

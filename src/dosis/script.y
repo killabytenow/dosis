@@ -61,7 +61,7 @@
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
-%token            OPT_PAYLOAD OPT_FILE
+%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL
 %token            TO_UDP TO_TCP TO_LISTEN
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
@@ -154,6 +154,10 @@ option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.flags = $2; }
       | OPT_PAYLOAD string        { $$ = new_node(TYPE_OPT_PAYLOAD_STR);
                                     $$->option.payload = $2; }
+      | OPT_PAYLOAD OPT_NULL      { $$ = new_node(TYPE_OPT_PAYLOAD_NULL); }
+      | OPT_PAYLOAD OPT_RANDOM '(' nint ')'
+                                  { $$ = new_node(TYPE_OPT_PAYLOAD_RANDOM);
+                                    $$->option.payload = $4; }
       | OPT_PAYLOAD OPT_FILE '(' string ')'
                                   { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
                                     $$->option.payload = $4; }
@@ -326,6 +330,7 @@ int yylex(void)
     { "OPEN",     OPT_OPEN    },
     { "PAYLOAD",  OPT_PAYLOAD },
     { "PERIODIC", PERIODIC    },
+    { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
     { "SRC",      OPT_SRC     },
     { "TCP",      TO_TCP      },

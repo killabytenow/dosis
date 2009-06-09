@@ -30,6 +30,7 @@
 #include "tea.h"
 #include "tcpopen.h"
 #include "lnet.h"
+#include "payload.h"
 #include "pthreadex.h"
 #include "log.h"
 #include "ip.h"
@@ -138,9 +139,7 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
   SNODE *cn;
-  char *s, *s2;
-  int f;
-  struct stat pls;
+  char *s;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
@@ -157,12 +156,10 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   }
 
   /* read from SNODE command parameters */
-DBG("pito %x", command->command.thc.to);
   if(command->command.thc.to != NULL)
   if(command->command.thc.to->to.pattern != NULL)
     FAT("%d: TCPOPEN does not accept a pattern.",
         command->command.thc.to->to.pattern->line);
-DBG("pato");
   
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
@@ -186,25 +183,10 @@ DBG("pato");
           ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
         break;
 
-      case TYPE_OPT_PAYLOAD_STR:
-        break;
-        
       case TYPE_OPT_PAYLOAD_FILE:
-        s2 = tea_get_string(cn->option.payload);
-        s = dosis_search_file(s2);
-        free(s2);
-        DBG("********************************** Reading %s.", s);
-        if(stat(s, &pls) < 0)
-          FAT("%d: Cannot stat file '%s': %s", cn->line, s, strerror(errno));
-        tc->payload_size = pls.st_size;
-        if((tc->payload = malloc(tc->payload_size)) == NULL)
-          FAT("%d: Cannot alloc %d bytes for payload.", cn->line, tc->payload_size);
-        if((f = open(s, O_RDONLY)) < 0)
-          FAT("%d: Cannot open payload: %s", cn->line, strerror(errno));
-        if(read(f, tc->payload, tc->payload_size) < tc->payload_size)
-          FAT("%d: Cannot read the payload file: %s", cn->line, strerror(errno));
-        close(f);
-        free(s);
+      case TYPE_OPT_PAYLOAD_RANDOM:
+      case TYPE_OPT_PAYLOAD_STR:
+        payload_get(cn, &tc->payload, &tc->payload_size);
         break;
 
       default:
