@@ -38,5 +38,6 @@ dosis_SOURCES = dosis.c     dosis.h     \
                 script.y    script.h    \
                 tcpopen.c   tcpopen.h   \
                 tcpraw.c    tcpraw.h    \
-                tea.c       tea.h
+                tea.c       tea.h       \
+                udp.c       udp.h
 

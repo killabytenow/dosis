@@ -116,7 +116,6 @@ typedef struct SNODE_tag {
       struct {
         struct SNODE_tag *ratio; /* nfloat snode specifying packets/s        */
         struct SNODE_tag *n;     /* nint snode with packets to send          */
-        struct SNODE_tag *bytes; /* size of packet                           */
       } periodic;
     } pattern;
 

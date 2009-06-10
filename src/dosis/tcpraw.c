@@ -25,13 +25,14 @@
 
 #include <config.h>
 
-#include "dosis.h"
 #include "dosconfig.h"
-#include "tcpraw.h"
-#include "lnet.h"
-#include "pthreadex.h"
-#include "log.h"
+#include "dosis.h"
 #include "ip.h"
+#include "lnet.h"
+#include "log.h"
+#include "payload.h"
+#include "pthreadex.h"
+#include "tcpraw.h"
 #include "tea.h"
 
 typedef struct _tag_TCPRAW_CFG {
@@ -42,9 +43,9 @@ typedef struct _tag_TCPRAW_CFG {
 
   /* parameters */
   unsigned           npackets;
-  char               req;
-  unsigned           req_size;
   double             hitratio;
+  char              *payload;
+  unsigned           payload_size;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -108,7 +109,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_SYN, 13337,
                          seq, 0,
-                         NULL, 0);
+                         (char *) tc->payload, tc->payload_size);
     }
   }
 }
@@ -150,13 +151,10 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   
   tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
   tc->npackets = tea_get_int(cn->pattern.periodic.n);
-  tc->req_size = tea_get_int(cn->pattern.periodic.bytes);
   if(tc->hitratio < 0)
     FAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
   if(tc->npackets <= 0)
     FAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
-  if(tc->req_size <= 0)
-    FAT("%d: Bad packet size '%d'.", cn->line, tc->req_size);
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
@@ -198,6 +196,12 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
         free(s);
         break;
 
+      case TYPE_OPT_PAYLOAD_FILE:
+      case TYPE_OPT_PAYLOAD_RANDOM:
+      case TYPE_OPT_PAYLOAD_STR:
+        payload_get(cn, &tc->payload, &tc->payload_size);
+        break;
+
       default:
         FAT("%d: Uknown option %d.", cn->line, cn->type);
     }
@@ -226,7 +230,6 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     char buff[255];
 
     DBG2("[%d] config.periodic.n     = %d", tw->id, tc->npackets);
-    DBG2("[%d] config.periodic.bytes = %d", tw->id, tc->req_size);
     DBG2("[%d] config.periodic.ratio = %d", tw->id, tc->hitratio);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
@@ -248,6 +251,11 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
   free(tc->lnc);
   pthreadex_timer_destroy(&tc->timer);
 
+  if(tc->payload)
+  {
+    free(tc->payload);
+    tc->payload = NULL;
+  }
   free(tc);
   tw->data = NULL;
 
