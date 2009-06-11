@@ -57,6 +57,8 @@ typedef struct _tag_UDP_CFG {
 #define udp_header(x)  ((struct udphdr *) ((x) \
                        + (((struct iphdr *) (x))->ihl << 2)))
 
+#if 0
+/* the best from performance view is to do nothing */
 static int udp__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
@@ -78,6 +80,7 @@ DBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
       && ntohs(udp_header(msg)->source) == tu->dhost.port
          ? -255 : 0;
 }
+#endif
 
 static void udp__thread(THREAD_WORK *tw)
 {
@@ -240,7 +243,7 @@ TEA_OBJECT teaUDP = {
   .name         = "UDP",
   .configure    = udp__configure,
   .cleanup      = udp__cleanup,
-  .listen_check = udp__listen_check,
+/*.listen_check = udp__listen_check,*/
   .thread       = udp__thread,
 };
 

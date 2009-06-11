@@ -34,9 +34,10 @@
 #include "pthreadex.h"
 #include "tea.h"
 
+#include "listener.h"
+#include "udp.h"
 #include "tcpopen.h"
 #include "tcpraw.h"
-#include "listener.h"
 
 static THREAD_WORK     **ttable;
 static pthreadex_lock_t  ttable_lock;
@@ -681,7 +682,7 @@ void tea_timer(SNODE *program)
             case TYPE_TO_TCPOPEN: to = &teaTCPOPEN;  break;
           /*case TYPE_TO_TCP:     to = &teaTCP;      break; */
             case TYPE_TO_TCPRAW:  to = &teaTCPRAW;   break;
-          /*case TYPE_TO_UDP:     to = &teaUDP;      break; */
+            case TYPE_TO_UDP:     to = &teaUDP;      break;
             default:
               FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }

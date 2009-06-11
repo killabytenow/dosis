@@ -558,7 +558,7 @@ ha_roto_la_olla:
 
 void yyerror(char const *str)
 {
-  ERR("parsing error: %s", str);
+  ERR("parsing error: %d: %s", lineno, str);
 }
 
 SNODE *script_parse(void)
