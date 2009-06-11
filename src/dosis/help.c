@@ -41,10 +41,31 @@ void dos_help_program_header(void)
   char **i;
 
   for(i = msg; *i; i++)
-    LOG("%s", *i);
+    d_log(NULL, NULL, "%s", *i);
 }
 
 void print_help(void)
 {
+  char *msg[] = {
+    "Usage: dosis [option] ... [script_file]",
+    "Denial-of-Service suite.",
+    "",
+    "Mandatory arguments to long options are mandatory for short options too."
+    "",
+    "  -h, --help              This help message.",
+    "  -i, --interface=IFACE   Choose input interface (for iptales/ipq).",
+    "  -I, --include=DIR       Add a scripts/files source directory.",
+    "  -q, --quiet             Shut up.",
+    "  -o, --output-file=FILE  Write results to FILE.",
+    "  -t, --max-threads=FILE  Set maximum thread parallelism (default 100).",
+    "  -v, --verbose[=LEVEL]   Don't stop writing baby (default). LEVEL is a value",
+    "                          between 0 (errors) and 4 (deep debugging messages).",
+    "  -Z, --debug             Very verbose. Specially funny with a slow SSH session.",
+    NULL
+  };
+  char **i;
+
+  for(i = msg; *i; i++)
+    d_log(NULL, NULL, "%s", *i);
 }
 

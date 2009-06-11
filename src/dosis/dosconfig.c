@@ -58,14 +58,14 @@ typedef struct _tag_CMD_OPTION {
 } DOS_CMD_OPTION;
 
 DOS_CMD_OPTION cmd_options[] = {
-  { 'Z', "debug",         0 },
   { 'h', "help",          0 },
-  { 'o', "output-file",   1 },
-  { 'q', "quiet",         0 },
   { 'i', "interface",     1 },
-  { 'I', "include-dir",   1 },
+  { 'I', "include",       1 },
+  { 'q', "quiet",         0 },
+  { 'o', "output-file",   1 },
   { 't', "max-threads",   1 },
   { 'v', "verbose",       2 },
+  { 'Z', "debug",         0 },
   {   0, NULL,            0 },
 };
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
@@ -97,9 +97,12 @@ static void dos_config_parse_command(int argc, char **argv)
     switch(c)
     {
       case 'h':
+          cfg.verbosity = 3;
+          dos_help_program_header();
           print_help();
+          cfg.verbosity = 0;
           exit(0);
-          break;
+
       case 'o':
           if(!optarg || strlen(optarg) == 0)
             FAT("Required a valid filename.");
@@ -343,9 +346,9 @@ static void dos_config_fini(void)
   }
   DBG("Atexit finished.");
 
-  if(cfg.output)       free(cfg.output);
-  if(cfg.script)       free(cfg.script);
-  if(cfg.of != stdout) fclose(cfg.of);
+  if(cfg.output)                 free(cfg.output);
+  if(cfg.script)                 free(cfg.script);
+  if(cfg.of != stdout && cfg.of) fclose(cfg.of);
 
   while((addr = cfg.addr) != NULL)
   {

@@ -5,3 +5,4 @@ TODO LIST
 - program classic TCP
 - program classic UDP
 - program TCP/SSL
+- choose a better seq generation algorithm for tcpraw thread.
