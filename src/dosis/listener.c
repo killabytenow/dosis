@@ -255,16 +255,21 @@ repeat_search:
     if(id >= 0)
     {
       DBG2("Package accepted by thread %d", id);
+
+      /* defer cancelation as much as possible */
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+
+      /* copy this msg and send to the thread */
       tmsg = tea_msg_get();
       tea_msg_fill(tmsg, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
       r = tea_thread_msg_push(id, tmsg);
-      pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-      pthread_testcancel();
+
       /* if the msg cannot be pushed... repeat this until it is pushed */
       if(r < 0)
       {
         tea_msg_release(tmsg);
+        pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+        pthread_testcancel();
         goto repeat_search;
       }
       /* ok... msg pushed (accepted) so drop package */
@@ -276,6 +281,10 @@ repeat_search:
         DBG2("  - Package dropped.");
       }
       pthreadex_mutex_end();
+
+      /* accept cancellations */
+      pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+      pthread_testcancel();
     } else {
       pthreadex_mutex_begin(&ipq_mutex);
       if(ipq_on)
