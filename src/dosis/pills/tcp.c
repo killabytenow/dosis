@@ -101,7 +101,6 @@ static void tcp__thread(THREAD_WORK *tw)
     {
       TERR("connect() 1 failed:%s", strerror(errno));
       close(sock);
-      w->stats.nfail++;
       continue;
     } else
       TDBG2("connect() sent!");
@@ -114,7 +113,6 @@ static void tcp__thread(THREAD_WORK *tw)
     {
       TDBG("connection timed out.");
       close(sock);
-      w->stats.nfail++;
       continue;
     }
 
@@ -144,7 +142,7 @@ static void tcp__thread(THREAD_WORK *tw)
     w->stats.bsent += opts.req_size;
 
     /* Restablecemos los timeouts */
-    memcpy(&sockwait, &sockwait_rwait, sizeof(struct timeval));
+    memcpy(&sockwait, &tt->sockwait_rwait, sizeof(struct timeval));
     r = select(sock+1, &socks, NULL, NULL, &sockwait);
     if(!FD_ISSET(sock, &socks))
     {
@@ -256,8 +254,8 @@ void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
   /* calculate timeout */
   tt->sockwait_cwait.tv_sec  = opts.cwait / 1000000;
   tt->sockwait_cwait.tv_usec = opts.cwait % 1000000;
-  sockwait_rwait.tv_sec  = opts.rwait / 1000000;
-  sockwait_rwait.tv_usec = opts.rwait % 1000000;
+  tt->sockwait_rwait.tv_sec  = opts.rwait / 1000000;
+  tt->sockwait_rwait.tv_usec = opts.rwait % 1000000;
 
   /* build target addr */
   bzero((char *) &addr, sizeof(addr));
