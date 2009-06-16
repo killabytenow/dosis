@@ -470,6 +470,6 @@ void dos_config_init(int argc, char **argv)
     if(open(cfg.script, O_RDONLY) < 0)
       FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
   } else
-    D_WRN("Reading standard input.");
+    WRN("Reading standard input.");
 }
 

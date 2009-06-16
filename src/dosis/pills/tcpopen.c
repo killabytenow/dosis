@@ -138,13 +138,13 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-      D_FAT("[%d] No memory for TCPOPEN_CFG.", tw->id);
+      TFAT("No memory for TCPOPEN_CFG.");
     tw->data = (void *) tc;
 
     /* initialize libnet */
     TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%d] No memory for LN_CONTEXT.", tw->id);
+      TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
   }
 

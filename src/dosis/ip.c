@@ -45,7 +45,7 @@ static int ip_read(char *network, char *s, INET_IPV4_ADDR_T *addr, INET_IPV4_ADD
     sscanf(s, "%d", &num);
     if(num < 0 || num > 255)
     {
-      D_ERR("Bad component in address '%s'.", network);
+      ERR("Bad component in address '%s'.", network);
       return -1;
     }
     *addr = (*addr) << 8;
@@ -57,14 +57,14 @@ static int ip_read(char *network, char *s, INET_IPV4_ADDR_T *addr, INET_IPV4_ADD
   {
     if(!rest)
     {
-      D_ERR("Need more components in address '%s'.", network);
+      ERR("Need more components in address '%s'.", network);
       return -1;
     } else
       *addr = (rest & netmask) | *addr;
   } else
     if(s)
     {
-      D_ERR("Too much components in address '%s'.", network);
+      ERR("Too much components in address '%s'.", network);
       return -1;
     }
 
@@ -82,7 +82,7 @@ static int ip_read_network(char *network, char *s, INET_IPV4_RANGE *range)
   sscanf(s2, "%d", &bits);
   if(bits < 0 || bits > 32)
   {
-    D_ERR("Bad network address '%s'.", network);
+    ERR("Bad network address '%s'.", network);
     return -1;
   }
   netmask = (0xffffffffL << (32 - bits));
@@ -180,7 +180,7 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
   if(addr->port_defined)
   {
     ip_addr_snprintf(addr, INET_ADDR_MAXLEN, tmp);
-    D_WRN("Port not defined for address '%s'.", tmp);
+    WRN("Port not defined for address '%s'.", tmp);
   }
   switch(addr->type)
   {
@@ -294,7 +294,7 @@ int ip_addr_snprintf_ipv4(INET_ADDR *addr, int l, char *str)
   if(addr->type != INET_FAMILY_IPV4)
   {
     ip_addr_snprintf(addr, sizeof(buff), buff);
-    D_ERR("Address '%s' is not an IPv4 address.", buff);
+    ERR("Address '%s' is not an IPv4 address.", buff);
     return -1;
   }
 
@@ -324,7 +324,7 @@ int ip_addr_snprintf_ipv6(INET_ADDR *addr, int l, char *str)
   if(addr->type != INET_FAMILY_IPV6)
   {
     ip_addr_snprintf(addr, sizeof(buff), buff);
-    D_ERR("Address '%s' is not an IPv6 address.", buff);
+    ERR("Address '%s' is not an IPv6 address.", buff);
     return -1;
   }
 

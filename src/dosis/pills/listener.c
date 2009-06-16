@@ -30,14 +30,6 @@
 #include "log.h"
 #include "tea.h"
 
-#if 0
-#include "dosis.h"
-#include "tcpopen.h"
-#include "lnet.h"
-#include "pthreadex.h"
-#include "ip.h"
-#endif
-
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
 
@@ -319,7 +311,7 @@ static int listener__configure(THREAD_WORK *tw, SNODE *command)
   if(lcfg == NULL)
   {
     if((lcfg = calloc(1, sizeof(LISTENER_CFG))) == NULL)
-      D_FAT("[%d/%s] No memory for LISTENER_CFG.", tw->id, tw->methods->name);
+      TFAT("No memory for LISTENER_CFG.");
     tw->data = (void *) lcfg;
 
     pthreadex_mutex_begin(&ipq_mutex);

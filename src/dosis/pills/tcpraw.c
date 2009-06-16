@@ -128,13 +128,13 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
-      D_FAT("[%02d] No memory for TCPRAW_CFG.", tw->id);
+      TFAT("No memory for TCPRAW_CFG.");
     tw->data = (void *) tc;
 
     /* initialize libnet */
     TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+      TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
 
     pthreadex_timer_init(&(tc->timer), 0.0);
