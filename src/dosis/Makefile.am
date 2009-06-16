@@ -25,19 +25,19 @@
 ###############################################################################
 
 bin_PROGRAMS = dosis
-dosis_SOURCES = dosis.c     dosis.h     \
-                dosconfig.c dosconfig.h \
-                ip.c        ip.h        \
-                ipqex.c     ipqex.h     \
-                help.c      help.h      \
-                lnet.c      lnet.h      \
-                listener.c  listener.h  \
-                log.c       log.h       \
-                payload.c   payload.h   \
-                pthreadex.c pthreadex.h \
-                script.y    script.h    \
-                tcpopen.c   tcpopen.h   \
-                tcpraw.c    tcpraw.h    \
-                tea.c       tea.h       \
-                udp.c       udp.h
+dosis_SOURCES = dosis.c           dosis.h           \
+                dosconfig.c       dosconfig.h       \
+                ip.c              ip.h              \
+                ipqex.c           ipqex.h           \
+                help.c            help.h            \
+                lnet.c            lnet.h            \
+                log.c             log.h             \
+                payload.c         payload.h         \
+                pthreadex.c       pthreadex.h       \
+                script.y          script.h          \
+                tea.c             tea.h             \
+                pills/tcpopen.c   pills/tcpopen.h   \
+                pills/tcpraw.c    pills/tcpraw.h    \
+                pills/listener.c  pills/listener.h  \
+                pills/udp.c       pills/udp.h
 

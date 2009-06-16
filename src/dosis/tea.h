@@ -90,6 +90,21 @@ char    *tea_get_string(SNODE *n);
 int      tea_get_int(SNODE *n);
 double   tea_get_float(SNODE *n);
 
+/*- THREAD LOG UTILITIES ----------------------------------------------------*/
+#define GFAT(msg, ...)   FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GERR(msg, ...)   ERR("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GWRN(msg, ...)   WRN("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GLOG(msg, ...)   LOG("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GDBG(msg, ...)   DBG("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GDBG2(msg, ...)  DBG2("[%s] " msg, MODNAME, ## __VA_ARGS__)
+
+#define TFAT(msg, ...)   FAT("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+#define TERR(msg, ...)   ERR("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+#define TWRN(msg, ...)   WRN("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+#define TLOG(msg, ...)   LOG("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+#define TDBG(msg, ...)   DBG("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+#define TDBG2(msg, ...)  DBG2("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+
 /*- CORE --------------------------------------------------------------------*/
 void tea_init(void);
 void tea_timer(SNODE *program);

@@ -70,12 +70,12 @@ static int udp__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
     return 0;
 
   /* check msg */
-DBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
-    tw->methods->name,
-    ip_header(msg)->saddr == tu->dhost.addr.in.addr
-    && ntohs(udp_header(msg)->source) == tu->dhost.port,
-    ip_header(msg)->saddr, ntohs(udp_header(msg)->source),
-    tu->dhost.addr.in.addr, tu->dhost.port);
+TDBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
+     tw->methods->name,
+     ip_header(msg)->saddr == tu->dhost.addr.in.addr
+     && ntohs(udp_header(msg)->source) == tu->dhost.port,
+     ip_header(msg)->saddr, ntohs(udp_header(msg)->source),
+     tu->dhost.addr.in.addr, tu->dhost.port);
   return ip_header(msg)->saddr == tu->dhost.addr.in.addr
       && ntohs(udp_header(msg)->source) == tu->dhost.port
          ? -255 : 0;
@@ -87,7 +87,7 @@ static void udp__thread(THREAD_WORK *tw)
   UDP_CFG *tu = (UDP_CFG *) tw->data;
   int i;
 
-  DBG("[%02u] Started sender thread", tw->id);
+  TDBG("Started sender thread");
 
   /* ATTACK */
   while(1)
@@ -95,10 +95,10 @@ static void udp__thread(THREAD_WORK *tw)
     /* wait for work */
     if(tu->hitratio > 0)
       if(pthreadex_timer_wait(&(tu->timer)) < 0)
-        ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
+        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /* build UDP packet with payload (if requested) */
-    DBG("[%02u] Sending %d packet(s)...", tw->id, tu->npackets);
+    TDBG("Sending %d packet(s)...", tu->npackets);
     for(i = 0; i < tu->npackets; i++)
       ln_send_udp_packet(tu->lnc,
                          &tu->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
@@ -124,13 +124,13 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
   if(tu == NULL)
   {
     if((tu = calloc(1, sizeof(UDP_CFG))) == NULL)
-      D_FAT("[%02d] No memory for UDP_CFG.", tw->id);
+      TFAT("No memory for UDP_CFG.");
     tw->data = (void *) tu;
 
     /* initialize libnet */
-    DBG("[%02u] Initializing libnet.", tw->id);
+    TDBG("Initializing libnet.");
     if((tu->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+      TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tu->lnc);
 
     pthreadex_timer_init(&(tu->timer), 0.0);
@@ -139,14 +139,14 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
   /* read from SNODE command parameters */
   cn = command->command.thc.to->to.pattern;
   if(cn->type != TYPE_PERIODIC)
-    FAT("%d: Uknown pattern %d.", cn->line, cn->type);
+    TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
   
   tu->hitratio = tea_get_float(cn->pattern.periodic.ratio);
   tu->npackets = tea_get_int(cn->pattern.periodic.n);
   if(tu->hitratio < 0)
-    FAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
+    TFAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
   if(tu->npackets <= 0)
-    FAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
+    TFAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
@@ -155,7 +155,7 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_SRC:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tu->shost))
-          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tu->shost, tea_get_int(cn->option.port));
@@ -164,7 +164,7 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_DST:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tu->dhost))
-          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tu->dhost, tea_get_int(cn->option.port));
@@ -177,7 +177,7 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
         break;
 
       default:
-        FAT("%d: Uknown option %d.", cn->line, cn->type);
+        TFAT("%d: Uknown option %d.", cn->line, cn->type);
     }
 
   /* configure timer */
@@ -186,7 +186,7 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
 
   /* configure src address (if not defined) */
   if(tu->dhost.type == INET_FAMILY_NONE)
-    FAT("I need a target address.");
+    TFAT("I need a target address.");
   if(tu->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -194,7 +194,7 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
     {
       char buff[255];
       ip_addr_snprintf(&tu->shost, sizeof(buff), buff);
-      WRN("Cannot find a suitable source address for '%s'.", buff);
+      TWRN("Cannot find a suitable source address for '%s'.", buff);
     } else
       ip_addr_copy(&tu->shost, &ai->addr);
   }
@@ -203,13 +203,13 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
   {
     char buff[255];
 
-    DBG2("[%d] config.periodic.n     = %d", tw->id, tu->npackets);
-    DBG2("[%d] config.periodic.ratio = %d", tw->id, tu->hitratio);
+    TDBG2("config.periodic.n     = %d", tu->npackets);
+    TDBG2("config.periodic.ratio = %d", tu->hitratio);
 
     ip_addr_snprintf(&tu->shost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.shost  = %s", tw->id, buff);
+    TDBG2("config.options.shost  = %s", buff);
     ip_addr_snprintf(&tu->dhost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.dhost  = %s", tw->id, buff);
+    TDBG2("config.options.dhost  = %s", buff);
   }
 
   return 0;
@@ -232,7 +232,7 @@ static void udp__cleanup(THREAD_WORK *tw)
   free(tc);
   tw->data = NULL;
 
-  DBG("[%d] Finalized.", tw->id);
+  TDBG("Finalized.");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

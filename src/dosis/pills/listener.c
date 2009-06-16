@@ -73,11 +73,11 @@ static void listener__global_fini(void)
 
   /* restore ipforward */
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    FAT("[%s] /proc/sys/net/ipv4/ip_forward: %s", MODNAME, strerror(errno));
+    GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
   buf[0] = ip_forward_status;
   buf[1] = '\n';
   if(write(f, buf, 2) < 0)
-    FAT("[%s] Cannot set ip_forward: %s", MODNAME, strerror(errno));
+    GFAT("Cannot set ip_forward: %s", strerror(errno));
   close(f);
 
   /* restore iptables */
@@ -87,22 +87,22 @@ static void listener__global_fini(void)
     /* restore iptables state */
     close(0);
     if(open(iptables_tmp, O_RDONLY) < 0)
-      FAT("[%s] Cannot read %s: %s", MODNAME, iptables_tmp, strerror(errno));
+      GFAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
     execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
     /* if this code is executed, we have an error */
-    FAT("[%s] /sbin/iptables-restore: %s", MODNAME, strerror(errno));
+    GFAT("/sbin/iptables-restore: %s", strerror(errno));
   }
   /* parent */
   waitpid(pid, &r, 0);
   if(r != 0)
-    FAT("[%s] iptables-restore failed.", MODNAME);
+    GFAT("iptables-restore failed.");
   if(unlink(iptables_tmp) < 0)
-    FAT("[%s] Cannot unlink %s: %s", MODNAME, iptables_tmp, strerror(errno));
+    GFAT("Cannot unlink %s: %s", iptables_tmp, strerror(errno));
 
   /* XXX: commented... is necesary until program exit */
   /* pthreadex_mutex_destroy(&ipq_mutex); */
 
-  DBG("[%s] (global) listener threads finished.", MODNAME);
+  GDBG("listener threads finished.");
 }
 
 static void apply_iptables_script(char **script)
@@ -116,13 +116,13 @@ static void apply_iptables_script(char **script)
     {
       /* child */
       execv(a[0], a);
-      FAT("[%s] Cannot execute /sbin/iptables: %s", MODNAME, strerror(errno));
+      GFAT("Cannot execute /sbin/iptables: %s", strerror(errno));
     }
 
     /* parent */
     waitpid(pid, &r, 0);
     if(r != 0)
-      FAT("[%s] Command failed.", MODNAME);
+      GFAT("Command failed.");
 
     /* next command */
     while(*a++ != NULL)
@@ -157,23 +157,23 @@ static void listener__global_init(void)
   pthreadex_mutex_init(&ipq_mutex);
 
   /* read/change ipforward */
-  DBG("[%s] Enable ip_forward flag.", MODNAME);
+  GDBG("Enable ip_forward flag.");
   if((f = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY)) < 0)
-    FAT("[%s] /proc/sys/net/ipv4/ip_forward: %s", MODNAME, strerror(errno));
+    GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
   r = read(f, &ip_forward_status, 1);
   if(r == 0)
-    FAT("[%s] Invalid ip_forward content.", MODNAME);
+    GFAT("Invalid ip_forward content.");
   if(r < 0)
-    FAT("[%s] Cannot read ip_forward status: %s", MODNAME, strerror(errno));
+    GFAT("Cannot read ip_forward status: %s", strerror(errno));
   close(f);
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    FAT("[%s] /proc/sys/net/ipv4/ip_forward: %s", MODNAME, strerror(errno));
+    GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
   if(write(f, "1\n", 2) < 0)
-    FAT("[%s] Cannot write ip_forward status: %s", MODNAME, strerror(errno));
+    GFAT("Cannot write ip_forward status: %s", strerror(errno));
   close(f);
 
   /* prepare the ipqueue */
-  DBG("[%s] save iptables config.", MODNAME);
+  GDBG("save iptables config.");
   strcpy(iptables_tmp, "iptables-state-XXXXXX");
   f = mkstemp(iptables_tmp);
   if((pid = dosis_fork()) == 0)
@@ -182,19 +182,19 @@ static void listener__global_init(void)
       /* save iptables state */
       close(1);
       if(dup(f) < 0)
-        FAT("[%s] Cannot dup: %s", MODNAME, strerror(errno));
+        GFAT("Cannot dup: %s", strerror(errno));
       close(f);
       execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
       /* if this code is executed, we have an error */
-      FAT("[%s] Cannot execute /sbin/iptables-save: %s", MODNAME, strerror(errno));
+      GFAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
   }
   /* here continues parent */
   close(f);
   waitpid(pid, &r, 0);
   if(r != 0)
-    FAT("[%s] iptables-save failed.", MODNAME);
+    GFAT("iptables-save failed.");
 
-  DBG("[%s] Init iptables config.", MODNAME);
+  GDBG("Init iptables config.");
   if(cfg.interfaces[0] == NULL)
   {
     apply_iptables_script(iscript);
@@ -211,15 +211,15 @@ static void listener__global_init(void)
   apply_iptables_script(ifscript);
 
   /* initialize ipq */
-  DBG("[%s] Initializing ipq.", MODNAME);
+  GDBG("Initializing ipq.");
   if(ipqex_init(&ipq, BUFSIZE))
-    FAT("[%s]  !! Cannot initialize IPQ.", MODNAME);
+    GFAT("!! Cannot initialize IPQ.");
   ipq_on = -1;
 
   /* set the finalization routine */
   dosis_atexit(MODNAME, listener__global_fini);
 
-  DBG("[%s] Initialized.", MODNAME);
+  GDBG("Initialized.");
 }
 
 /*****************************************************************************
@@ -236,14 +236,14 @@ static void listener__thread(THREAD_WORK *tw)
   /* get packets and classify */
   while(1)
   {
-DBG("before mutex");
+TDBG("before mutex");
     pthreadex_mutex_begin(&ipq_mutex);
-DBG("in mutex");
+TDBG("in mutex");
     if(ipq_on)
     {
       r = ipqex_msg_read(&lcfg->imsg, 0);
       if(r < 0)
-        ERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
+        TERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
     } else
       r = -1;
     pthreadex_mutex_end();
@@ -254,7 +254,7 @@ repeat_search:
     id = tea_thread_search_listener((char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len, id+1);
     if(id >= 0)
     {
-      DBG2("Package accepted by thread %d", id);
+      TDBG2("Package accepted by thread %d", id);
 
       /* defer cancelation as much as possible */
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
@@ -277,8 +277,8 @@ repeat_search:
       if(ipq_on)
       {
         if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
-          ERR("Cannot ACCEPT IPQ packet.");
-        DBG2("  - Package dropped.");
+          TERR("Cannot ACCEPT IPQ packet.");
+        TDBG2("  - Package dropped.");
       }
       pthreadex_mutex_end();
 
@@ -290,11 +290,11 @@ repeat_search:
       if(ipq_on)
       {
         if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
-          ERR("Cannot ACCEPT IPQ packet.");
+          TERR("Cannot ACCEPT IPQ packet.");
       }
       pthreadex_mutex_end();
     }
-DBG("after mutex");
+TDBG("after mutex");
   }
 }
 
@@ -309,7 +309,7 @@ static void listener__cleanup(THREAD_WORK *tw)
   free(tw->data);
   tw->data = NULL;
 
-  DBG("[%d/%s] Finalized.", tw->id, tw->methods->name);
+  TDBG("Finalized.");
 }
 
 static int listener__configure(THREAD_WORK *tw, SNODE *command)

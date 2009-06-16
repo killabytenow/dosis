@@ -46,6 +46,9 @@ typedef struct _tag_UDP_CFG {
   /* other things */
   pthreadex_timer_t  timer;
   LN_CONTEXT        *lnc;
+  struct timeval sockwait,
+                 sockwait_cwait,
+                 sockwait_rwait;
 } UDP_CFG;
 
 /*****************************************************************************
@@ -57,32 +60,29 @@ typedef struct _tag_UDP_CFG {
 #define tcp_header(x)  ((struct tcphdr *) ((x) \
                        + (((struct iphdr *) (x))->ihl << 2)))
 
-void attack_httpread__attack_thread(THREAD_WORK *w)
+static void tcp__thread(THREAD_WORK *tw)
 {
-  /* calculate timeout */
-  sockwait_cwait.tv_sec  = opts.cwait / 1000000;
-  sockwait_cwait.tv_usec = opts.cwait % 1000000;
-  sockwait_rwait.tv_sec  = opts.rwait / 1000000;
-  sockwait_rwait.tv_usec = opts.rwait % 1000000;
+  struct sockaddr_in addr;
+  fd_set socks;
+  int sopts, r;
+  HTTPREAD_WORK hw;
+  UDP_CFG *tu = (UDP_CFG *) tw->data;
+  int i;
 
-  /* build target addr */
-  bzero((char *) &addr, sizeof(addr));
-  bcopy(&opts.dhost, &addr.sin_addr, sizeof(struct in_addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(opts.dport);
+  TDBG("Started sender thread");
 
-  /* perform attack forever (or until thread cancellation) */
-  while(!opts.finalize)
+  /* ATTACK */
+  while(1)
   {
-    /* Esperamos a que nos den permiso para empezar */
-    DBG2("[%02u] Waiting for work...", hw.w->id);
-    if(!opts.madness)
-      pthreadex_flag_wait(&attack_flag);
+    /* wait for work */
+    if(tu->hitratio > 0)
+      if(pthreadex_timer_wait(&(tu->timer)) < 0)
+        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /*** CONNECTION **********************************************************/
-    DBG("[%02u]   Connecting...", hw.w->id);
+    TDBG("  Connecting...");
 
-    /* Establecemos el timeout para los select (más tiempo => kk) */
+    /* Set timeout for select */
     memcpy(&sockwait, &sockwait_cwait, sizeof(struct timeval));
     hw.sock = socket(PF_INET, SOCK_STREAM, 0);
     if(hw.sock < 0)
@@ -166,38 +166,6 @@ void attack_httpread__attack_thread(THREAD_WORK *w)
     if(close(hw.sock) != 0)
       ERR("[%02u] error on close(): %s", hw.w->id, strerror(errno));
   }
-}
-
-static void tcp__thread(THREAD_WORK *tw)
-{
-  struct sockaddr_in addr;
-  struct timeval sockwait,
-                 sockwait_cwait,
-                 sockwait_rwait;
-  fd_set socks;
-  int sopts, r;
-  HTTPREAD_WORK hw;
-  UDP_CFG *tu = (UDP_CFG *) tw->data;
-  int i;
-
-  DBG("[%02u] Started sender thread", tw->id);
-
-  /* ATTACK */
-  while(1)
-  {
-    /* wait for work */
-    if(tu->hitratio > 0)
-      if(pthreadex_timer_wait(&(tu->timer)) < 0)
-      select
-        ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
-
-    /* build UDP packet with payload (if requested) */
-    DBG("[%02u] Sending %d packet(s)...", tw->id, tu->npackets);
-    for(i = 0; i < tu->npackets; i++)
-      ln_send_tcp_packet(tu->lnc,
-                         &tu->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                         &tu->dhost.addr.in.inaddr, tu->dhost.port,
-                         tu->payload, tu->payload_size);
   }
 }
 
@@ -293,6 +261,18 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
       ip_addr_copy(&tu->shost, &ai->addr);
   }
 
+  /* calculate timeout */
+  sockwait_cwait.tv_sec  = opts.cwait / 1000000;
+  sockwait_cwait.tv_usec = opts.cwait % 1000000;
+  sockwait_rwait.tv_sec  = opts.rwait / 1000000;
+  sockwait_rwait.tv_usec = opts.rwait % 1000000;
+
+  /* build target addr */
+  bzero((char *) &addr, sizeof(addr));
+  bcopy(&opts.dhost, &addr.sin_addr, sizeof(struct in_addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(opts.dport);
+
   /* (debug) print configuration */
   {
     char buff[255];
@@ -337,7 +317,6 @@ TEA_OBJECT teaUDP = {
   .name         = "UDP",
   .configure    = tcp__configure,
   .cleanup      = tcp__cleanup,
-/*.listen_check = tcp__listen_check,*/
   .thread       = tcp__thread,
 };
 

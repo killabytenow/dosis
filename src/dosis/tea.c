@@ -34,10 +34,10 @@
 #include "pthreadex.h"
 #include "tea.h"
 
-#include "listener.h"
-#include "udp.h"
-#include "tcpopen.h"
-#include "tcpraw.h"
+#include "pills/listener.h"
+#include "pills/tcpopen.h"
+#include "pills/tcpraw.h"
+#include "pills/udp.h"
 
 static THREAD_WORK     **ttable;
 static pthreadex_lock_t  ttable_lock;
