@@ -64,10 +64,9 @@ static void tcp__thread(THREAD_WORK *tw)
   struct sockaddr_in addr;
   fd_set socks;
   int sopts, r;
-  HTTPREAD_WORK hw;
   TCP_CFG *tt = (TCP_CFG *) tw->data;
   int i;
-  struct timeval sockwait,
+  struct timeval sockwait;
   int sock;
 
   TDBG("Started sender thread");
@@ -76,8 +75,8 @@ static void tcp__thread(THREAD_WORK *tw)
   while(1)
   {
     /* wait for work */
-    if(tu->hitratio > 0)
-      if(pthreadex_timer_wait(&(tu->timer)) < 0)
+    if(tt->hitratio > 0)
+      if(pthreadex_timer_wait(&(tt->timer)) < 0)
         TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /*** CONNECTION **********************************************************/
@@ -181,19 +180,19 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
   char *s;
 
   /* first initialization (specialized work thread data) */
-  if(tu == NULL)
+  if(tt == NULL)
   {
-    if((tu = calloc(1, sizeof(TCP_CFG))) == NULL)
+    if((tt = calloc(1, sizeof(TCP_CFG))) == NULL)
       TFAT("No memory for TCP_CFG.");
-    tw->data = (void *) tu;
+    tw->data = (void *) tt;
 
     /* initialize libnet */
     TDBG("Initializing libnet.");
-    if((tu->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
+    if((tt->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
       TFAT("No memory for LN_CONTEXT.");
-    ln_init_context(tu->lnc);
+    ln_init_context(tt->lnc);
 
-    pthreadex_timer_init(&(tu->timer), 0.0);
+    pthreadex_timer_init(&(tt->timer), 0.0);
   }
 
   /* read from SNODE command parameters */
@@ -201,12 +200,12 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
   if(cn->type != TYPE_PERIODIC)
     TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
   
-  tu->hitratio = tea_get_float(cn->pattern.periodic.ratio);
-  tu->npackets = tea_get_int(cn->pattern.periodic.n);
-  if(tu->hitratio < 0)
-    TFAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
-  if(tu->npackets <= 0)
-    TFAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
+  tt->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+  tt->npackets = tea_get_int(cn->pattern.periodic.n);
+  if(tt->hitratio < 0)
+    TFAT("%d: Bad hit ratio '%f'.", cn->line, tt->hitratio);
+  if(tt->npackets <= 0)
+    TFAT("%d: Bad number of packets '%d'.", cn->line, tt->npackets);
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
@@ -215,17 +214,17 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_DST:
 void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
         s = tea_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tu->dhost))
+        if(ip_addr_parse(s, &tt->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tu->dhost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tt->dhost, tea_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:
       case TYPE_OPT_PAYLOAD_RANDOM:
       case TYPE_OPT_PAYLOAD_STR:
-        payload_get(cn, &tu->payload, &tu->payload_size);
+        payload_get(cn, &tt->payload, &tt->payload_size);
         break;
 
       default:
@@ -233,22 +232,22 @@ void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
     }
 
   /* configure timer */
-  if(tu->hitratio > 0)
-    pthreadex_timer_set_frequency(&(tu->timer), tu->hitratio);
+  if(tt->hitratio > 0)
+    pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
 
   /* configure src address (if not defined) */
-  if(tu->dhost.type == INET_FAMILY_NONE)
+  if(tt->dhost.type == INET_FAMILY_NONE)
     TFAT("I need a target address.");
-  if(tu->shost.type == INET_FAMILY_NONE)
+  if(tt->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
-    if((ai = dos_get_interface(&tu->dhost)) == NULL)
+    if((ai = dos_get_interface(&tt->dhost)) == NULL)
     {
       char buff[255];
-      ip_addr_snprintf(&tu->shost, sizeof(buff), buff);
+      ip_addr_snprintf(&tt->shost, sizeof(buff), buff);
       TWRN("Cannot find a suitable source address for '%s'.", buff);
     } else
-      ip_addr_copy(&tu->shost, &ai->addr);
+      ip_addr_copy(&tt->shost, &ai->addr);
   }
 
   /* calculate timeout */
@@ -267,12 +266,12 @@ void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
   {
     char buff[255];
 
-    TDBG2("config.periodic.n     = %d", tu->npackets);
-    TDBG2("config.periodic.ratio = %d", tu->hitratio);
+    TDBG2("config.periodic.n     = %d", tt->npackets);
+    TDBG2("config.periodic.ratio = %d", tt->hitratio);
 
-    ip_addr_snprintf(&tu->shost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tt->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost  = %s", buff);
-    ip_addr_snprintf(&tu->dhost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tt->dhost, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost  = %s", buff);
   }
 
