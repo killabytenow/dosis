@@ -61,7 +61,7 @@ typedef struct _tag_TCP_CFG {
 
 static void tcp__thread(THREAD_WORK *tw)
 {
-  struct sockaddr_in addr;
+  struct sockaddr addr;
   fd_set socks;
   int sopts, r;
   TCP_CFG *tt = (TCP_CFG *) tw->data;
@@ -122,14 +122,10 @@ static void tcp__thread(THREAD_WORK *tw)
       /* XXX: Se puede llegar aqui porque aún no ha conectado :) */
       TERR("connect() 2 failed: %s", strerror(errno));
       close(sock);
-      w->stats.nfail++;
       continue;
     }
     fcntl(sock, F_SETFL, sopts);
  
-    /* Consideramos conexión con éxito */
-    hw.w->stats.nconn++;
-
     /* Enviamos la peticion */
     r = send(sock, (void *) opts.req, opts.req_size, 0);
     if(r < opts.req_size)
