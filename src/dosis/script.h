@@ -57,10 +57,12 @@ enum TYPES {
   TYPE_TO_LISTEN,
   /* options */
   TYPE_OPT_DST = 4000,
+  TYPE_OPT_CWAIT,
   TYPE_OPT_FILE,
   TYPE_OPT_FLAGS,
   TYPE_OPT_OPEN,
   TYPE_OPT_RAW,
+  TYPE_OPT_RWAIT,
   TYPE_OPT_SRC,
   TYPE_OPT_PAYLOAD_FILE,
   TYPE_OPT_PAYLOAD_NULL,
@@ -68,6 +70,7 @@ enum TYPES {
   TYPE_OPT_PAYLOAD_STR,
   /* patterns */
   TYPE_PERIODIC = 5000,
+  TYPE_PERIODIC_LIGHT,
 };
 
 typedef struct SNODE_tag {
@@ -106,6 +109,8 @@ typedef struct SNODE_tag {
       struct SNODE_tag *port;         /* target/source port                  */
       struct SNODE_tag *flags;        /* flags                               */
       struct SNODE_tag *payload;      /* payload for packets                 */
+      struct SNODE_tag *cwait;        /* TCP connection wait                 */
+      struct SNODE_tag *rwait;        /* TCP read wait                       */
 
       struct SNODE_tag *next;
     } option;

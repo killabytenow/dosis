@@ -1,5 +1,5 @@
 /*****************************************************************************
- * tcpopen.c
+ * tcpopen.h
  *
  * DoS on TCP servers by leaving connections opened.
  *

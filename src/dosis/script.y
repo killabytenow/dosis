@@ -63,6 +63,7 @@
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
 %token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL
 %token            TO_UDP TO_TCP TO_LISTEN
+%token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
       ;
@@ -161,6 +162,10 @@ option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
       | OPT_PAYLOAD OPT_FILE '(' string ')'
                                   { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
                                     $$->option.payload = $4; }
+      | OPT_CWAIT nint            { $$ = new_node(TYPE_OPT_CWAIT);
+                                    $$->option.cwait = $2; }
+      | OPT_RWAIT nint            { $$ = new_node(TYPE_OPT_RWAIT);
+                                    $$->option.rwait = $2; }
       ;
 
 options: /* empty */    { $$ = NULL; }
@@ -172,6 +177,9 @@ pattern: PERIODIC '[' nfloat ',' nint ']'
            { $$ = new_node(TYPE_PERIODIC);
              $$->pattern.periodic.ratio = $3;
              $$->pattern.periodic.n     = $5; }
+       | PERIODIC '[' nfloat ']'
+           { $$ = new_node(TYPE_PERIODIC_LIGHT);
+             $$->pattern.periodic.ratio = $3; }
        ;
 
 o_ntime: /* empty */ { $$ = NULL; }
@@ -319,6 +327,7 @@ int yylex(void)
     char *token;
     int  id;
   } tokens[] = {
+    { "CWAIT",    OPT_CWAIT   },
     { "DST",      OPT_DST     },
     { "FILE",     OPT_FILE    },
     { "FLAGS",    OPT_FLAGS   },
@@ -331,6 +340,7 @@ int yylex(void)
     { "PERIODIC", PERIODIC    },
     { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
+    { "RWAIT",    OPT_RWAIT   },
     { "SRC",      OPT_SRC     },
     { "TCP",      TO_TCP      },
     { "UDP",      TO_UDP      },

@@ -32,23 +32,27 @@
 #include "payload.h"
 #include "tea.h"
 
+#define DEFAULT_CWAIT           3000000
+#define DEFAULT_RWAIT           10000000
+
 typedef struct _tag_TCP_CFG {
   /* options */
-  INET_ADDR          shost;
   INET_ADDR          dhost;
 
   /* parameters */
-  unsigned           npackets;
   double             hitratio;
   char              *payload;
   unsigned           payload_size;
 
   /* other things */
   pthreadex_timer_t  timer;
-  LN_CONTEXT        *lnc;
   struct timeval     sockwait_cwait;
   struct timeval     sockwait_rwait;
+  struct sockaddr    dsockaddr;
 } TCP_CFG;
+
+#define BUFSIZE 4096
+static char nullbuff[BUFSIZE];
 
 /*****************************************************************************
  * THREAD IMPLEMENTATION
@@ -61,11 +65,9 @@ typedef struct _tag_TCP_CFG {
 
 static void tcp__thread(THREAD_WORK *tw)
 {
-  struct sockaddr addr;
   fd_set socks;
   int sopts, r;
   TCP_CFG *tt = (TCP_CFG *) tw->data;
-  int i;
   struct timeval sockwait;
   int sock;
 
@@ -95,7 +97,7 @@ static void tcp__thread(THREAD_WORK *tw)
     sopts = fcntl(sock, F_GETFL);
     fcntl(sock, F_SETFL, sopts | O_NONBLOCK);
 
-    if(connect(sock, &addr, sizeof(struct sockaddr_in)) < 0
+    if(connect(sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0
     && errno != EINPROGRESS)
     {
       TERR("connect() 1 failed:%s", strerror(errno));
@@ -117,7 +119,7 @@ static void tcp__thread(THREAD_WORK *tw)
 
     /* second connect() to check connection */
     fcntl(sock, F_SETFL, sopts | O_NONBLOCK);
-    if(connect(sock, &addr, sizeof(struct sockaddr_in)) < 0)
+    if(connect(sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0)
     {
       /* XXX: Se puede llegar aqui porque aún no ha conectado :) */
       TERR("connect() 2 failed: %s", strerror(errno));
@@ -127,14 +129,12 @@ static void tcp__thread(THREAD_WORK *tw)
     fcntl(sock, F_SETFL, sopts);
  
     /* Enviamos la peticion */
-    r = send(sock, (void *) opts.req, opts.req_size, 0);
-    if(r < opts.req_size)
+    r = send(sock, (void *) tt->payload, tt->payload_size, 0);
+    if(r < tt->payload_size)
     {
       TERR("Send error.");
-      w->stats.nfail++;
       continue;
     }
-    w->stats.bsent += opts.req_size;
 
     /* Restablecemos los timeouts */
     memcpy(&sockwait, &tt->sockwait_rwait, sizeof(struct timeval));
@@ -142,7 +142,6 @@ static void tcp__thread(THREAD_WORK *tw)
     if(!FD_ISSET(sock, &socks))
     {
       TERR("select() error %d: %s", r, strerror(errno));
-      w->stats.nfail++;
       continue;
     }
     fcntl(sock,F_SETFL,sopts);
@@ -150,15 +149,13 @@ static void tcp__thread(THREAD_WORK *tw)
     /*** READ DATA ***********************************************************/
     TDBG("  Reading data...");
     /* Redireccionamos a /dev/null :) */
-    while((r = read(sock, nullbuff, BUFSIZE)) > 0)
-      w->stats.brecv += (unsigned long long) r;
-    TDBG("  Readed %llu bytes.", w->stats.brecv);
+    while((r = read(sock, nullbuff, sizeof(nullbuff))) > 0)
+      ;
 
     /* Hemos terminado */
     TDBG("  Closing connection.");
     if(close(sock) != 0)
       TERR("error on close(): %s", strerror(errno));
-  }
   }
 }
 
@@ -182,33 +179,29 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
       TFAT("No memory for TCP_CFG.");
     tw->data = (void *) tt;
 
-    /* initialize libnet */
-    TDBG("Initializing libnet.");
-    if((tt->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      TFAT("No memory for LN_CONTEXT.");
-    ln_init_context(tt->lnc);
+    tt->sockwait_cwait.tv_sec  = DEFAULT_CWAIT / 1000000;
+    tt->sockwait_cwait.tv_usec = DEFAULT_CWAIT % 1000000;
+    tt->sockwait_rwait.tv_sec  = DEFAULT_RWAIT / 1000000;
+    tt->sockwait_rwait.tv_usec = DEFAULT_RWAIT % 1000000;
 
+    /* init timer */
     pthreadex_timer_init(&(tt->timer), 0.0);
   }
 
   /* read from SNODE command parameters */
   cn = command->command.thc.to->to.pattern;
-  if(cn->type != TYPE_PERIODIC)
+  if(cn->type != TYPE_PERIODIC_LIGHT)
     TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
   
   tt->hitratio = tea_get_float(cn->pattern.periodic.ratio);
-  tt->npackets = tea_get_int(cn->pattern.periodic.n);
   if(tt->hitratio < 0)
     TFAT("%d: Bad hit ratio '%f'.", cn->line, tt->hitratio);
-  if(tt->npackets <= 0)
-    TFAT("%d: Bad number of packets '%d'.", cn->line, tt->npackets);
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
     switch(cn->type)
     {
       case TYPE_OPT_DST:
-void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tt->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
@@ -223,50 +216,48 @@ void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
         payload_get(cn, &tt->payload, &tt->payload_size);
         break;
 
+      case TYPE_OPT_CWAIT:
+        {
+          int t;
+          t = tea_get_int(cn->option.cwait);
+          if(t < 0)
+            TFAT("%d: Bad connection wait (CWAIT) '%d'.", cn->line, t);
+          tt->sockwait_cwait.tv_sec  = t / 1000000;
+          tt->sockwait_cwait.tv_usec = t % 1000000;
+        }
+        break;
+
+      case TYPE_OPT_RWAIT:
+        {
+          int t;
+          t = tea_get_int(cn->option.rwait);
+          if(t < 0)
+            TFAT("%d: Bad read wait (RWAIT) '%d'.", cn->line, t);
+          tt->sockwait_rwait.tv_sec  = t / 1000000;
+          tt->sockwait_rwait.tv_usec = t % 1000000;
+        }
+        break;
+
       default:
         TFAT("%d: Uknown option %d.", cn->line, cn->type);
     }
+
+  /* check dst address and configure socket */
+  if(tt->dhost.type == INET_FAMILY_NONE)
+    TFAT("I need a target address.");
+  ip_addr_to_socket(&tt->dhost, &tt->dsockaddr);
+
+  /* calculate timeout */
 
   /* configure timer */
   if(tt->hitratio > 0)
     pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
 
-  /* configure src address (if not defined) */
-  if(tt->dhost.type == INET_FAMILY_NONE)
-    TFAT("I need a target address.");
-  if(tt->shost.type == INET_FAMILY_NONE)
-  {
-    DOS_ADDR_INFO *ai;
-    if((ai = dos_get_interface(&tt->dhost)) == NULL)
-    {
-      char buff[255];
-      ip_addr_snprintf(&tt->shost, sizeof(buff), buff);
-      TWRN("Cannot find a suitable source address for '%s'.", buff);
-    } else
-      ip_addr_copy(&tt->shost, &ai->addr);
-  }
-
-  /* calculate timeout */
-  tt->sockwait_cwait.tv_sec  = opts.cwait / 1000000;
-  tt->sockwait_cwait.tv_usec = opts.cwait % 1000000;
-  tt->sockwait_rwait.tv_sec  = opts.rwait / 1000000;
-  tt->sockwait_rwait.tv_usec = opts.rwait % 1000000;
-
-  /* build target addr */
-  bzero((char *) &addr, sizeof(addr));
-  bcopy(&opts.dhost, &addr.sin_addr, sizeof(struct in_addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(opts.dport);
-
   /* (debug) print configuration */
   {
     char buff[255];
 
-    TDBG2("config.periodic.n     = %d", tt->npackets);
     TDBG2("config.periodic.ratio = %d", tt->hitratio);
-
-    ip_addr_snprintf(&tt->shost, sizeof(buff)-1, buff);
-    TDBG2("config.options.shost  = %s", buff);
     ip_addr_snprintf(&tt->dhost, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost  = %s", buff);
   }
@@ -279,8 +270,6 @@ static void tcp__cleanup(THREAD_WORK *tw)
   TCP_CFG *tt = (TCP_CFG *) tw->data;
 
   /* collect libnet data */
-  ln_destroy_context(tt->lnc);
-  free(tt->lnc);
   pthreadex_timer_destroy(&tt->timer);
 
   if(tt->payload)

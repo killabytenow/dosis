@@ -35,6 +35,7 @@
 #include "tea.h"
 
 #include "pills/listener.h"
+#include "pills/tcp.h"
 #include "pills/tcpopen.h"
 #include "pills/tcpraw.h"
 #include "pills/udp.h"
@@ -680,7 +681,7 @@ void tea_timer(SNODE *program)
           {
             case TYPE_TO_LISTEN:  to = &teaLISTENER; break;
             case TYPE_TO_TCPOPEN: to = &teaTCPOPEN;  break;
-          /*case TYPE_TO_TCP:     to = &teaTCP;      break; */
+            case TYPE_TO_TCP:     to = &teaTCP;      break;
             case TYPE_TO_TCPRAW:  to = &teaTCPRAW;   break;
             case TYPE_TO_UDP:     to = &teaUDP;      break;
             default:
