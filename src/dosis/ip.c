@@ -191,7 +191,7 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
         sin = (struct sockaddr_in *) saddr;
         sin->sin_addr.s_addr = addr->addr.in.addr;
         sin->sin_family = AF_INET;
-        sin->sin_port = addr->port;
+        sin->sin_port = htons(addr->port);
         memset(&(sin->sin_zero), 0, 8);
       }
       break;

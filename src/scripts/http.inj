@@ -31,9 +31,10 @@
 # configuration
 THOST="127.0.0.1"
 TPORT="80"
+THREADS="10"
 RT="10.0"
 
 # script
-0.0 ON [1:$THREADS] TCP DST $THOST $TPORT PAYLOAD FILE("tcpopen.payload")
+0.0 ON [1%$THREADS] TCP DST $THOST $TPORT PAYLOAD FILE("tcpopen.payload") PERIODIC [ 1.0 ]
 $RT OFF *
 
