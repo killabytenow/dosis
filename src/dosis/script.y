@@ -62,7 +62,7 @@
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
-%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL
+%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL
 %token            TO_UDP TO_TCP TO_LISTEN
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
@@ -163,6 +163,9 @@ option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
       | OPT_PAYLOAD OPT_FILE '(' string ')'
                                   { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
                                     $$->option.payload = $4; }
+    /*| OPT_PAYLOAD OPT_DLL '(' string ')'
+                                  { $$ = new_node(TYPE_OPT_PAYLOAD_DLL);
+                                    $$->option.payload = $4; }*/
       | OPT_CWAIT nint            { $$ = new_node(TYPE_OPT_CWAIT);
                                     $$->option.cwait = $2; }
       | OPT_RWAIT nint            { $$ = new_node(TYPE_OPT_RWAIT);
@@ -329,6 +332,7 @@ int yylex(void)
     int  id;
   } tokens[] = {
     { "CWAIT",    OPT_CWAIT   },
+    { "DLL",      OPT_DLL     },
     { "DST",      OPT_DST     },
     { "FILE",     OPT_FILE    },
     { "FLAGS",    OPT_FLAGS   },
