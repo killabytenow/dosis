@@ -1,7 +1,7 @@
 /*****************************************************************************
  * tcp.c
  *
- * TCP connection generator.
+ * TCP (TCP/SSL) connection generator.
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -35,9 +35,13 @@
 #define DEFAULT_CWAIT           3000000
 #define DEFAULT_RWAIT           10000000
 
+#define BUFSIZE 4096
+#define CIPHER_SUITE "DES-CBC3-SHA"
+
 typedef struct _tag_TCP_CFG {
   /* options */
   INET_ADDR          dhost;
+  int                ssl;
 
   /* parameters */
   double             hitratio;
@@ -49,19 +53,93 @@ typedef struct _tag_TCP_CFG {
   struct timeval     sockwait_cwait;
   struct timeval     sockwait_rwait;
   struct sockaddr    dsockaddr;
+
+  /* ssl things */
+  SSL                *ssl;
+  SSL_CTX            *ctx;
+  BIO                *bio;
 } TCP_CFG;
 
-#define BUFSIZE 4096
 static char nullbuff[BUFSIZE];
+
+/****************************************************************************
+ * SSL FUNCS
+ *****************************************************************************/
+
+static void SSL_error_stack(void) /* recursive dump of the error stack */
+{
+  unsigned long err;
+  char string[120];
+
+  err=ERR_get_error();
+  if(!err)
+    return;
+  SSL_error_stack();
+  ERR_error_string(err, string);
+}
+
+static void SSL_finalize(HANDSHAKESSL_WORK *hw)
+{
+  if(hw->sock)
+    close(hw->sock);
+  if(hw->ssl)
+  {
+    SSL_shutdown(hw->ssl);
+    SSL_free(hw->ssl);
+  }
+  if(hw->ctx)
+    SSL_CTX_free(hw->ctx);
+  hw->sock = 0;
+  hw->ssl = NULL;
+  hw->bio = NULL;
+  hw->ctx = NULL;
+}
+
+int SSL_initialize(HANDSHAKESSL_WORK *hw)
+{
+  int  serr;
+
+  hw->ssl    = NULL;
+  hw->ctx    = NULL;
+  hw->bio    = NULL;
+
+  SSL_load_error_strings();
+  SSL_library_init();
+
+  if((hw->ctx = SSL_CTX_new(SSLv23_client_method())) == NULL)
+  {
+    SSL_error_stack();
+    ERR("[%02u] Error creando nuevo ctx.", hw->w->id);
+    return 1;
+  }
+
+  SSL_CTX_set_mode(hw->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+  SSL_CTX_set_session_cache_mode(hw->ctx, SSL_SESS_CACHE_BOTH);
+  SSL_CTX_set_timeout(hw->ctx, 500000);
+  if(!SSL_CTX_set_cipher_list(hw->ctx, CIPHER_SUITE))
+  {
+    ERR("[%02u] SSL_CTX_set_cipher_list", hw->w->id);
+    return 1;
+  }
+
+  if((hw->ssl = SSL_new(hw->ctx)) == NULL)
+  {
+    SSL_error_stack();
+    ERR("[%02u] Error creando nuevo ssl.", hw->w->id);
+    return 1;
+  }
+  SSL_set_fd(hw->ssl, hw->sock);
+
+  hw->bio = BIO_new_socket(hw->sock, BIO_NOCLOSE);
+  SSL_set_bio(hw->ssl, hw->bio, hw->bio);
+
+  serr = SSL_connect(hw->ssl);
+  return 0;
+}
 
 /*****************************************************************************
  * THREAD IMPLEMENTATION
  *****************************************************************************/
-
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
 
 static void tcp__thread(THREAD_WORK *tw)
 {
@@ -128,15 +206,41 @@ static void tcp__thread(THREAD_WORK *tw)
     }
     fcntl(sock, F_SETFL, sopts);
  
-    /* Enviamos la peticion */
-    r = send(sock, (void *) tt->payload, tt->payload_size, 0);
-    if(r < tt->payload_size)
+    /*** DATA SEND AND RECV **************************************************/
+    if(tt->ssl)
     {
-      TERR("Send error.");
-      continue;
+      /* close any opened ssl conn */
+      SSL_finalize(tt)
+
+      /* Create SSL connection over this socket */
+      if((r = SSL_initialize(&tt)) != 0)
+      {
+        ERR("[%02u] Error en SSL_initialize (%d)", hw.w->id, r);
+        continue;
+      }
+
+      /* Send request */
+      r = SSL_write(hw.ssl, opts.req, opts.req_size);
+      if(r < opts.req_size)
+      {
+        ERR("[%02u] Error en SSL_write.", hw.w->id);
+        w->stats.nfail++;
+        continue;
+      }
+    } else {
+      /* send request */
+      r = send(sock, (void *) tt->payload, tt->payload_size, 0);
+      if(r < tt->payload_size)
+      {
+        TERR("Send error.");
+        continue;
+      }
+
     }
 
-    /* Restablecemos los timeouts */
+    /* READ DATA ***********************************************************/
+    TDBG("  Reading data...");
+    /* reestablish timeouts */
     memcpy(&sockwait, &tt->sockwait_rwait, sizeof(struct timeval));
     r = select(sock+1, &socks, NULL, NULL, &sockwait);
     if(!FD_ISSET(sock, &socks))
@@ -146,9 +250,7 @@ static void tcp__thread(THREAD_WORK *tw)
     }
     fcntl(sock,F_SETFL,sopts);
 
-    /*** READ DATA ***********************************************************/
-    TDBG("  Reading data...");
-    /* Redireccionamos a /dev/null :) */
+    /* Rediret to /dev/null :) */
     while((r = read(sock, nullbuff, sizeof(nullbuff))) > 0)
       ;
 
@@ -201,6 +303,10 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
     switch(cn->type)
     {
+      case TYPE_OPT_SSL:
+        tt->ssl = -1;
+        break;
+
       case TYPE_OPT_DST:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tt->dhost))
@@ -271,6 +377,9 @@ static void tcp__cleanup(THREAD_WORK *tw)
 
   /* collect libnet data */
   pthreadex_timer_destroy(&tt->timer);
+
+  if(tt->ssl)
+    SSL_finalize(tt);
 
   if(tt->payload)
   {

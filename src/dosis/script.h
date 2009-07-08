@@ -57,6 +57,7 @@ enum TYPES {
   TYPE_TO_LISTEN,
   /* options */
   TYPE_OPT_CWAIT = 4000,
+  TYPE_OPT_SSL,
   TYPE_OPT_DLL,
   TYPE_OPT_DST,
   TYPE_OPT_FILE,

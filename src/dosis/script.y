@@ -62,7 +62,7 @@
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
-%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL
+%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL OPT_SSL
 %token            TO_UDP TO_TCP TO_LISTEN
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
@@ -140,7 +140,8 @@ selection: range
          | list_num
          ;
 
-option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
+option: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL); }
+      | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }
       | OPT_SRC string nint       { $$ = new_node(TYPE_OPT_SRC);
@@ -347,6 +348,7 @@ int yylex(void)
     { "RAW",      OPT_RAW     },
     { "RWAIT",    OPT_RWAIT   },
     { "SRC",      OPT_SRC     },
+    { "SSL",      OPT_SSL     },
     { "TCP",      TO_TCP      },
     { "UDP",      TO_UDP      },
     { NULL,       0           }
