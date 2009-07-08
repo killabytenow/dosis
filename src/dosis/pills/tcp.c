@@ -42,7 +42,7 @@
 typedef struct _tag_TCP_CFG {
   /* options */
   INET_ADDR          dhost;
-  int                ssl;
+  int                sslenabled;
 
   /* parameters */
   double             hitratio;
@@ -51,6 +51,7 @@ typedef struct _tag_TCP_CFG {
   char              *sslcipher;
 
   /* other things */
+  int                sock;
   pthreadex_timer_t  timer;
   struct timeval     sockwait_cwait;
   struct timeval     sockwait_rwait;
@@ -64,7 +65,7 @@ typedef struct _tag_TCP_CFG {
 #endif
 } TCP_CFG;
 
-static char nullbuff[BUFSIZE];
+static char nullbuff[BUFSIZE+1];
 
 /****************************************************************************
  * SSL FUNCS
@@ -83,62 +84,64 @@ static void SSL_error_stack(void) /* recursive dump of the error stack */
   ERR_error_string(err, string);
 }
 
-static void SSL_finalize(HANDSHAKESSL_WORK *hw)
+static void SSL_finalize(THREAD_WORK *tw)
 {
-  if(hw->sock)
-    close(hw->sock);
-  if(hw->ssl)
+  TCP_CFG *tt = (TCP_CFG *) tw->data;
+  if(tt->sock)
+    close(tt->sock);
+  if(tt->ssl)
   {
-    SSL_shutdown(hw->ssl);
-    SSL_free(hw->ssl);
+    SSL_shutdown(tt->ssl);
+    SSL_free(tt->ssl);
   }
-  if(hw->ctx)
-    SSL_CTX_free(hw->ctx);
-  hw->sock = 0;
-  hw->ssl = NULL;
-  hw->bio = NULL;
-  hw->ctx = NULL;
+  if(tt->ctx)
+    SSL_CTX_free(tt->ctx);
+  tt->sock = 0;
+  tt->ssl = NULL;
+  tt->bio = NULL;
+  tt->ctx = NULL;
 }
 
-int SSL_initialize(HANDSHAKESSL_WORK *hw)
+int SSL_initialize(THREAD_WORK *tw)
 {
+  TCP_CFG *tt = (TCP_CFG *) tw->data;
   int  serr;
 
-  hw->ssl    = NULL;
-  hw->ctx    = NULL;
-  hw->bio    = NULL;
+  tt->ssl    = NULL;
+  tt->ctx    = NULL;
+  tt->bio    = NULL;
 
   SSL_load_error_strings();
   SSL_library_init();
 
-  if((hw->ctx = SSL_CTX_new(SSLv23_client_method())) == NULL)
+  if((tt->ctx = SSL_CTX_new(SSLv23_client_method())) == NULL)
   {
     SSL_error_stack();
-    ERR("[%02u] Error creando nuevo ctx.", hw->w->id);
+    TERR("Error creating new ctx.");
     return 1;
   }
 
-  SSL_CTX_set_mode(hw->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-  SSL_CTX_set_session_cache_mode(hw->ctx, SSL_SESS_CACHE_BOTH);
-  SSL_CTX_set_timeout(hw->ctx, 500000);
-  if(!SSL_CTX_set_cipher_list(hw->ctx, tt->sslcipher))
+  SSL_CTX_set_mode(tt->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+  SSL_CTX_set_session_cache_mode(tt->ctx, SSL_SESS_CACHE_BOTH);
+  SSL_CTX_set_timeout(tt->ctx, 500000);
+  if(!SSL_CTX_set_cipher_list(tt->ctx, tt->sslcipher))
   {
-    ERR("[%02u] SSL_CTX_set_cipher_list", hw->w->id);
+    TERR("SSL_CTX_set_cipher_list");
     return 1;
   }
 
-  if((hw->ssl = SSL_new(hw->ctx)) == NULL)
+  if((tt->ssl = SSL_new(tt->ctx)) == NULL)
   {
     SSL_error_stack();
-    ERR("[%02u] Error creando nuevo ssl.", hw->w->id);
+    TERR("Error creating new ssl.");
     return 1;
   }
-  SSL_set_fd(hw->ssl, hw->sock);
+  SSL_set_fd(tt->ssl, tt->sock);
 
-  hw->bio = BIO_new_socket(hw->sock, BIO_NOCLOSE);
-  SSL_set_bio(hw->ssl, hw->bio, hw->bio);
+  tt->bio = BIO_new_socket(tt->sock, BIO_NOCLOSE);
+  SSL_set_bio(tt->ssl, tt->bio, tt->bio);
 
-  serr = SSL_connect(hw->ssl);
+  serr = SSL_connect(tt->ssl);
   return 0;
 }
 #endif
@@ -153,7 +156,6 @@ static void tcp__thread(THREAD_WORK *tw)
   int sopts, r;
   TCP_CFG *tt = (TCP_CFG *) tw->data;
   struct timeval sockwait;
-  int sock;
 
   TDBG("Started sender thread");
 
@@ -170,68 +172,67 @@ static void tcp__thread(THREAD_WORK *tw)
 
     /* Set timeout for select */
     memcpy(&sockwait, &tt->sockwait_cwait, sizeof(struct timeval));
-    sock = socket(PF_INET, SOCK_STREAM, 0);
-    if(sock < 0)
+    tt->sock = socket(PF_INET, SOCK_STREAM, 0);
+    if(tt->sock < 0)
     {
       TERR("socket() failed (%s)", strerror(errno));
       continue;
     }
 
     /* Execute connection, but before set non block */
-    sopts = fcntl(sock, F_GETFL);
-    fcntl(sock, F_SETFL, sopts | O_NONBLOCK);
+    sopts = fcntl(tt->sock, F_GETFL);
+    fcntl(tt->sock, F_SETFL, sopts | O_NONBLOCK);
 
-    if(connect(sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0
+    if(connect(tt->sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0
     && errno != EINPROGRESS)
     {
       TERR("connect() 1 failed:%s", strerror(errno));
-      close(sock);
+      close(tt->sock);
       continue;
     } else
       TDBG2("connect() sent!");
 
     /* connection is completed or in progress... */
-    fcntl(sock, F_SETFL, sopts);
+    fcntl(tt->sock, F_SETFL, sopts);
     FD_ZERO(&socks);
-    FD_SET(sock,&socks);
-    if((r = select(sock + 1, NULL, &socks, NULL, &sockwait)) < 1)
+    FD_SET(tt->sock,&socks);
+    if((r = select(tt->sock + 1, NULL, &socks, NULL, &sockwait)) < 1)
     {
       TDBG("connection timed out.");
-      close(sock);
+      close(tt->sock);
       continue;
     }
 
     /* second connect() to check connection */
-    fcntl(sock, F_SETFL, sopts | O_NONBLOCK);
-    if(connect(sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0)
+    fcntl(tt->sock, F_SETFL, sopts | O_NONBLOCK);
+    if(connect(tt->sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0)
     {
       /* XXX: Se puede llegar aqui porque aún no ha conectado :) */
       TERR("connect() 2 failed: %s", strerror(errno));
-      close(sock);
+      close(tt->sock);
       continue;
     }
-    fcntl(sock, F_SETFL, sopts);
+    fcntl(tt->sock, F_SETFL, sopts);
  
     /*** DATA SEND AND RECV **************************************************/
-    if(tt->ssl)
+    if(tt->sslenabled)
     {
 #ifdef HAVE_SSL
       /* close any opened ssl conn */
-      SSL_finalize(tt)
+      SSL_finalize(tw);
 
       /* Create SSL connection over this socket */
-      if((r = SSL_initialize(&tt)) != 0)
+      if((r = SSL_initialize(tw)) != 0)
       {
-        ERR("[%02u] Error en SSL_initialize (%d)", hw.w->id, r);
+        TERR("SSL_initialize error (%d)", r);
         continue;
       }
 
       /* Send request */
-      r = SSL_write(hw.ssl, opts.req, opts.req_size);
-      if(r < opts.req_size)
+      r = SSL_write(tt->ssl, tt->payload, tt->payload_size);
+      if(r < tt->payload_size)
       {
-        ERR("[%02u] Error en SSL_write.", hw.w->id);
-        w->stats.nfail++;
+        TERR("SSL_write error.");
         continue;
       }
 #else
@@ -239,7 +240,7 @@ static void tcp__thread(THREAD_WORK *tw)
 #endif
     } else {
       /* send request */
-      r = send(sock, (void *) tt->payload, tt->payload_size, 0);
+      r = send(tt->sock, (void *) tt->payload, tt->payload_size, 0);
       if(r < tt->payload_size)
       {
         TERR("Send error.");
@@ -251,21 +252,22 @@ static void tcp__thread(THREAD_WORK *tw)
     TDBG("  Reading data...");
     /* reestablish timeouts */
     memcpy(&sockwait, &tt->sockwait_rwait, sizeof(struct timeval));
-    r = select(sock+1, &socks, NULL, NULL, &sockwait);
-    if(!FD_ISSET(sock, &socks))
+    r = select(tt->sock+1, &socks, NULL, NULL, &sockwait);
+    if(!FD_ISSET(tt->sock, &socks))
     {
       TERR("select() error %d: %s", r, strerror(errno));
       continue;
     }
-    fcntl(sock,F_SETFL,sopts);
+    fcntl(tt->sock,F_SETFL,sopts);
 
     /* Rediret to /dev/null :) */
-    while((r = read(sock, nullbuff, sizeof(nullbuff))) > 0)
+    while((r = read(tt->sock, nullbuff, sizeof(nullbuff))) > 0)
+      TDBG(" data[%s]", nullbuff)
       ;
 
     /* Hemos terminado */
     TDBG("  Closing connection.");
-    if(close(sock) != 0)
+    if(close(tt->sock) != 0)
       TERR("error on close(): %s", strerror(errno));
   }
 }
@@ -313,7 +315,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
     switch(cn->type)
     {
       case TYPE_OPT_SSL:
-        tt->ssl = -1;
+        tt->sslenabled = -1;
         if(tt->sslcipher)
         {
           free(tt->sslcipher);
@@ -369,7 +371,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
     TFAT("I need a target address.");
   ip_addr_to_socket(&tt->dhost, &tt->dsockaddr);
 
-  if(tt->ssl && !tt->sslcipher)
+  if(tt->sslenabled && !tt->sslcipher)
     if((tt->sslcipher = strdup(DEFAULT_CIPHER_SUITE)) == NULL)
       TFAT("No mem for SSL cipher suite description.");
 
@@ -399,7 +401,7 @@ static void tcp__cleanup(THREAD_WORK *tw)
   pthreadex_timer_destroy(&tt->timer);
 
 #ifdef HAVE_SSL
-  if(tt->ssl)
+  if(tt->sslenabled)
     SSL_finalize(tt);
 #endif
   if(tt->sslcipher)

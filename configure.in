@@ -158,10 +158,6 @@ AC_CHECK_TYPES([u_int8_t, u_int16_t, u_int32_t, u_int64_t], [], [], [#include <s
 
 AC_CHECK_FUNCS([getopt_long], [], AC_MSG_ERROR([This version of getopt doesn't support long options.]))
 
-AC_CHECK_LIB(ipq,     ipq_read,       [], AC_MSG_ERROR("Missing library."))
-AC_CHECK_LIB(m,       floor,          [], AC_MSG_ERROR("Missing math library."))
-AC_CHECK_LIB(net,     libnet_init,    [], AC_MSG_ERROR("Missing library."))
-AC_CHECK_LIB(pthread, pthread_create, [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_HEADERS([openssl/lhash.h  \
                   openssl/crypto.h \
                   openssl/buffer.h \
@@ -176,6 +172,14 @@ AC_CHECK_HEADERS([openssl/e_os.h   \
                   openssl/e_os2.h])
 if test "$OPENSSL" = "yes"; then
   AC_DEFINE(HAVE_SSL, 1, [openssl available])
+fi
+
+AC_CHECK_LIB(ipq,     ipq_read,       [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(m,       floor,          [], AC_MSG_ERROR("Missing math library."))
+AC_CHECK_LIB(net,     libnet_init,    [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(pthread, pthread_create, [], AC_MSG_ERROR("Missing library."))
+if test "$OPENSSL" = "yes"; then
+  AC_CHECK_LIB(ssl, SSL_library_init, [], AC_MSG_ERROR("Missing library."))
 fi
 
 dnl ---------------------------------------------------------------------------
