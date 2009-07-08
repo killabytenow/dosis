@@ -162,6 +162,21 @@ AC_CHECK_LIB(ipq,     ipq_read,       [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_LIB(m,       floor,          [], AC_MSG_ERROR("Missing math library."))
 AC_CHECK_LIB(net,     libnet_init,    [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_LIB(pthread, pthread_create, [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_HEADERS([openssl/lhash.h  \
+                  openssl/crypto.h \
+                  openssl/buffer.h \
+                  openssl/x509.h   \
+                  openssl/ssl.h    \
+                  openssl/err.h    \
+                  openssl/rand.h   \
+                  openssl/pem.h],
+                 [OPENSSL="yes"],
+                 AC_MSG_WARN("SSL is disabled"))
+AC_CHECK_HEADERS([openssl/e_os.h   \
+                  openssl/e_os2.h])
+if test "$OPENSSL" = "yes"; then
+  AC_DEFINE(HAVE_SSL, 1, [openssl available])
+fi
 
 dnl ---------------------------------------------------------------------------
 dnl Set directories

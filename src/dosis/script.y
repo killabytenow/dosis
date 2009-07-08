@@ -140,7 +140,10 @@ selection: range
          | list_num
          ;
 
-option: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL); }
+option: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL);
+                                    $$->option.sslcipher = NULL; }
+      | OPT_SSL string            { $$ = new_node(TYPE_OPT_SSL);
+                                    $$->option.sslcipher = $2; }
       | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }

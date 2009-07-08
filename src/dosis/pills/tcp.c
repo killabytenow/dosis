@@ -36,7 +36,8 @@
 #define DEFAULT_RWAIT           10000000
 
 #define BUFSIZE 4096
-#define CIPHER_SUITE "DES-CBC3-SHA"
+
+#define DEFAULT_CIPHER_SUITE "DES-CBC3-SHA"
 
 typedef struct _tag_TCP_CFG {
   /* options */
@@ -47,6 +48,7 @@ typedef struct _tag_TCP_CFG {
   double             hitratio;
   char              *payload;
   unsigned           payload_size;
+  char              *sslcipher;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -55,9 +57,11 @@ typedef struct _tag_TCP_CFG {
   struct sockaddr    dsockaddr;
 
   /* ssl things */
+#ifdef HAVE_SSL
   SSL                *ssl;
   SSL_CTX            *ctx;
   BIO                *bio;
+#endif
 } TCP_CFG;
 
 static char nullbuff[BUFSIZE];
@@ -66,6 +70,7 @@ static char nullbuff[BUFSIZE];
  * SSL FUNCS
  *****************************************************************************/
 
+#ifdef HAVE_SSL
 static void SSL_error_stack(void) /* recursive dump of the error stack */
 {
   unsigned long err;
@@ -116,7 +121,7 @@ int SSL_initialize(HANDSHAKESSL_WORK *hw)
   SSL_CTX_set_mode(hw->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
   SSL_CTX_set_session_cache_mode(hw->ctx, SSL_SESS_CACHE_BOTH);
   SSL_CTX_set_timeout(hw->ctx, 500000);
-  if(!SSL_CTX_set_cipher_list(hw->ctx, CIPHER_SUITE))
+  if(!SSL_CTX_set_cipher_list(hw->ctx, tt->sslcipher))
   {
     ERR("[%02u] SSL_CTX_set_cipher_list", hw->w->id);
     return 1;
@@ -136,6 +141,7 @@ int SSL_initialize(HANDSHAKESSL_WORK *hw)
   serr = SSL_connect(hw->ssl);
   return 0;
 }
+#endif
 
 /*****************************************************************************
  * THREAD IMPLEMENTATION
@@ -209,6 +215,7 @@ static void tcp__thread(THREAD_WORK *tw)
     /*** DATA SEND AND RECV **************************************************/
     if(tt->ssl)
     {
+#ifdef HAVE_SSL
       /* close any opened ssl conn */
       SSL_finalize(tt)
 
@@ -227,6 +234,9 @@ static void tcp__thread(THREAD_WORK *tw)
         w->stats.nfail++;
         continue;
       }
+#else
+      TFAT("Not compiled with SSL support.");
+#endif
     } else {
       /* send request */
       r = send(sock, (void *) tt->payload, tt->payload_size, 0);
@@ -235,7 +245,6 @@ static void tcp__thread(THREAD_WORK *tw)
         TERR("Send error.");
         continue;
       }
-
     }
 
     /* READ DATA ***********************************************************/
@@ -305,6 +314,13 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
     {
       case TYPE_OPT_SSL:
         tt->ssl = -1;
+        if(tt->sslcipher)
+        {
+          free(tt->sslcipher);
+          tt->sslcipher = NULL;
+        }
+        if(cn->option.sslcipher)
+          tt->sslcipher = tea_get_string(cn->option.sslcipher);
         break;
 
       case TYPE_OPT_DST:
@@ -353,6 +369,10 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
     TFAT("I need a target address.");
   ip_addr_to_socket(&tt->dhost, &tt->dsockaddr);
 
+  if(tt->ssl && !tt->sslcipher)
+    if((tt->sslcipher = strdup(DEFAULT_CIPHER_SUITE)) == NULL)
+      TFAT("No mem for SSL cipher suite description.");
+
   /* calculate timeout */
 
   /* configure timer */
@@ -378,8 +398,12 @@ static void tcp__cleanup(THREAD_WORK *tw)
   /* collect libnet data */
   pthreadex_timer_destroy(&tt->timer);
 
+#ifdef HAVE_SSL
   if(tt->ssl)
     SSL_finalize(tt);
+#endif
+  if(tt->sslcipher)
+    free(tt->sslcipher);
 
   if(tt->payload)
   {

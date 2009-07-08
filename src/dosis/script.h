@@ -114,6 +114,7 @@ typedef struct SNODE_tag {
       struct SNODE_tag *payload;      /* payload for packets                 */
       struct SNODE_tag *cwait;        /* TCP connection wait                 */
       struct SNODE_tag *rwait;        /* TCP read wait                       */
+      struct SNODE_tag *sslcipher;    /* SSL cipher suite                    */
 
       struct SNODE_tag *next;
     } option;

@@ -60,8 +60,41 @@
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
 
+/* Define to 1 if you have the <openssl/buffer.h> header file. */
+#undef HAVE_OPENSSL_BUFFER_H
+
+/* Define to 1 if you have the <openssl/crypto.h> header file. */
+#undef HAVE_OPENSSL_CRYPTO_H
+
+/* Define to 1 if you have the <openssl/err.h> header file. */
+#undef HAVE_OPENSSL_ERR_H
+
+/* Define to 1 if you have the <openssl/e_os2.h> header file. */
+#undef HAVE_OPENSSL_E_OS2_H
+
+/* Define to 1 if you have the <openssl/e_os.h> header file. */
+#undef HAVE_OPENSSL_E_OS_H
+
+/* Define to 1 if you have the <openssl/lhash.h> header file. */
+#undef HAVE_OPENSSL_LHASH_H
+
+/* Define to 1 if you have the <openssl/pem.h> header file. */
+#undef HAVE_OPENSSL_PEM_H
+
+/* Define to 1 if you have the <openssl/rand.h> header file. */
+#undef HAVE_OPENSSL_RAND_H
+
+/* Define to 1 if you have the <openssl/ssl.h> header file. */
+#undef HAVE_OPENSSL_SSL_H
+
+/* Define to 1 if you have the <openssl/x509.h> header file. */
+#undef HAVE_OPENSSL_X509_H
+
 /* Define to 1 if you have the <pthread.h> header file. */
 #undef HAVE_PTHREAD_H
+
+/* openssl available */
+#undef HAVE_SSL
 
 /* Define to 1 if `stat' has the bug that it succeeds when given the
    zero-length file name argument. */
