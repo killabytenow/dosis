@@ -1,7 +1,7 @@
 ###############################################################################
-# http.inj
+# https.inj
 #
-# HTTP TCP connections.
+# HTTPS TCP connections.
 #
 # Configuration:
 #  THOST   - target host
@@ -30,11 +30,11 @@
 
 # configuration
 THOST="127.0.0.1"
-TPORT="80"
+TPORT="443"
 THREADS="10"
 RT="10.0"
 
 # script
-0.0 ON [1%$THREADS] TCP DST $THOST $TPORT PAYLOAD FILE("http.payload") PERIODIC [ 1.0 ]
+0.0 ON [1%$THREADS] TCP SSL "DES-CBC3-SHA" DST $THOST $TPORT PAYLOAD FILE("http.payload") PERIODIC [ 1.0 ]
 $RT OFF *
 
