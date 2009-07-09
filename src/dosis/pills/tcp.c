@@ -87,8 +87,6 @@ static void SSL_error_stack(void) /* recursive dump of the error stack */
 static void SSL_finalize(THREAD_WORK *tw)
 {
   TCP_CFG *tt = (TCP_CFG *) tw->data;
-  if(tt->sock)
-    close(tt->sock);
   if(tt->ssl)
   {
     SSL_shutdown(tt->ssl);
@@ -96,7 +94,6 @@ static void SSL_finalize(THREAD_WORK *tw)
   }
   if(tt->ctx)
     SSL_CTX_free(tt->ctx);
-  tt->sock = 0;
   tt->ssl = NULL;
   tt->bio = NULL;
   tt->ctx = NULL;
@@ -195,7 +192,7 @@ static void tcp__thread(THREAD_WORK *tw)
     /* connection is completed or in progress... */
     fcntl(tt->sock, F_SETFL, sopts);
     FD_ZERO(&socks);
-    FD_SET(tt->sock,&socks);
+    FD_SET(tt->sock, &socks);
     if((r = select(tt->sock + 1, NULL, &socks, NULL, &sockwait)) < 1)
     {
       TDBG("connection timed out.");
@@ -215,9 +212,11 @@ static void tcp__thread(THREAD_WORK *tw)
     fcntl(tt->sock, F_SETFL, sopts);
  
     /*** DATA SEND AND RECV **************************************************/
+    TDBG2("prepared to send data...");
     if(tt->sslenabled)
     {
 #ifdef HAVE_SSL
+    TDBG2("  ssl data...");
       /* close any opened ssl conn */
       SSL_finalize(tw);
 
@@ -229,6 +228,7 @@ static void tcp__thread(THREAD_WORK *tw)
       }
 
       /* Send request */
+    TDBG2("  going to write...");
       r = SSL_write(tt->ssl, tt->payload, tt->payload_size);
       if(r < tt->payload_size)
       {

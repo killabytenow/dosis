@@ -41,4 +41,8 @@ dosis_SOURCES = dosis.c           dosis.h           \
                 pills/tcpopen.c   pills/tcpopen.h   \
                 pills/tcpraw.c    pills/tcpraw.h    \
                 pills/udp.c       pills/udp.h
+if SSL_ENABLED
+dosis_SOURCES += sslthread.c      sslthread.h
+endif
+
 

@@ -51,6 +51,9 @@
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #undef HAVE_LIBPTHREAD
 
+/* Define to 1 if you have the `ssl' library (-lssl). */
+#undef HAVE_LIBSSL
+
 /* Define to 1 if you have the <linux/netfilter.h> header file. */
 #undef HAVE_LINUX_NETFILTER_H
 
@@ -202,6 +205,9 @@
 
 /* The size of `void *', as computed by sizeof. */
 #undef SIZEOF_VOID_P
+
+/* disable readline */
+#undef SSL_ENABLED
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

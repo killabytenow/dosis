@@ -1,7 +1,7 @@
 /*****************************************************************************
- * dosis.c
+ * sslthread.h
  *
- * DoS generator.
+ * SSL threading support initialization/finalization.
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -23,52 +23,17 @@
  *
  *****************************************************************************/
 
-#include <config.h>
-#include "dosis.h"
-#include "dosconfig.h"
-#include "log.h"
-#include "tea.h"
+#ifndef __SSLTHREAD_H__
+#define __SSLTHREAD_H__
 
-void handle_termination__signal(int s)
-{
-  if(!cfg.finalize)
-  {
-    WRN("One more termination signal will force program termination.");
-    cfg.finalize = -1;
-  } else {
-    FAT("Program termination forced.");
-    exit(1);
-  }
-}
-
-int main(int argc, char *argv[])
-{
-  SNODE *script;
-
-  log_init();
-  tea_init();
-  script_init();
-#ifdef HAVE_SSL
-  SSL_thread_init();
+#ifdef __cplusplus
+extern "C" {
 #endif
 
-  /* install signal handlers */
-  signal(SIGHUP,  handle_termination__signal);
-  signal(SIGINT,  handle_termination__signal);
-  signal(SIGQUIT, handle_termination__signal);
-  signal(SIGTERM, handle_termination__signal);
+void SSL_thread_init(void);
 
-  /* read command line parameters */
-  dos_config_init(argc, argv);
-
-  /* parse script */
-  if((script = script_parse()) == NULL)
-    FAT("Cannot parse input script.");
-
-  tea_timer(script);
-
-  LOG("Finished.");
-
-  return 0;
+#ifdef __cplusplus
 }
+#endif
 
+#endif
