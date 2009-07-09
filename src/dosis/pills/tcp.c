@@ -262,8 +262,7 @@ static void tcp__thread(THREAD_WORK *tw)
 
     /* Rediret to /dev/null :) */
     while((r = read(tt->sock, nullbuff, sizeof(nullbuff))) > 0)
-      TDBG(" data[%s]", nullbuff)
-      ;
+      TDBG2("  read %d bytes...", r);
 
     /* Hemos terminado */
     TDBG("  Closing connection.");
