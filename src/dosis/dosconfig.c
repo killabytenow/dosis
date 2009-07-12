@@ -58,12 +58,14 @@ typedef struct _tag_CMD_OPTION {
 } DOS_CMD_OPTION;
 
 DOS_CMD_OPTION cmd_options[] = {
-  { 'Z', "debug",         0 },
   { 'h', "help",          0 },
-  { 'o', "output-file",   1 },
+  { 'i', "interface",     1 },
+  { 'I', "include",       1 },
   { 'q', "quiet",         0 },
+  { 'o', "output-file",   1 },
   { 't', "max-threads",   1 },
   { 'v', "verbose",       2 },
+  { 'Z', "debug",         0 },
   {   0, NULL,            0 },
 };
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
@@ -78,7 +80,7 @@ DOS_CMD_OPTION cmd_options[] = {
 
 static void dos_config_parse_command(int argc, char **argv)
 {
-  int c, fin,
+  int c, i, fin,
       option_index = 0;
   char *s;
 
@@ -95,22 +97,45 @@ static void dos_config_parse_command(int argc, char **argv)
     switch(c)
     {
       case 'h':
+          cfg.verbosity = 3;
+          dos_help_program_header();
           print_help();
+          cfg.verbosity = 0;
           exit(0);
-          break;
+
       case 'o':
           if(!optarg || strlen(optarg) == 0)
-            D_FAT("Required a valid filename.");
+            FAT("Required a valid filename.");
           if((cfg.output = strdup(optarg)) == NULL)
-            D_FAT("No mem for ouput filename.");
+            FAT("No mem for ouput filename.");
           break;
       case 'q':
           cfg.verbosity = 0;
           break;
+      case 'i':
+          if(!optarg || strlen(optarg) == 0)
+            FAT("Required interface.");
+          for(i = 0; i < MAX_INTERFACES && cfg.interfaces[i]; i++)
+            ;
+          if(i >= MAX_INTERFACES)
+            FAT("No space for more interfaces.");
+          if((cfg.interfaces[i] = strdup(optarg)) == NULL)
+            FAT("No mem for interface.");
+          break;
+      case 'I':
+          if(!optarg || strlen(optarg) == 0)
+            FAT("Required pathname.");
+          for(i = 0; i < MAX_INCLUDE_DIRS && cfg.includedir[i]; i++)
+            ;
+          if(i >= MAX_INCLUDE_DIRS)
+            FAT("No space for more include directories.");
+          if((cfg.includedir[i] = strdup(optarg)) == NULL)
+            FAT("No mem for pathname.");
+          break;
       case 't':
           cfg.maxthreads = atoi(optarg);
           if(cfg.maxthreads < 1)
-            D_FAT("A minimum of 1 thread is needed.");
+            FAT("A minimum of 1 thread is needed.");
           break;
       case 'v':
           if(!optarg)
@@ -124,17 +149,17 @@ static void dos_config_parse_command(int argc, char **argv)
           fin = -1;
           break;
       default:
-          D_FAT("Invalid option '%c'.", c); 
+          FAT("Invalid option '%c'.", c); 
     }
   }
 
   if(argc - optind > 1)
-    D_FAT("Specify only one script file.");
+    FAT("Specify only one script file.");
   if(argc - optind < 1)
     cfg.script = NULL;
   else
-    if((cfg.script = strdup(argv[optind])) == NULL)
-      D_FAT("No mem for script filename.");
+    if((cfg.script = dosis_search_file(argv[optind])) == NULL)
+      FAT("Script '%s' not found.", argv[optind]);
 }
 
 /*****************************************************************************
@@ -167,7 +192,6 @@ void dos_get_addresses(void)
       FAT("Out of memory.\n");
     if(ioctl(sockfd, SIOCGIFCONF, &ifc))
       FAT("Cannot ioctl SIOCFIFCONF: %s", strerror(errno));
-    DBG("ifc.ifc_len = %d", ifc.ifc_len / sizeof(struct ifreq));
   } while(size <= ifc.ifc_len);
 
   /* get the info! */
@@ -181,7 +205,7 @@ void dos_get_addresses(void)
       continue;  /* failed to get flags, skip it */
 
     if(!(ifr->ifr_flags & IFF_UP))
-      DBG("Interface %s is down.", ifr->ifr_name);
+      WRN("Interface %s is down.", ifr->ifr_name);
 
     /* alloc a new address info structure */
     if((a = calloc(1, sizeof(DOS_ADDR_INFO))) == NULL)
@@ -196,7 +220,7 @@ void dos_get_addresses(void)
       ip_socket_to_addr(&ifr->ifr_addr, &a->addr);
       ip_addr_unset_port(&a->addr);
     } else
-      DBG("Interface %s has not a primary address.", a->name);
+      WRN("Interface %s has not a primary address.", a->name);
 
     /* get PA netmask */
     if(!ioctl(sockfd, SIOCGIFNETMASK, ifr))
@@ -204,7 +228,7 @@ void dos_get_addresses(void)
       ip_socket_to_addr(&ifr->ifr_addr, &a->mask);
       ip_addr_unset_port(&a->mask);
     } else
-      DBG("Interface %s has not a PA network mask.", a->name);
+      WRN("Interface %s has not a PA network mask.", a->name);
 
     /* get HW address */
     if(ioctl(sockfd, SIOCGIFHWADDR, ifr) == 0
@@ -265,10 +289,46 @@ void dosis_atexit(char *name, void (*func)(void))
   dosis_atexit_list = a;
 }
 
+char *dosis_search_file(char *file)
+{
+  struct stat buf;
+  char tmp[PATH_MAX], *r;
+  char **paths;
+
+  /* in the worst case (file not found) we will return NULL */
+  r = NULL;
+
+  /* if absolute path, then return the same file */
+  if(*file == '/')
+    r = file;
+
+  /* if file is present in current dir, then return the same file */
+  if(!stat(file, &buf) && S_ISREG(buf.st_mode))
+    r = file;
+
+  /* search file 'file' in the list of 'paths' */
+  for(paths = cfg.includedir; !r && *paths; paths++)
+  {
+    if(snprintf(tmp, PATH_MAX, "%s/%s", *paths, file) > PATH_MAX)
+      FAT("String '%s/%s' is longer than PATH_MAX characters (%d).",
+          *paths, file, PATH_MAX);
+    if(!stat(tmp, &buf) && S_ISREG(buf.st_mode))
+      r = tmp;
+  }
+
+  /* return a copy */
+  if(r)
+    if((r = strdup(r)) == NULL)
+      FAT("No memory for path '%s'.", tmp);
+
+  return r;
+}
+
 static void dos_config_fini(void)
 {
   DOSIS_ATEXIT *atx;
   DOS_ADDR_INFO *addr;
+  int i;
 
   if(dosis_forked)
   {
@@ -286,9 +346,9 @@ static void dos_config_fini(void)
   }
   DBG("Atexit finished.");
 
-  if(cfg.output)       free(cfg.output);
-  if(cfg.script)       free(cfg.script);
-  if(cfg.of != stdout) fclose(cfg.of);
+  if(cfg.output)                 free(cfg.output);
+  if(cfg.script)                 free(cfg.script);
+  if(cfg.of != stdout && cfg.of) fclose(cfg.of);
 
   while((addr = cfg.addr) != NULL)
   {
@@ -296,6 +356,20 @@ static void dos_config_fini(void)
     free(addr->name);
     free(addr);
   }
+
+  for(i = 0; i < MAX_INCLUDE_DIRS; i++)
+    if(cfg.includedir[i])
+    {
+      free(cfg.includedir[i]);
+      cfg.includedir[i] = NULL;
+    }
+
+  for(i = 0; i < MAX_INTERFACES; i++)
+    if(cfg.interfaces[i])
+    {
+      free(cfg.interfaces[i]);
+      cfg.interfaces[i] = NULL;
+    }
 
   if(short_options)
     free(short_options);
@@ -312,12 +386,16 @@ void dos_config_init(int argc, char **argv)
 
   /* first of all get concious about dead */
   if(atexit(dos_config_fini))
-    D_FAT("Cannot set finalization routine.");
+    FAT("Cannot set finalization routine.");
+
+  /* zero include dirs and interfaces array */
+  memset(cfg.includedir, 0, sizeof(cfg.includedir));
+  memset(cfg.interfaces, 0, sizeof(cfg.interfaces));
 
   /* initialize getopt tables */
   if(!(short_options = calloc((CMD_OPTIONS_N * 2) + 1, sizeof(char)))
   || !(long_options = calloc(CMD_OPTIONS_N + 1, sizeof(struct option))))
-    D_FAT("No memory for getopt tables.");
+    FAT("No memory for getopt tables.");
 
   s = short_options;
   j = 0;
@@ -345,32 +423,53 @@ void dos_config_init(int argc, char **argv)
   /* read config and command from command line */
   dos_config_parse_command(argc, argv);
 
-  /* open files */
-  if(cfg.script)
-  {
-    close(0);
-    if(open(argv[optind], O_RDONLY) < 0)
-      D_FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
-  } else
-    D_WRN("Reading standard input.");
-
+  /* open output file */
   if(cfg.output)
   {
     if((cfg.of = fopen(cfg.output, "w")) == NULL)
-      D_FAT("Cannot write output file '%s'.", cfg.output);
+      FAT("Cannot write output file '%s'.", cfg.output);
   } else {
-    D_WRN("Writing to standard output.");
+    WRN("Writing to standard output.");
     cfg.of = stdout;
+  }
+
+  /* get network interfaces and ip addresses */
+  dos_get_addresses();
+
+  /* check selected interfaces */
+  for(i = 0; i < MAX_INTERFACES; i++)
+  {
+    if(cfg.interfaces[i])
+    {
+      DOS_ADDR_INFO *a;
+      for(a = cfg.addr; a; a = a->next)
+        if(!strcmp(cfg.interfaces[i], a->name))
+          break;
+      if(!a)
+        FAT("Interface '%s' not found.", cfg.interfaces[i]);
+    }
   }
 
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();
-  D_DBG("Configuration");
-  D_DBG("  verbosity level = %d", cfg.verbosity);
-  D_DBG("  script file     = %s", cfg.script ? cfg.script : "<standard input>");
-  D_DBG("  output file     = %s", cfg.output ? cfg.output : "<standard output>");
+  DBG("Configuration");
+  DBG("  verbosity level = %d", cfg.verbosity);
+  DBG("  script file     = %s", cfg.script ? cfg.script : "<standard input>");
+  DBG("  output file     = %s", cfg.output ? cfg.output : "<standard output>");
+  for(i = 0; i < MAX_INTERFACES; i++)
+    if(cfg.interfaces[i])
+      DBG("  interface[%d]   = %s", i, cfg.interfaces[i]);
+  for(i = 0; i < MAX_INCLUDE_DIRS; i++)
+    if(cfg.includedir[i])
+      DBG("  include dir[%d] = %s", i, cfg.includedir[i]);
 
-  /* get network interfaces and ip addresses */
-  dos_get_addresses();
+  /* open script file */
+  if(cfg.script)
+  {
+    close(0);
+    if(open(cfg.script, O_RDONLY) < 0)
+      FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
+  } else
+    WRN("Reading standard input.");
 }
 

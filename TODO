@@ -1,0 +1,11 @@
+TODO LIST
+=========
+
+- debug tcpopen
+- program classic TCP
+- program TCP/SSL
+- choose a better seq generation algorithm for tcpraw thread.
+  (several algorithms: sequential, pseudo-random, random)
+- tcpraw:
+    - set window to 0, and persisting.
+    - acknowledge before receive.

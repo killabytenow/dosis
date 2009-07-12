@@ -1,11 +1,10 @@
 ###############################################################################
-# udpflood.inj
+# http.inj
 #
-# Classic udp flood.
+# HTTP TCP connections.
 #
 # Configuration:
 #  THOST   - target host
-#  TPORT   - target port
 #  THREADS - number of threads
 #  RT      - total runtime (in seconds)
 #
@@ -31,11 +30,11 @@
 
 # configuration
 THOST="127.0.0.1"
-TPORT="9999"
+TPORT="80"
 THREADS="10"
-RT="5.0"
+RT="10.0"
 
 # script
-0.0 ON [1%$THREADS] UDP SRC 10.0.0.2 DST $THOST $TPORT PERIODIC [1.0, 1]
+0.0 ON [1%$THREADS] TCP DST $THOST $TPORT PAYLOAD FILE("http.payload") PERIODIC [ 1.0 ]
 $RT OFF *
 

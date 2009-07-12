@@ -30,6 +30,7 @@
 #include "tea.h"
 #include "tcpopen.h"
 #include "lnet.h"
+#include "payload.h"
 #include "pthreadex.h"
 #include "log.h"
 #include "ip.h"
@@ -40,8 +41,8 @@ typedef struct _tag_TCPOPEN_CFG {
   INET_ADDR   shost;
   INET_ADDR   dhost;
   unsigned    npackets;
-  char       *req;
-  unsigned    req_size;
+  char       *payload;
+  unsigned    payload_size;
   LN_CONTEXT *lnc;
 } TCPOPEN_CFG;
 
@@ -59,35 +60,15 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
   /* check msg size and headers */
-DBG("[%s] size       = %d", tw->methods->name, size);
-if(size >= sizeof(struct iphdr))
-{
-DBG("[%s] ip proto   = %d", tw->methods->name, ip_protocol(msg));
-if(ip_protocol(msg) == 6)
-{
-DBG("[%s] iphdr size = %d", tw->methods->name, sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2));
-if(size >= sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
-{
-DBG("[%s] saddr:srcp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->saddr, ntohs(tcp_header(msg)->source), tc->dhost.addr.in.addr, tc->dhost.port);
-DBG("[%s] daddr:dstp = %x:%d (%x:%d)", tw->methods->name, ip_header(msg)->daddr, ntohs(tcp_header(msg)->dest));
-DBG("[%s] flags(fin) = %x", tw->methods->name, tcp_header(msg)->fin);
-DBG("[%s] flags(syn) = %x", tw->methods->name, tcp_header(msg)->syn);
-DBG("[%s] flags(rst) = %x", tw->methods->name, tcp_header(msg)->rst);
-DBG("[%s] flags(psh) = %x", tw->methods->name, tcp_header(msg)->psh);
-DBG("[%s] flags(ack) = %x", tw->methods->name, tcp_header(msg)->ack);
-DBG("[%s] flags(urg) = %x", tw->methods->name, tcp_header(msg)->urg);
-}
-}
-}
-
   if(size < sizeof(struct iphdr)
   || ip_protocol(msg) != 6
   || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
     return 0;
 
   /* check msg */
-  return ip_header(msg)->daddr == tc->dhost.addr.in.addr
-      && tcp_header(msg)->dest == tc->dhost.port ? -1 : 0;
+  return ip_header(msg)->saddr == tc->dhost.addr.in.addr
+      && ntohs(tcp_header(msg)->source) == tc->dhost.port
+         ? -1 : 0;
 }
 
 static void tcpopen__listen(THREAD_WORK *tw)
@@ -96,75 +77,141 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
+TDBG("EATING INPUT");
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
-    DBG("[%02u] Received a spoofed connection packet.", tw->id);
-    /*
-    DBG2("[%02u] Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-            tw->id,
-            identify_ip_protocol(m->b),
+    TDBG("Received a spoofed connection packet.");
+    TDBG2("Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+            ip_protocol(m->b),
             (ip_header(m->b)->saddr >>  0) & 0x00ff,
             (ip_header(m->b)->saddr >>  8) & 0x00ff,
             (ip_header(m->b)->saddr >> 16) & 0x00ff,
             (ip_header(m->b)->saddr >> 24) & 0x00ff,
-            tcp_header(m->b)->dest, cfg->dhost.port,
+            tcp_header(m->b)->dest, tc->dhost.port,
             tcp_header(m->b)->rst,
-            ip_header(m->b)->saddr,
-            cfg->shost.s_addr);
-    */
+            ip_header(m->b)->saddr, tc->shost.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
     if(tcp_header(m->b)->syn != 0
     && tcp_header(m->b)->ack != 0)
     {
       /* send handshake and data TCP packet */
-      DBG("[%02u]   - Request packet sending...", tw->id);
-      ln_send_packet(tc->lnc,
-                     &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                     TH_ACK,
-                     ntohs(tcp_header(m->b)->window),
-                     ntohl(tcp_header(m->b)->ack_seq),
-                     ntohl(tcp_header(m->b)->seq) + 1,
-                     NULL, 0);
-      ln_send_packet(tc->lnc,
-                     &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                     &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                     TH_ACK | TH_PUSH,
-                     ntohs(tcp_header(m->b)->window),
-                     ntohl(tcp_header(m->b)->ack_seq),
-                     ntohl(tcp_header(m->b)->seq) + 1,
-                     (char *) tc->req, tc->req_size);
+      TDBG("  - Request packet sending...");
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_ACK,
+                         ntohs(tcp_header(m->b)->window),
+                         ntohl(tcp_header(m->b)->ack_seq),
+                         ntohl(tcp_header(m->b)->seq) + 1,
+                         NULL, 0);
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_ACK | TH_PUSH,
+                         ntohs(tcp_header(m->b)->window),
+                         ntohl(tcp_header(m->b)->ack_seq),
+                         ntohl(tcp_header(m->b)->seq) + 1,
+                         (char *) tc->payload, tc->payload_size);
     }
 
     /* release msg buffer */
     tea_msg_release(m);
   }
+TDBG("NO MOAR INPUT");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- * GENERIC HTTP THREAD
- *   This thread specializes in different tasks depending on thread number
- *     0 - listener
- *     x - sender
+ * CONFIGURATION. 
+ *   Is important to consider that this function could be
+ *   called several times during thread live: initial
+ *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  SNODE *cn;
+  char *s;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
   {
     if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-      D_FAT("[%02d] No memory for TCPOPEN_CFG.", tw->id);
+      TFAT("No memory for TCPOPEN_CFG.");
     tw->data = (void *) tc;
 
     /* initialize libnet */
-    DBG("[%02u] Initializing libnet.", tw->id);
+    TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      D_FAT("[%02d] No memory for LN_CONTEXT.", tw->id);
+      TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
+  }
+
+  /* read from SNODE command parameters */
+  if(command->command.thc.to != NULL)
+  if(command->command.thc.to->to.pattern != NULL)
+    TFAT("%d: TCPOPEN does not accept a pattern.",
+         command->command.thc.to->to.pattern->line);
+  
+  /* read from SNODE command options */
+  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
+    switch(cn->type)
+    {
+      case TYPE_OPT_SRC:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tc->shost))
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_DST:
+        s = tea_get_string(cn->option.addr);
+        if(ip_addr_parse(s, &tc->dhost))
+          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
+        free(s);
+        if(cn->option.port)
+          ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_PAYLOAD_FILE:
+      case TYPE_OPT_PAYLOAD_RANDOM:
+      case TYPE_OPT_PAYLOAD_STR:
+        payload_get(cn, &tc->payload, &tc->payload_size);
+        break;
+
+      default:
+        TFAT("%d: Uknown option %d.", cn->line, cn->type);
+    }
+
+  /* configure src address (if not defined) */
+  if(tc->dhost.type == INET_FAMILY_NONE)
+    TFAT("I need a target address.");
+  if(tc->shost.type == INET_FAMILY_NONE)
+  {
+    DOS_ADDR_INFO *ai;
+    if((ai = dos_get_interface(&tc->dhost)) == NULL)
+    {
+      char buff[255];
+      ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
+      TWRN("Cannot find a suitable source address for '%s'.", buff);
+    } else
+      ip_addr_copy(&tc->shost, &ai->addr);
+  }
+
+  /* (debug) print configuration */
+  {
+    char buff[255];
+
+    TDBG2("config.periodic.bytes  = %d", tc->payload_size);
+
+    ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
+    TDBG2("config.options.shost   = %s", buff);
+    ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
+    TDBG2("[%d] config.options.dhost   = %s", buff);
+    TDBG2("[%d] config.options.payload = %d bytes", tc->payload_size);
   }
 
   return 0;
@@ -183,15 +230,15 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
       free(tc->lnc);
       tc->lnc = NULL;
     }
-    if(tc->req)
+    if(tc->payload)
     {
-      free(tc->req);
-      tc->req = NULL;
+      free(tc->payload);
+      tc->payload = NULL;
     }
     free(tc);
     tw->data = NULL;
   }
-  DBG("[%02u] Finalized.", tw->id);
+  TDBG("Finalized.");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

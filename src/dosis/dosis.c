@@ -48,6 +48,9 @@ int main(int argc, char *argv[])
   log_init();
   tea_init();
   script_init();
+#ifdef HAVE_SSL
+  SSL_thread_init();
+#endif
 
   /* install signal handlers */
   signal(SIGHUP,  handle_termination__signal);
@@ -60,7 +63,7 @@ int main(int argc, char *argv[])
 
   /* parse script */
   if((script = script_parse()) == NULL)
-    D_FAT("Cannot parse input script.");
+    FAT("Cannot parse input script.");
 
   tea_timer(script);
 

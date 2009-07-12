@@ -56,16 +56,24 @@ enum TYPES {
   TYPE_TO_UDP,
   TYPE_TO_LISTEN,
   /* options */
-  TYPE_OPT_DST = 4000,
+  TYPE_OPT_CWAIT = 4000,
+  TYPE_OPT_SSL,
+  TYPE_OPT_DLL,
+  TYPE_OPT_DST,
   TYPE_OPT_FILE,
   TYPE_OPT_FLAGS,
   TYPE_OPT_OPEN,
   TYPE_OPT_RAW,
+  TYPE_OPT_RWAIT,
   TYPE_OPT_SRC,
-  TYPE_OPT_PAYLOAD_STR,
+  TYPE_OPT_PAYLOAD_DLL,
   TYPE_OPT_PAYLOAD_FILE,
+  TYPE_OPT_PAYLOAD_NULL,
+  TYPE_OPT_PAYLOAD_RANDOM,
+  TYPE_OPT_PAYLOAD_STR,
   /* patterns */
   TYPE_PERIODIC = 5000,
+  TYPE_PERIODIC_LIGHT,
 };
 
 typedef struct SNODE_tag {
@@ -104,6 +112,9 @@ typedef struct SNODE_tag {
       struct SNODE_tag *port;         /* target/source port                  */
       struct SNODE_tag *flags;        /* flags                               */
       struct SNODE_tag *payload;      /* payload for packets                 */
+      struct SNODE_tag *cwait;        /* TCP connection wait                 */
+      struct SNODE_tag *rwait;        /* TCP read wait                       */
+      struct SNODE_tag *sslcipher;    /* SSL cipher suite                    */
 
       struct SNODE_tag *next;
     } option;
@@ -114,7 +125,6 @@ typedef struct SNODE_tag {
       struct {
         struct SNODE_tag *ratio; /* nfloat snode specifying packets/s        */
         struct SNODE_tag *n;     /* nint snode with packets to send          */
-        struct SNODE_tag *bytes; /* size of packet                           */
       } periodic;
     } pattern;
 
@@ -153,8 +163,6 @@ typedef struct SNODE_tag {
 
 extern void script_init(void);
 extern SNODE *script_parse(void);
-
-#define IPADDR      
 
 #ifdef __cplusplus
 }

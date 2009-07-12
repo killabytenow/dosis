@@ -83,6 +83,31 @@ extern "C" {
 #define offsetof(st, f)  (((char *) &(((st *) 0)->f)) - ((char *) 0))
 #endif
 
+/* openssl includes */
+#ifdef HAVE_SSL
+# ifdef HAVE_E_OS_H
+#  include <openssl/e_os.h>
+# endif
+# ifdef HAVE_E_OS2_H
+#  include <openssl/e_os2.h>
+# endif
+# include <openssl/lhash.h>
+# include <openssl/crypto.h>
+# include <openssl/buffer.h>
+# include <openssl/x509.h>
+# include <openssl/ssl.h>
+# include <openssl/err.h>
+# include <openssl/rand.h>
+# include <openssl/pem.h>
+#endif
+
+#define OPENSSL_THREAD_DEFINES
+#include <openssl/opensslconf.h>
+#if defined(THREADS) || defined(OPENSSL_THREADS)
+#else
+#error "Your openssl libraries were compiled without thread support."
+#endif
+
 /* data types */
 #if HAVE_INT8_T
 # define INT8_T         int8_t

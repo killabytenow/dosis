@@ -23,6 +23,7 @@
  *
  *****************************************************************************/
 
+%error-verbose
 %{
   #ifndef _GNU_SOURCE
   #define _GNU_SOURCE 1
@@ -61,8 +62,9 @@
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
-%token            OPT_PAYLOAD OPT_FILE
+%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL OPT_SSL
 %token            TO_UDP TO_TCP TO_LISTEN
+%token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
 script: input       { script = $1; }
       ;
@@ -138,25 +140,40 @@ selection: range
          | list_num
          ;
 
-option: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
+option: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL);
+                                    $$->option.sslcipher = NULL; }
+      | OPT_SSL string            { $$ = new_node(TYPE_OPT_SSL);
+                                    $$->option.sslcipher = $2; }
+      | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }
-      | OPT_SRC string '/' nint   { $$ = new_node(TYPE_OPT_SRC);
+      | OPT_SRC string nint       { $$ = new_node(TYPE_OPT_SRC);
                                     $$->option.addr = $2;
-                                    $$->option.port = $4; }
+                                    $$->option.port = $3; }
       | OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
                                     $$->option.addr = $2;
                                     $$->option.port = NULL; }
-      | OPT_DST string '/' nint   { $$ = new_node(TYPE_OPT_DST);
+      | OPT_DST string nint       { $$ = new_node(TYPE_OPT_DST);
                                     $$->option.addr = $2;
-                                    $$->option.port = $4; }
+                                    $$->option.port = $3; }
       | OPT_FLAGS string          { $$ = new_node(TYPE_OPT_FLAGS);
                                     $$->option.flags = $2; }
       | OPT_PAYLOAD string        { $$ = new_node(TYPE_OPT_PAYLOAD_STR);
                                     $$->option.payload = $2; }
+      | OPT_PAYLOAD OPT_NULL      { $$ = new_node(TYPE_OPT_PAYLOAD_NULL); }
+      | OPT_PAYLOAD OPT_RANDOM '(' nint ')'
+                                  { $$ = new_node(TYPE_OPT_PAYLOAD_RANDOM);
+                                    $$->option.payload = $4; }
       | OPT_PAYLOAD OPT_FILE '(' string ')'
                                   { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
                                     $$->option.payload = $4; }
+    /*| OPT_PAYLOAD OPT_DLL '(' string ')'
+                                  { $$ = new_node(TYPE_OPT_PAYLOAD_DLL);
+                                    $$->option.payload = $4; }*/
+      | OPT_CWAIT nint            { $$ = new_node(TYPE_OPT_CWAIT);
+                                    $$->option.cwait = $2; }
+      | OPT_RWAIT nint            { $$ = new_node(TYPE_OPT_RWAIT);
+                                    $$->option.rwait = $2; }
       ;
 
 options: /* empty */    { $$ = NULL; }
@@ -164,11 +181,13 @@ options: /* empty */    { $$ = NULL; }
                           $$->option.next = $2; }
        ;
 
-pattern: PERIODIC '[' nfloat ',' nint ',' nint ']'
+pattern: PERIODIC '[' nfloat ',' nint ']'
            { $$ = new_node(TYPE_PERIODIC);
              $$->pattern.periodic.ratio = $3;
-             $$->pattern.periodic.n     = $5;
-             $$->pattern.periodic.bytes = $7; }
+             $$->pattern.periodic.n     = $5; }
+       | PERIODIC '[' nfloat ']'
+           { $$ = new_node(TYPE_PERIODIC_LIGHT);
+             $$->pattern.periodic.ratio = $3; }
        ;
 
 o_ntime: /* empty */ { $$ = NULL; }
@@ -316,6 +335,8 @@ int yylex(void)
     char *token;
     int  id;
   } tokens[] = {
+    { "CWAIT",    OPT_CWAIT   },
+    { "DLL",      OPT_DLL     },
     { "DST",      OPT_DST     },
     { "FILE",     OPT_FILE    },
     { "FLAGS",    OPT_FLAGS   },
@@ -326,8 +347,11 @@ int yylex(void)
     { "OPEN",     OPT_OPEN    },
     { "PAYLOAD",  OPT_PAYLOAD },
     { "PERIODIC", PERIODIC    },
+    { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
+    { "RWAIT",    OPT_RWAIT   },
     { "SRC",      OPT_SRC     },
+    { "SSL",      OPT_SSL     },
     { "TCP",      TO_TCP      },
     { "UDP",      TO_UDP      },
     { NULL,       0           }
@@ -554,7 +578,7 @@ ha_roto_la_olla:
 
 void yyerror(char const *str)
 {
-  ERR("parsing error: %s", str);
+  ERR("parsing error: %d: %s", lineno, str);
 }
 
 SNODE *script_parse(void)

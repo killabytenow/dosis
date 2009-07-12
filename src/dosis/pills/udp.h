@@ -1,7 +1,7 @@
 /*****************************************************************************
- * libnet.c
+ * udp.h
  *
- * Libnet funcs.
+ * UDP packet generator.
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -23,38 +23,11 @@
  *
  *****************************************************************************/
 
-#ifndef __LNET_H__
-#define __LNET_H__
+#ifndef __UDP_H__
+#define __UDP_H__
 
-#include <config.h>
+#include "tea.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef struct _tag_LN_CONTEXT {
-  libnet_t     *ln;
-  int           ipv4_p;
-  int           udp_p;
-  int           tcp_p;
-  int           ip_id;
-} LN_CONTEXT;
-
-void ln_init_context(LN_CONTEXT *ln);
-void ln_destroy_context(LN_CONTEXT *lnc);
-void ln_send_tcp_packet(LN_CONTEXT *lnc,
-                        struct in_addr *shost, int sport,
-                        struct in_addr *dhost, int dport,
-                        int flags, int window,
-                        int seq, int ack,
-                        char *data, int data_sz);
-void ln_send_udp_packet(LN_CONTEXT *lnc,
-                        struct in_addr *shost, int sport,
-                        struct in_addr *dhost, int dport,
-                        char *data, int data_sz);
-
-#ifdef __cplusplus
-}
-#endif
+extern TEA_OBJECT teaUDP;
 
 #endif

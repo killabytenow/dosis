@@ -1,7 +1,7 @@
 /*****************************************************************************
- * tcpopen.c
+ * payload.h
  *
- * DoS on TCP servers by leaving connections opened.
+ * Payload generator.
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -23,11 +23,19 @@
  *
  *****************************************************************************/
 
-#ifndef __TCPOPEN_H__
-#define __TCPOPEN_H__
+#ifndef __PAYLOAD_H__
+#define __PAYLOAD_H__
 
 #include "tea.h"
 
-extern TEA_OBJECT teaTCPOPEN;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void payload_get(SNODE *n, char **buffer, unsigned int *size);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
