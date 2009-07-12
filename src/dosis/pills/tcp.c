@@ -87,16 +87,20 @@ static void SSL_error_stack(void) /* recursive dump of the error stack */
 static void SSL_finalize(THREAD_WORK *tw)
 {
   TCP_CFG *tt = (TCP_CFG *) tw->data;
-  if(tt->ssl)
+
+  if(tt)
   {
-    SSL_shutdown(tt->ssl);
-    SSL_free(tt->ssl);
+    if(tt->ssl)
+    {
+      SSL_shutdown(tt->ssl);
+      SSL_free(tt->ssl);
+    }
+    if(tt->ctx)
+      SSL_CTX_free(tt->ctx);
+    tt->ssl = NULL;
+    tt->bio = NULL;
+    tt->ctx = NULL;
   }
-  if(tt->ctx)
-    SSL_CTX_free(tt->ctx);
-  tt->ssl = NULL;
-  tt->bio = NULL;
-  tt->ctx = NULL;
 }
 
 int SSL_initialize(THREAD_WORK *tw)
