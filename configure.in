@@ -134,7 +134,7 @@ AC_CHECK_HEADERS([getopt.h          \
                   sys/socket.h      \
                   arpa/inet.h       \
                   libnet.h          \
-                  libipq.h   \
+                  libipq.h          \
                   linux/netfilter.h \
                   pthread.h         \
                   netinet/in.h],
