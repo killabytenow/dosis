@@ -86,6 +86,7 @@ static void udp__thread(THREAD_WORK *tw)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
   int i;
+  unsigned sport, dport;
 
   TDBG("Started sender thread");
 
@@ -99,11 +100,21 @@ static void udp__thread(THREAD_WORK *tw)
 
     /* build UDP packet with payload (if requested) */
     TDBG("Sending %d packet(s)...", tu->npackets);
+    if(tu->shost.port_defined)
+      sport = tu->shost.port;
+    if(tu->dhost.port_defined)
+      dport = tu->dhost.port;
     for(i = 0; i < tu->npackets; i++)
+    {
+      if(!tu->shost.port_defined)
+        ln_get_next_random_port_number(&sport);
+      if(!tu->dhost.port_defined)
+        ln_get_next_random_port_number(&dport);
       ln_send_udp_packet(tu->lnc,
-                         &tu->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                         &tu->dhost.addr.in.inaddr, tu->dhost.port,
+                         &tu->shost.addr.in.inaddr, sport,
+                         &tu->dhost.addr.in.inaddr, dport,
                          tu->payload, tu->payload_size);
+    }
   }
 }
 
@@ -138,15 +149,23 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
 
   /* read from SNODE command parameters */
   cn = command->command.thc.to->to.pattern;
-  if(cn->type != TYPE_PERIODIC)
-    TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
-  
-  tu->hitratio = tea_get_float(cn->pattern.periodic.ratio);
-  tu->npackets = tea_get_int(cn->pattern.periodic.n);
-  if(tu->hitratio < 0)
-    TFAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
-  if(tu->npackets <= 0)
-    TFAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
+  tu->npackets = 1;
+  tu->hitratio = 1.0;
+  switch(cn->type)
+  {
+    case TYPE_PERIODIC:
+      tu->npackets = tea_get_int(cn->pattern.periodic.n);
+
+    case TYPE_PERIODIC_LIGHT:
+      tu->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+      if(tu->hitratio < 0)
+        TFAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
+      if(tu->npackets <= 0)
+        TFAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
+      break;
+    default:
+        TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
+  }
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)

@@ -30,12 +30,13 @@
 ###############################################################################
 
 # configuration
-THOST="127.0.0.1"
+#THOST="127.0.0.1"
+THOST="192.168.2.150"
 TPORT="9999"
 THREADS="10"
 RT="5.0"
 
 # script
-0.0 ON [1%$THREADS] UDP SRC 10.0.0.2 DST $THOST $TPORT PERIODIC [1.0, 1]
+0.0 ON [1%$THREADS] UDP DST $THOST $TPORT PAYLOAD RANDOM(20) PERIODIC [ 1.0 ]
 $RT OFF *
 

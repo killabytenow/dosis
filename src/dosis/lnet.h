@@ -53,6 +53,14 @@ void ln_send_udp_packet(LN_CONTEXT *lnc,
                         struct in_addr *dhost, int dport,
                         char *data, int data_sz);
 
+#define NEXT_PORT(n,p)      (((n) + (p)) & 0x0000ffff)
+#define NEXT_SEQ_PORT(n)    NEXT_PORT(n,1)
+#define NEXT_SSEQ_PORT(n)   NEXT_PORT(n,805315183)
+#define NEXT_RAND_PORT(n)   NEXT_PORT(n,2147483647)
+
+unsigned ln_get_next_seq_random_port_number(unsigned *n);
+unsigned ln_get_next_random_port_number(unsigned *n);
+
 #ifdef __cplusplus
 }
 #endif

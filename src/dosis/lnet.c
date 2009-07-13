@@ -155,3 +155,12 @@ void ln_send_udp_packet(LN_CONTEXT *lnc,
     FAT("Error sending packet: %s", libnet_geterror(lnc->ln));
 }
 
+unsigned ln_get_next_seq_random_port_number(unsigned *n)
+{
+  return (*n = NEXT_SSEQ_PORT(*n));
+}
+
+unsigned ln_get_next_random_port_number(unsigned *n)
+{
+  return (*n = NEXT_RAND_PORT(*n));
+}
