@@ -89,6 +89,7 @@ static void udp__thread(THREAD_WORK *tw)
   unsigned sport, dport;
 
   TDBG("Started sender thread");
+  sport = dport = 1337;
 
   /* ATTACK */
   while(1)
