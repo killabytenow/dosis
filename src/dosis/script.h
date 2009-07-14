@@ -93,6 +93,7 @@ typedef struct SNODE_tag {
         struct {
           char             *var;        /* variable identifier               */
           struct SNODE_tag *val;        /* value to assign                   */
+          int               cond;       /* if true only set var if no exists */
         } setvar;
       };
       struct SNODE_tag *next;

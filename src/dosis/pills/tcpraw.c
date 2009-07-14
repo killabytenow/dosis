@@ -142,15 +142,23 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 
   /* read from SNODE command parameters */
   cn = command->command.thc.to->to.pattern;
-  if(cn->type != TYPE_PERIODIC)
-    TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
-  
-  tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
-  tc->npackets = tea_get_int(cn->pattern.periodic.n);
-  if(tc->hitratio < 0)
-    TFAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
-  if(tc->npackets <= 0)
-    TFAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
+  tc->npackets = 1;
+  tc->hitratio = 1.0;
+  switch(cn->type)
+  {
+    case TYPE_PERIODIC:
+      tc->npackets = tea_get_int(cn->pattern.periodic.n);
+
+    case TYPE_PERIODIC_LIGHT:
+      tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+      if(tc->hitratio < 0)
+        TFAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
+      if(tc->npackets <= 0)
+        TFAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
+      break;
+    default:
+        TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
+  }
 
   /* read from SNODE command options */
   for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)

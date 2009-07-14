@@ -211,22 +211,29 @@ to: TO_TCP options pattern          { $$ = new_node(TYPE_TO_TCP);
                                       $$->to.pattern = NULL; }
   ;
 
-command: o_ntime CMD_ON selection to  { $$ = new_node(TYPE_CMD_ON);
-                                        $$->command.time          = $1;
-                                        $$->command.thc.selection = $3;
-                                        $$->command.thc.to        = $4; }
-       | o_ntime CMD_MOD selection to { $$ = new_node(TYPE_CMD_MOD);
-                                        $$->command.time          = $1;
-                                        $$->command.thc.selection = $3;
-                                        $$->command.thc.to        = $4; }
-       | o_ntime CMD_OFF selection    { $$ = new_node(TYPE_CMD_OFF);
-                                        $$->command.time          = $1;
-                                        $$->command.thc.selection = $3;
-                                        $$->command.thc.to        = NULL; }
-       | o_ntime LITERAL '=' string   { $$ = new_node(TYPE_CMD_SETVAR);
-                                        $$->command.time          = $1;
-                                        $$->command.setvar.var    = $2;
-                                        $$->command.setvar.val    = $4; }
+command: o_ntime CMD_ON selection to    { $$ = new_node(TYPE_CMD_ON);
+                                          $$->command.time          = $1;
+                                          $$->command.thc.selection = $3;
+                                          $$->command.thc.to        = $4; }
+       | o_ntime CMD_MOD selection to   { $$ = new_node(TYPE_CMD_MOD);
+                                          $$->command.time          = $1;
+                                          $$->command.thc.selection = $3;
+                                          $$->command.thc.to        = $4; }
+       | o_ntime CMD_OFF selection      { $$ = new_node(TYPE_CMD_OFF);
+                                          $$->command.time          = $1;
+                                          $$->command.thc.selection = $3;
+                                          $$->command.thc.to        = NULL; }
+       | o_ntime LITERAL '=' string     { $$ = new_node(TYPE_CMD_SETVAR);
+                                          $$->command.time          = $1;
+                                          $$->command.setvar.var    = $2;
+                                          $$->command.setvar.val    = $4;
+                                          $$->command.setvar.cond   = 0; }
+       | o_ntime '?' LITERAL '=' string { $$ = new_node(TYPE_CMD_SETVAR);
+                                          $$->command.time          = $1;
+                                          $$->command.setvar.var    = $3;
+                                          $$->command.setvar.val    = $5;
+                                          $$->command.setvar.cond   = -1; }
+    /* | o_ntime CMD_INCLUDE string     { } */
        ;
 %%
 SNODE *new_node(int type)
@@ -342,6 +349,7 @@ int yylex(void)
     { "FLAGS",    OPT_FLAGS   },
     { "LISTEN",   TO_LISTEN   },
     { "MOD",      CMD_MOD     },
+    { "NULL",     OPT_NULL    },
     { "OFF",      CMD_OFF     },
     { "ON",       CMD_ON      },
     { "OPEN",     OPT_OPEN    },
@@ -552,6 +560,7 @@ DBG("TOKEN[STRING] = '%s' (network address?)", buff);
   || c == '*' || c == '/'
   || c == '[' || c == ']'
   || c == '(' || c == ')'
+  || c == '?'
   || c == '%')
     return c;
 

