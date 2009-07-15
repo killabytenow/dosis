@@ -172,6 +172,7 @@ dnl ---------------------------------------------------------------------------
 dnl SSL configuration
 dnl ---------------------------------------------------------------------------
 
+OPENSSL="no"
 if test "$ac_cv_use_ssl" = "yes"; then
   AC_CHECK_HEADERS([openssl/e_os.h   \
                     openssl/e_os2.h])
@@ -183,17 +184,17 @@ if test "$ac_cv_use_ssl" = "yes"; then
                     openssl/err.h    \
                     openssl/rand.h   \
                     openssl/pem.h],
-                   [OPENSSL="yes"],
-                   AC_MSG_WARN("SSL is disabled"))
+                   [OPENSSL="yes"])
   if test "$OPENSSL" = "yes"; then
     AC_CHECK_LIB(ssl, SSL_library_init, [], AC_MSG_ERROR("Missing library."))
     AC_DEFINE(HAVE_SSL, 1, [ssl available])
     AC_DEFINE(SSL_ENABLED, 1, [enable ssl])
   else
+    AC_MSG_WARN("SSL is disabled")
     AC_DEFINE(SSL_ENABLED, 0, [disable ssl])
   fi
 fi
-AM_CONDITIONAL(SSL_ENABLED, test "$ac_cv_use_ssl" = "yes")
+AM_CONDITIONAL(SSL_ENABLED, test "$OPENSSL" = "yes")
 
 dnl ---------------------------------------------------------------------------
 dnl Set directories

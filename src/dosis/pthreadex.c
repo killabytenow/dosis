@@ -32,6 +32,15 @@
 #include <string.h>
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  + SIGNAL CALLBACK
+  + 
+  +   When a signal is received this callback is executed. If it returns 0,
+  +   signal is ignored, elsewhere function is interrupted.
+  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+int (*pthreadex_signal_callback)(void) = NULL;
+
+/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   + SIGNAL RESISTANT HIGH PRECISION DELAYS
   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -69,8 +78,9 @@ int pthreadex_timer_wait(pthreadex_timer_t *t)
   if(t->tv_nsec || t->tv_sec)
   {
     c = t;
-    while((ret = nanosleep(c, &r)) < 0 && errno == EINTR)
-      c = &r;
+    while((ret = nanosleep(c, &r)) < 0)
+      if(errno == EINTR && pthreadex_signal_callback())
+        c = &r;
   }
   return ret;
 }

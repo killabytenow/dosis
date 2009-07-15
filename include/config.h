@@ -85,6 +85,8 @@ extern "C" {
 
 /* openssl includes */
 #ifdef HAVE_SSL
+# define OPENSSL_THREAD_DEFINES
+
 # ifdef HAVE_E_OS_H
 #  include <openssl/e_os.h>
 # endif
@@ -99,13 +101,11 @@ extern "C" {
 # include <openssl/err.h>
 # include <openssl/rand.h>
 # include <openssl/pem.h>
-#endif
 
-#define OPENSSL_THREAD_DEFINES
-#include <openssl/opensslconf.h>
-#if defined(THREADS) || defined(OPENSSL_THREADS)
-#else
-#error "Your openssl libraries were compiled without thread support."
+# include <openssl/opensslconf.h>
+# if !defined(THREADS) && !defined(OPENSSL_THREADS)
+#  error "Your openssl libraries were compiled without thread support."
+# endif
 #endif
 
 /* data types */
