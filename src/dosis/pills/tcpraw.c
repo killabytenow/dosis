@@ -83,8 +83,6 @@ static void tcpraw__thread(THREAD_WORK *tw)
   unsigned int seq = libnet_get_prand(LIBNET_PRu32);
   int i;
 
-  TDBG("Started sender thread");
-
   /* ATTACK */
   while(1)
   {
@@ -94,7 +92,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
         TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /* build TCP packet with payload (if requested) */
-    TDBG("Sending %d packet(s)...", tc->npackets);
+    TDBG2("Sending %d packet(s)...", tc->npackets);
     for(i = 0; i < tc->npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
@@ -132,7 +130,6 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     tw->data = (void *) tc;
 
     /* initialize libnet */
-    TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
       TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
@@ -262,8 +259,6 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
   }
   free(tc);
   tw->data = NULL;
-
-  TDBG("Finalized.");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

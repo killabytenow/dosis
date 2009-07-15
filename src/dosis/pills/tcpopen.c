@@ -77,11 +77,9 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
-TDBG("EATING INPUT");
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
-    TDBG("Received a spoofed connection packet.");
-    TDBG2("Dropped << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
             ip_protocol(m->b),
             (ip_header(m->b)->saddr >>  0) & 0x00ff,
             (ip_header(m->b)->saddr >>  8) & 0x00ff,
@@ -96,7 +94,6 @@ TDBG("EATING INPUT");
     && tcp_header(m->b)->ack != 0)
     {
       /* send handshake and data TCP packet */
-      TDBG("  - Request packet sending...");
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
@@ -118,7 +115,6 @@ TDBG("EATING INPUT");
     /* release msg buffer */
     tea_msg_release(m);
   }
-TDBG("NO MOAR INPUT");
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -142,7 +138,6 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
     tw->data = (void *) tc;
 
     /* initialize libnet */
-    TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
       TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);

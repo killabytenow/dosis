@@ -41,6 +41,12 @@ void handle_termination__signal(int s)
   }
 }
 
+int handle_pthreadex_eintr(void)
+{
+  ERR("EINTR at pthreadex!");
+  return -1;
+}
+
 int main(int argc, char *argv[])
 {
   SNODE *script;
@@ -53,6 +59,7 @@ int main(int argc, char *argv[])
 #endif
 
   /* install signal handlers */
+  pthreadex_set_signal_callback(handle_pthreadex_eintr);
   signal(SIGHUP,  handle_termination__signal);
   signal(SIGINT,  handle_termination__signal);
   signal(SIGQUIT, handle_termination__signal);

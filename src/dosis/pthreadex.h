@@ -185,6 +185,9 @@ void pthreadex_flag_destroy(pthreadex_flag_t *flag);
 void pthreadex_flag_wait(pthreadex_flag_t *flag);
 int  pthreadex_flag_up(pthreadex_flag_t *flag);
 
+/* signal callback */
+int (*pthreadex_set_signal_callback(int (*f)(void)))(void);
+
 #ifdef __cplusplus
 }
 #endif

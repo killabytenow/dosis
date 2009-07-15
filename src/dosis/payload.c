@@ -48,7 +48,6 @@ void payload_get(SNODE *n, char **buffer, unsigned int *size)
       s2 = tea_get_string(n->option.payload);
       s = dosis_search_file(s2);
       free(s2);
-      DBG("********************************** Reading %s.", s);
       if(stat(s, &pls) < 0)
         FAT("%d: Cannot stat file '%s': %s", n->line, s, strerror(errno));
       *size = pls.st_size;

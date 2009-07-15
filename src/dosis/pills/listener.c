@@ -101,15 +101,43 @@ static void apply_iptables_script(char **script)
 {
   int pid, r;
   char **a;
+  int p[2];
+  char buff[1000];
+  FILE *f;
 
   for(a = script; *a; )
   {
+    if(pipe(p) < 0)
+        GFAT("Cannot pipe: %s", strerror(errno));
+
     if((pid = dosis_fork()) == 0)
     {
+      /* output redirected to pipe */
+      close(p[0]);
+      close(1);
+      close(2);
+      if(dup(p[1]) < 0) GFAT("Cannot dup(1): %s", strerror(errno));
+      if(dup(p[1]) < 0) GFAT("Cannot dup(2): %s", strerror(errno));
+
       /* child */
       execv(a[0], a);
       GFAT("Cannot execute /sbin/iptables: %s", strerror(errno));
     }
+
+    /* write output to log */
+    close(p[1]);
+    if((f = fdopen(p[0], "r")) == NULL)
+      GFAT("Cannot fdopen pipe: %s", strerror(errno));
+
+    while(fgets(buff, sizeof(buff), f) != NULL)
+    {
+      char *s;
+      for(s = buff; *s; s++)
+        if(*s == '\r' || *s == '\n')
+          *s = '\0';
+      GDBG2("%s: %s", a[0], buff);
+    }
+    fclose(f);
 
     /* parent */
     waitpid(pid, &r, 0);
@@ -149,7 +177,7 @@ static void listener__global_init(void)
   pthreadex_mutex_init(&ipq_mutex);
 
   /* read/change ipforward */
-  GDBG("Enable ip_forward flag.");
+  GDBG2("Enable ip_forward flag.");
   if((f = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY)) < 0)
     GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
   r = read(f, &ip_forward_status, 1);
@@ -165,7 +193,7 @@ static void listener__global_init(void)
   close(f);
 
   /* prepare the ipqueue */
-  GDBG("save iptables config.");
+  GDBG2("save iptables config.");
   strcpy(iptables_tmp, "iptables-state-XXXXXX");
   f = mkstemp(iptables_tmp);
   if((pid = dosis_fork()) == 0)
@@ -186,7 +214,7 @@ static void listener__global_init(void)
   if(r != 0)
     GFAT("iptables-save failed.");
 
-  GDBG("Init iptables config.");
+  GDBG2("Init iptables config.");
   if(cfg.interfaces[0] == NULL)
   {
     apply_iptables_script(iscript);
@@ -203,7 +231,7 @@ static void listener__global_init(void)
   apply_iptables_script(ifscript);
 
   /* initialize ipq */
-  GDBG("Initializing ipq.");
+  GDBG2("Initializing ipq.");
   if(ipqex_init(&ipq, BUFSIZE))
     GFAT("!! Cannot initialize IPQ.");
   ipq_on = -1;
@@ -228,9 +256,7 @@ static void listener__thread(THREAD_WORK *tw)
   /* get packets and classify */
   while(1)
   {
-TDBG("before mutex");
     pthreadex_mutex_begin(&ipq_mutex);
-TDBG("in mutex");
     if(ipq_on)
     {
       r = ipqex_msg_read(&lcfg->imsg, 0);
@@ -246,8 +272,6 @@ repeat_search:
     id = tea_thread_search_listener((char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len, id+1);
     if(id >= 0)
     {
-      TDBG2("Package accepted by thread %d", id);
-
       /* defer cancelation as much as possible */
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
@@ -270,7 +294,6 @@ repeat_search:
       {
         if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
           TERR("Cannot ACCEPT IPQ packet.");
-        TDBG2("  - Package dropped.");
       }
       pthreadex_mutex_end();
 
@@ -286,7 +309,6 @@ repeat_search:
       }
       pthreadex_mutex_end();
     }
-TDBG("after mutex");
   }
 }
 
@@ -300,8 +322,6 @@ static void listener__cleanup(THREAD_WORK *tw)
 
   free(tw->data);
   tw->data = NULL;
-
-  TDBG("Finalized.");
 }
 
 static int listener__configure(THREAD_WORK *tw, SNODE *command)

@@ -38,7 +38,14 @@
   +   signal is ignored, elsewhere function is interrupted.
   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-int (*pthreadex_signal_callback)(void) = NULL;
+static int (*pthreadex_signal_callback)(void) = NULL;
+
+int (*pthreadex_set_signal_callback(int (*f)(void)))(void)
+{
+  int (*o)(void) = pthreadex_signal_callback;
+  pthreadex_signal_callback = f;
+  return o;
+}
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   + SIGNAL RESISTANT HIGH PRECISION DELAYS
@@ -79,8 +86,13 @@ int pthreadex_timer_wait(pthreadex_timer_t *t)
   {
     c = t;
     while((ret = nanosleep(c, &r)) < 0)
-      if(errno == EINTR && pthreadex_signal_callback())
+      if(errno == EINTR)
+      {
+        if(pthreadex_signal_callback
+        && pthreadex_signal_callback())
+          return 0;
         c = &r;
+      }
   }
   return ret;
 }
