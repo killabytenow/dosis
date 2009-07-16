@@ -1,11 +1,10 @@
 TODO LIST
 =========
 
-- debug tcpopen
-- choose a better seq generation algorithm for tcpraw thread.
-  (several algorithms: sequential, pseudo-random, random)
+- permit choose seq generation algorithm for tcpraw thread.
 - tcpraw:
     - set window to 0, and persisting.
     - acknowledge before receive.
+- make gram more restrictive
 - stress tests
 

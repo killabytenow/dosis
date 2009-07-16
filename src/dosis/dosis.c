@@ -44,7 +44,7 @@ void handle_termination__signal(int s)
 int handle_pthreadex_eintr(void)
 {
   ERR("EINTR at pthreadex!");
-  return -1;
+  return cfg.finalize ? -1 : 0;
 }
 
 int main(int argc, char *argv[])
