@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
   if((script = script_parse()) == NULL)
     FAT("Cannot parse input script.");
 
+  /* execute script */
   tea_timer(script);
 
   LOG("Finished.");

@@ -685,6 +685,7 @@ void tea_timer(SNODE *program)
           tea_thread_new(tid, to, cmd);
         }
         break;
+
       case TYPE_CMD_OFF:
         for(tid = tea_iter_start(cmd->command.thc.selection, &ti);
             !tea_iter_finish(&ti);
@@ -695,6 +696,7 @@ void tea_timer(SNODE *program)
             tea_thread_stop(tid);
           }
         break;
+
       case TYPE_CMD_SETVAR:
         if(!cmd->command.setvar.cond
         || !getenv(cmd->command.setvar.var))
@@ -707,6 +709,12 @@ void tea_timer(SNODE *program)
           free(val);
         }
         break;
+
+/*
+      case TYPE_CMD_INCLUDE:
+        break;
+*/
+
       default:
         FAT("%d: Unknown command %d.", cmd->line, cmd->type);
     }
