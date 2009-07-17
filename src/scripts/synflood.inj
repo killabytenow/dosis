@@ -35,7 +35,7 @@
 
 # configuration
 ? THOST="127.0.0.1"
-? TPORT="9999"
+? TPORT="80"
 ? THREADS="1"
 ? RT="2.0"
 
