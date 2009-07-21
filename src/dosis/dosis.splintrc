@@ -3,7 +3,7 @@
 # we want posix checking, but not strict (see splint manual, strict
 # gives spurious warnings when we ignore return values from fprintf etc.)
 -posix-strict-lib
-# -retvalint
+-retvalint
 
 # read system header files even if we know what they contain this slows
 # parsing, but otherwise we might get an error because splint is missing
@@ -30,3 +30,4 @@
 -pred-bool-others
 -booltype bool_t
 
+-uncheckedglobalias errno
