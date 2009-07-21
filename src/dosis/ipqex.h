@@ -54,7 +54,7 @@ typedef struct _tag_ipqex_msg_t {
   };
 } ipqex_msg_t;
 
-int ipqex_init_mode(ipqex_info_t *i, int bufsize, int mode);
+int ipqex_init_mode(ipqex_info_t *i, unsigned bufsize, unsigned mode);
 int  ipqex_init(ipqex_info_t *i, int bufsize);
 int  ipqex_msg_init(ipqex_msg_t *m, ipqex_info_t *i);
 int  ipqex_msg_read(ipqex_msg_t *m, int timeout);
