@@ -58,7 +58,27 @@ Contents
 3. Using Dosis
 ==============
 
-  You can get help on using Dosis with option '-h' or '--help'.
+  Dosis is based on its own script language. It is a very simple language,
+  where every instruction have a timestamp which decides when it will be
+  scheduled. This is an example script:
+
+    lineNo | example code
+   --------+--------------------------------------------------------------
+      01   | # program example
+      02   |  1.00 SHOST="192.168.1.1"
+      03   | +0.50 THOST="192.168.1.2"
+      04   |       TPORT="80"
+      05   |
+      06   | # attack is started here
+      07   |  2.00 ON 1 UDP SRC $SHOST DST $THOST $TPORT PERIODIC [ 1.0 ]
+      08   | +5.00 OFF *
+
+  Comments (lines started by a hash char '#') and void lines are ignored.
+
+  Each line, except void and comment lines, begins with an optional absolute or
+  relative timestamp.
+
+  You can get help about how to invoke Dosis with option '-h' or '--help'.
 
 
 4. License of Dosis
