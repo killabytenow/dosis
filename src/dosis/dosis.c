@@ -29,6 +29,10 @@
 #include "log.h"
 #include "tea.h"
 
+#ifdef HAVE_SSL
+#include "sslthread.h"
+#endif
+
 void handle_termination__signal(int s)
 {
   if(!cfg.finalize)
@@ -36,8 +40,8 @@ void handle_termination__signal(int s)
     WRN("One more termination signal will force program termination.");
     cfg.finalize = -1;
   } else {
-    FAT("Program termination forced.");
-    exit(1);
+    FAT("Program termination forced (signal %d).", s);
+    exit(EXIT_FAILURE);
   }
 }
 
@@ -59,7 +63,7 @@ int main(int argc, char *argv[])
 #endif
 
   /* install signal handlers */
-  pthreadex_set_signal_callback(handle_pthreadex_eintr);
+  (void) pthreadex_set_signal_callback(handle_pthreadex_eintr);
   signal(SIGHUP,  handle_termination__signal);
   signal(SIGINT,  handle_termination__signal);
   signal(SIGQUIT, handle_termination__signal);
