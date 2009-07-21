@@ -1,6 +1,7 @@
 TODO LIST
 =========
 
+- detect correctly source address when referencing default-gateway connections.
 - permit choose seq generation algorithm for tcpraw thread.
 - tcpraw:
     - set window to 0, and persisting.
