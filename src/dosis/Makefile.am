@@ -45,4 +45,6 @@ if SSL_ENABLED
 dosis_SOURCES += sslthread.c      sslthread.h
 endif
 
+splint: $(dosis_SOURCES:%.y=%.c)
+	splint -f dosis.splintrc $(DEFS) $(DEFAULT_INCLUDES) $(dosis_SOURCES:%.y=%.c)
 
