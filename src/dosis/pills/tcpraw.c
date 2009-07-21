@@ -101,7 +101,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_SYN, 13337,
+                         TH_SYN, 5840, //13337,
                          seq, 0,
                          (char *) tc->payload, tc->payload_size);
     }
@@ -231,7 +231,7 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     char buff[255];
 
     TDBG2("config.periodic.n     = %d", tc->npackets);
-    TDBG2("config.periodic.ratio = %d", tc->hitratio);
+    TDBG2("config.periodic.ratio = %f", tc->hitratio);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost  = %s", buff);
