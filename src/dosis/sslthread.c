@@ -25,6 +25,7 @@
 
 #include <config.h>
 #include "log.h"
+#include "pthreadex.h"
 #include "sslthread.h"
 
 static pthread_mutex_t *lock_cs;

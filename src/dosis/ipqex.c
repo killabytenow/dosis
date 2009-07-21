@@ -27,7 +27,7 @@
 #include "ipqex.h"
 #include "log.h"
 
-int ipqex_init_mode(ipqex_info_t *i, int bufsize, int mode)
+int ipqex_init_mode(ipqex_info_t *i, unsigned bufsize, unsigned mode)
 {
   int status;
 

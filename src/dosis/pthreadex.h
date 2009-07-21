@@ -53,9 +53,13 @@ typedef pthread_mutex_t                pthreadex_mutex_t;
 #define PTHREADEX_MUTEX_INITIALIZER    PTHREAD_MUTEX_INITIALIZER
 
 #define pthreadex_mutex_init(x)          pthread_mutex_init(x, NULL)
-#define pthreadex_mutex_begin(x)         pthread_cleanup_push_defer_np(       \
-                                           (void *) pthread_mutex_unlock, x); \
-                                         pthread_mutex_lock(x)
+#define pthreadex_mutex_begin(x)         pthread_cleanup_push_defer_np(                       \
+                                           (void (*)(void *)) pthread_mutex_unlock, x);  \
+                                         {                                                    \
+                                         int __pthreadex_err_ret = pthread_mutex_lock(x);     \
+                                         if(__pthreadex_err_ret != 0)                         \
+                                           FAT("mutex lock error (%d)", __pthreadex_err_ret); \
+                                         }
 #define pthreadex_mutex_end()            pthread_cleanup_pop_restore_np(1)
 #define pthreadex_mutex_destroy(x)       pthread_mutex_destroy(x)
 
