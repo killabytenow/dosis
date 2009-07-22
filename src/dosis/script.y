@@ -58,9 +58,11 @@
 %type  <snode>    var nint nfloat ntime string
 %type  <snode>    list_num_enum list_num range selection
 %type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait
+%type  <snode>    rawp_opt
 %type  <snode>    tcp_opt tcp_opts
 %type  <snode>    udp_opt udp_opts
-%type  <snode>    option options
+%type  <snode>    tcpo_opt tcpo_opts
+%type  <snode>    tcpr_opt tcpr_opts
 %type  <snode>    pattern
 %type  <snode>    o_ntime command
 %type  <snode>    to
@@ -203,6 +205,12 @@ o_rwait: OPT_RWAIT nint          { $$ = new_node(TYPE_OPT_RWAIT);
     COMMANDS' OPTIONS
   ---------------------------------------------------------------------------*/
 
+/* raw packet cmd basic options */
+rawp_opt: o_src
+        | o_dst
+        | o_payload
+        ;
+
 /* command TCP (TCP/SSL) */
 tcp_opt: o_ssl
        | o_dst
@@ -211,35 +219,33 @@ tcp_opt: o_ssl
        | o_rwait
        ;
 /* command UDP */
-udp_opt: o_src
-       | o_dst
-       | o_payload
-       ;
+udp_opt: rawp_opt ;
 
 /* command TCP OPEN */
-/* command TCP RAW */
-/* command LISTEN */
-option: o_ssl
-      | o_src
-      | o_dst
-      | o_flags
-      | o_payload
-      | o_cwait
-      | o_rwait
-      ;
+tcpo_opt: rawp_opt ;
 
-options: /* empty */    { $$ = NULL; }
-       | option options { $$ = $1;
-                          $$->option.next = $2; }
-       ;
-tcp_opts: /* empty */      { $$ = NULL; }
-        | tcp_opt tcp_opts { $$ = $1;
-                             $$->option.next = $2; }
+/* command TCP RAW */
+tcpr_opt: rawp_opt
+        | o_flags
         ;
-udp_opts: /* empty */      { $$ = NULL; }
-        | udp_opt udp_opts { $$ = $1;
-                             $$->option.next = $2; }
+
+/* command LISTEN */
+tcp_opts: /* empty */         { $$ = NULL; }
+        | tcp_opt tcp_opts    { $$ = $1;
+                                $$->option.next = $2; }
         ;
+udp_opts: /* empty */         { $$ = NULL; }
+        | udp_opt udp_opts    { $$ = $1;
+                                $$->option.next = $2; }
+        ;
+tcpo_opts: /* empty */        { $$ = NULL; }
+         | tcpo_opt tcpo_opts { $$ = $1;
+                                $$->option.next = $2; }
+         ;
+tcpr_opts: /* empty */        { $$ = NULL; }
+         | tcpr_opt tcpr_opts { $$ = $1;
+                                $$->option.next = $2; }
+         ;
 
 /*---------------------------------------------------------------------------
     PATTERNS
@@ -262,21 +268,21 @@ o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-to: TO_TCP tcp_opts pattern         { $$ = new_node(TYPE_TO_TCP);
-                                      $$->to.options = $2;
-                                      $$->to.pattern = $3; }
-  | TO_UDP udp_opts pattern         { $$ = new_node(TYPE_TO_UDP);
-                                      $$->to.options = $2;
-                                      $$->to.pattern = $3; }
-  | TO_TCP OPT_OPEN options         { $$ = new_node(TYPE_TO_TCPOPEN);
-                                      $$->to.options = $3;
-                                      $$->to.pattern = NULL; }
-  | TO_TCP OPT_RAW options pattern  { $$ = new_node(TYPE_TO_TCPRAW);
-                                      $$->to.options = $3;
-                                      $$->to.pattern = $4; }
-  | TO_LISTEN                       { $$ = new_node(TYPE_TO_LISTEN);
-                                      $$->to.options = NULL;
-                                      $$->to.pattern = NULL; }
+to: TO_TCP tcp_opts pattern          { $$ = new_node(TYPE_TO_TCP);
+                                       $$->to.options = $2;
+                                       $$->to.pattern = $3; }
+  | TO_UDP udp_opts pattern          { $$ = new_node(TYPE_TO_UDP);
+                                       $$->to.options = $2;
+                                       $$->to.pattern = $3; }
+  | TO_TCP OPT_OPEN tcpo_opts        { $$ = new_node(TYPE_TO_TCPOPEN);
+                                       $$->to.options = $3;
+                                       $$->to.pattern = NULL; }
+  | TO_TCP OPT_RAW tcpr_opts pattern { $$ = new_node(TYPE_TO_TCPRAW);
+                                       $$->to.options = $3;
+                                       $$->to.pattern = $4; }
+  | TO_LISTEN                        { $$ = new_node(TYPE_TO_LISTEN);
+                                       $$->to.options = NULL;
+                                       $$->to.pattern = NULL; }
   ;
 
 command: o_ntime CMD_ON selection to    { $$ = new_node(TYPE_CMD_ON);
