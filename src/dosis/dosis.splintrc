@@ -1,4 +1,7 @@
 +showscan
++showsummary
++stats
+-usestderr
 
 # we want posix checking, but not strict (see splint manual, strict
 # gives spurious warnings when we ignore return values from fprintf etc.)
