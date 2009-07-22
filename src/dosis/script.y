@@ -54,10 +54,16 @@
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
-%type  <snode>    nint nfloat ntime string var
-%type  <snode>    o_ntime command option options pattern
-%type  <snode>    list_num selection list_num_enum range
-%type  <snode>    input to
+%type  <snode>    input
+%type  <snode>    var nint nfloat ntime string
+%type  <snode>    list_num_enum list_num range selection
+%type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait
+%type  <snode>    tcp_opt tcp_opts
+%type  <snode>    udp_opt udp_opts
+%type  <snode>    option options
+%type  <snode>    pattern
+%type  <snode>    o_ntime command
+%type  <snode>    to
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
@@ -65,6 +71,10 @@
 %token            TO_UDP TO_TCP TO_LISTEN
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
+/*---------------------------------------------------------------------------
+    SCRIPT
+  ---------------------------------------------------------------------------*/
+
 script: input       { script = $1; }
       ;
 
@@ -73,6 +83,10 @@ input: /* empty */        { $$ = NULL; }
      | command '\n' input { $$ = $1;
                             $$->command.next = $3; }
      ;
+
+/*---------------------------------------------------------------------------
+    BASIC TYPES
+  ---------------------------------------------------------------------------*/
 
 var:  VAR   { $$ = new_node(TYPE_VAR);
               $$->varname = $1; }
@@ -139,46 +153,97 @@ selection: range
          | list_num
          ;
 
-option: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL);
-                                    $$->option.sslcipher = NULL; }
-      | OPT_SSL string            { $$ = new_node(TYPE_OPT_SSL);
-                                    $$->option.sslcipher = $2; }
-      | OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
-                                    $$->option.addr = $2;
-                                    $$->option.port = NULL; }
-      | OPT_SRC string nint       { $$ = new_node(TYPE_OPT_SRC);
-                                    $$->option.addr = $2;
-                                    $$->option.port = $3; }
-      | OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
-                                    $$->option.addr = $2;
-                                    $$->option.port = NULL; }
-      | OPT_DST string nint       { $$ = new_node(TYPE_OPT_DST);
-                                    $$->option.addr = $2;
-                                    $$->option.port = $3; }
-      | OPT_FLAGS string          { $$ = new_node(TYPE_OPT_FLAGS);
-                                    $$->option.flags = $2; }
-      | OPT_PAYLOAD string        { $$ = new_node(TYPE_OPT_PAYLOAD_STR);
-                                    $$->option.payload = $2; }
-      | OPT_PAYLOAD OPT_NULL      { $$ = new_node(TYPE_OPT_PAYLOAD_NULL); }
-      | OPT_PAYLOAD OPT_RANDOM '(' nint ')'
-                                  { $$ = new_node(TYPE_OPT_PAYLOAD_RANDOM);
-                                    $$->option.payload = $4; }
-      | OPT_PAYLOAD OPT_FILE '(' string ')'
-                                  { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
-                                    $$->option.payload = $4; }
-    /*| OPT_PAYLOAD OPT_DLL '(' string ')'
-                                  { $$ = new_node(TYPE_OPT_PAYLOAD_DLL);
-                                    $$->option.payload = $4; }*/
-      | OPT_CWAIT nint            { $$ = new_node(TYPE_OPT_CWAIT);
-                                    $$->option.cwait = $2; }
-      | OPT_RWAIT nint            { $$ = new_node(TYPE_OPT_RWAIT);
-                                    $$->option.rwait = $2; }
+/*---------------------------------------------------------------------------
+    OPTIONS STOCK (all possible dosis command parameters - not associated to)
+  ---------------------------------------------------------------------------*/
+
+o_ssl: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL);
+                                   $$->option.sslcipher = NULL; }
+     | OPT_SSL string            { $$ = new_node(TYPE_OPT_SSL);
+                                   $$->option.sslcipher = $2; }
+     ;
+o_src: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
+                                   $$->option.addr = $2;
+                                   $$->option.port = NULL; }
+     | OPT_SRC string nint       { $$ = new_node(TYPE_OPT_SRC);
+                                   $$->option.addr = $2;
+                                   $$->option.port = $3; }
+     ;
+o_dst: OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
+                                   $$->option.addr = $2;
+                                   $$->option.port = NULL; }
+     | OPT_DST string nint       { $$ = new_node(TYPE_OPT_DST);
+                                   $$->option.addr = $2;
+                                   $$->option.port = $3; }
+     ;
+o_flags: OPT_FLAGS string        { $$ = new_node(TYPE_OPT_FLAGS);
+                                   $$->option.flags = $2; }
+       ;
+o_payload: OPT_PAYLOAD string    { $$ = new_node(TYPE_OPT_PAYLOAD_STR);
+                                   $$->option.payload = $2; }
+         | OPT_PAYLOAD OPT_NULL  { $$ = new_node(TYPE_OPT_PAYLOAD_NULL); }
+         | OPT_PAYLOAD OPT_RANDOM '(' nint ')'
+                                 { $$ = new_node(TYPE_OPT_PAYLOAD_RANDOM);
+                                   $$->option.payload = $4; }
+         | OPT_PAYLOAD OPT_FILE '(' string ')'
+                                 { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
+                                   $$->option.payload = $4; }
+       /*| OPT_PAYLOAD OPT_DLL '(' string ')'
+                                 { $$ = new_node(TYPE_OPT_PAYLOAD_DLL);
+                                   $$->option.payload = $4; }*/
+         ;
+o_cwait: OPT_CWAIT nint          { $$ = new_node(TYPE_OPT_CWAIT);
+                                   $$->option.cwait = $2; }
+       ;
+o_rwait: OPT_RWAIT nint          { $$ = new_node(TYPE_OPT_RWAIT);
+                                   $$->option.rwait = $2; }
+       ;
+
+/*---------------------------------------------------------------------------
+    COMMANDS' OPTIONS
+  ---------------------------------------------------------------------------*/
+
+/* command TCP (TCP/SSL) */
+tcp_opt: o_ssl
+       | o_dst
+       | o_payload
+       | o_cwait
+       | o_rwait
+       ;
+/* command UDP */
+udp_opt: o_src
+       | o_dst
+       | o_payload
+       ;
+
+/* command TCP OPEN */
+/* command TCP RAW */
+/* command LISTEN */
+option: o_ssl
+      | o_src
+      | o_dst
+      | o_flags
+      | o_payload
+      | o_cwait
+      | o_rwait
       ;
 
 options: /* empty */    { $$ = NULL; }
        | option options { $$ = $1;
                           $$->option.next = $2; }
        ;
+tcp_opts: /* empty */      { $$ = NULL; }
+        | tcp_opt tcp_opts { $$ = $1;
+                             $$->option.next = $2; }
+        ;
+udp_opts: /* empty */      { $$ = NULL; }
+        | udp_opt udp_opts { $$ = $1;
+                             $$->option.next = $2; }
+        ;
+
+/*---------------------------------------------------------------------------
+    PATTERNS
+  ---------------------------------------------------------------------------*/
 
 pattern: PERIODIC '[' nfloat ',' nint ']'
            { $$ = new_node(TYPE_PERIODIC);
@@ -189,14 +254,18 @@ pattern: PERIODIC '[' nfloat ',' nint ']'
              $$->pattern.periodic.ratio = $3; }
        ;
 
+/*---------------------------------------------------------------------------
+    COMMANDS
+  ---------------------------------------------------------------------------*/
+
 o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-to: TO_TCP options pattern          { $$ = new_node(TYPE_TO_TCP);
+to: TO_TCP tcp_opts pattern         { $$ = new_node(TYPE_TO_TCP);
                                       $$->to.options = $2;
                                       $$->to.pattern = $3; }
-  | TO_UDP options pattern          { $$ = new_node(TYPE_TO_UDP);
+  | TO_UDP udp_opts pattern         { $$ = new_node(TYPE_TO_UDP);
                                       $$->to.options = $2;
                                       $$->to.pattern = $3; }
   | TO_TCP OPT_OPEN options         { $$ = new_node(TYPE_TO_TCPOPEN);
