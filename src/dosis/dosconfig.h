@@ -35,6 +35,7 @@ extern "C" {
 
 #define MAX_INCLUDE_DIRS    10
 #define MAX_INTERFACES      10
+#define MAX_ROUTES          20
 
 typedef struct _tag_DOS_ADDR_INFO {
   char          *name;
@@ -45,6 +46,15 @@ typedef struct _tag_DOS_ADDR_INFO {
   struct _tag_DOS_ADDR_INFO *next;
 } DOS_ADDR_INFO;
 
+typedef struct _tag_DOS_ROUTE_INFO {
+  char          *iface;
+  INET_ADDR      destination;
+  INET_ADDR      gateway;
+  INET_ADDR      mask;
+
+  struct _tag_DOS_ROUTE_INFO *next;
+} DOS_ROUTE_INFO;
+
 typedef struct _tag_DOS_CONFIG {
   int             verbosity;
   char           *output;
@@ -52,6 +62,7 @@ typedef struct _tag_DOS_CONFIG {
   int             maxthreads;
   char           *includedir[MAX_INCLUDE_DIRS+1];
   char           *interfaces[MAX_INTERFACES+1];
+  DOS_ROUTE_INFO *routes;
   DOS_ADDR_INFO  *addr;
 
   /* configuration data set by application based on user options */

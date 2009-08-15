@@ -166,6 +166,90 @@ static void dos_config_parse_command(int argc, char **argv)
  * Initialization and finalization routines
  *****************************************************************************/
 
+#define READ_FIELD(n, s) for(j = 0; j < sizeof(buff) - 1; j++)      \
+                         {                                          \
+                           c = fgetc(f);                            \
+                           buff[j] = c;                             \
+                           if(c == EOF)                             \
+                           {                                        \
+                             buff[j] = '\0';                        \
+                             goto eof;                              \
+                           }                                        \
+                           if(c == s)                               \
+                           {                                        \
+                             buff[j] = '\0';                        \
+                             break;                                 \
+                           }                                        \
+                         }                                          \
+                         buff[j] = '\0';
+
+void dos_get_routes(void)
+{
+  int i, j, c;
+  DOS_ROUTE_INFO *r, *r2;
+  char buff[255];
+  FILE *f;
+
+  /* open /proc/net/route */
+  if((f = fopen("/proc/net/route", "r")) == NULL)
+    FAT("Cannot read route table (/proc/net/route).");
+
+  /* ignore first line */
+  while((c = fgetc(f)) != '\n' && c != EOF)
+    ;
+  if(c == EOF)
+  {
+    WRN("Void route table!");
+    goto eof;
+  }
+
+  /* read routes */
+  for(i = 0; i < MAX_ROUTES; i++)
+  {
+    /* new route info */
+    if((r = calloc(1, sizeof(DOS_ROUTE_INFO))) == NULL)
+      FAT("Cannot alloc a DOS_ROUTE_INFO struct.");
+    for(r2 = cfg.routes; r2 && r2->next; r2 = r2->next)
+      ;
+    if(r2)
+      r2->next = r;
+    else
+      cfg.routes = r;
+
+    /* read input */
+    READ_FIELD("iface", '\t');       /* + iface       */
+    if((r->iface = strdup(buff)) == NULL)
+      FAT("No memory for iface name (%s).", buff);
+    READ_FIELD("destination", '\t'); /* + destination */
+    if(ip_addr_parse(buff, &r->destination))
+      FAT("Cannot parse destination address '%s'.", buff);
+    READ_FIELD("gateway",     '\t'); /* + gateway     */
+    if(ip_addr_parse(buff, &r->gateway))
+      FAT("Cannot parse gateway address '%s'.", buff);
+    READ_FIELD("flags",       '\t'); /* - flags       */
+    READ_FIELD("refcnt",      '\t'); /* - refcnt      */
+    READ_FIELD("use",         '\t'); /* - use         */
+    READ_FIELD("metric",      '\t'); /* - metric      */
+    READ_FIELD("mask",        '\t'); /* + mask        */
+    if(ip_addr_parse(buff, &r->mask))
+      FAT("Cannot parse mask address '%s'.", buff);
+    READ_FIELD("MTU",         '\t'); /* - MTU         */
+    READ_FIELD("window",      '\t'); /* - window      */
+    READ_FIELD("irtt",        '\n'); /* - IRTT        */
+
+    DBG("+ iface %s.", r->iface);
+    ip_addr_snprintf(&r->destination, sizeof(buff), buff);
+    DBG("· destination %s.", buff);
+    ip_addr_snprintf(&r->gateway, sizeof(buff), buff);
+    DBG("· gateway %s.", buff);
+    ip_addr_snprintf(&r->mask, sizeof(buff), buff);
+    DBG("· mask %s.", buff);
+  }
+
+eof:
+  fclose(f);
+}
+
 #define inaddrr(x) (*(struct in_addr *) &ifr->x[sizeof sa.sin_port])
 #define IFRSIZE   ((int)(size * sizeof (struct ifreq)))
 
@@ -205,14 +289,18 @@ void dos_get_addresses(void)
       continue;  /* failed to get flags, skip it */
 
     if(!(ifr->ifr_flags & IFF_UP))
+    {
       WRN("Interface %s is down.", ifr->ifr_name);
+      continue;
+    }
 
     /* alloc a new address info structure */
     if((a = calloc(1, sizeof(DOS_ADDR_INFO))) == NULL)
       FAT("Cannot alloc a DOS_ADDR_INFO struct.");
     a->next = cfg.addr;
     cfg.addr = a;
-    a->name = strdup(ifr->ifr_name);
+    if((a->name = strdup(ifr->ifr_name)) == NULL)
+      FAT("No mem for interface name.");
 
     /* get PA */
     if(!ioctl(sockfd, SIOCGIFADDR, ifr))
@@ -255,13 +343,29 @@ void dos_get_addresses(void)
 
 DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta)
 {
-  DOS_ADDR_INFO *sa;
+  DOS_ADDR_INFO *r, *sa;
+  DOS_ROUTE_INFO *ri;
 
-  for(sa = cfg.addr; sa; sa = sa->next)
+  r = NULL;
+
+  /* check local networks (interfaces) */
+  for(sa = cfg.addr; !r && sa; sa = sa->next)
     if(ip_addr_check_mask(ta, &sa->addr, &sa->mask))
-      return sa;
+      r = sa;
 
-  return NULL;
+  /* check now routing table (for special cases) */
+  for(ri = cfg.routes; ri; ri = ri->next)
+    if(ip_addr_check_mask(ta, &ri->destination, &ri->mask))
+      for(sa = cfg.addr; sa; sa = sa->next)
+        if(!strcmp(sa->name, ri->iface))
+          return sa;
+        else
+          WRN("Route table references an interface that not exists or is down (%s).",
+              ri->iface);
+
+  /* if routing table does not provide a better option, return the */
+  /* first interface attached to a network that meets target       */
+  return r;
 }
 
 int dosis_fork(void)
@@ -435,6 +539,9 @@ void dos_config_init(int argc, char **argv)
 
   /* get network interfaces and ip addresses */
   dos_get_addresses();
+
+  /* get routing table */
+  dos_get_routes();
 
   /* check selected interfaces */
   for(i = 0; i < MAX_INTERFACES; i++)

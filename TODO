@@ -1,7 +1,6 @@
 TODO LIST
 =========
 
-- detect correctly source address when referencing default-gateway connections.
 - permit choose seq generation algorithm for tcpraw thread.
 - tcpraw:
     - set window to 0, and persisting.
@@ -9,6 +8,11 @@ TODO LIST
 - make gram more restrictive
 - stress tests
 - implement include statement
-- ack acked
+- ack acked:
+    1) syn + sack + ack
+    2) send req
+    3) ack first bytes (A)
+    4) ack more bytes (B)
+    5) ack again A bytes
 - monkey in the middle
 - slow loris

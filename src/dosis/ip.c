@@ -400,7 +400,8 @@ int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr)
 
   if((r = sscanf(saddr, "%3u.%3u.%3u.%3u:%5u%n", &a, &b, &c, &d, &p, &x)) != 5)
     if((r = sscanf(saddr, "%3u.%3u.%3u.%3u%n", &a, &b, &c, &d, &x)) != 4)
-      return -1;
+      if((r = sscanf(saddr, "%2x%2x%2x%2x%n", &d, &c, &b, &a, &x)) != 4)
+        return -1;
 
   if(r == 4)
   {
