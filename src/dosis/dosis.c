@@ -64,10 +64,11 @@ int main(int argc, char *argv[])
 
   /* install signal handlers */
   (void) pthreadex_set_signal_callback(handle_pthreadex_eintr);
-  signal(SIGHUP,  handle_termination__signal);
-  signal(SIGINT,  handle_termination__signal);
-  signal(SIGQUIT, handle_termination__signal);
-  signal(SIGTERM, handle_termination__signal);
+  if(signal(SIGHUP,  handle_termination__signal) == SIG_ERR
+  || signal(SIGINT,  handle_termination__signal) == SIG_ERR
+  || signal(SIGQUIT, handle_termination__signal) == SIG_ERR
+  || signal(SIGTERM, handle_termination__signal) == SIG_ERR)
+    FAT("Cannot install signal handlers.");
 
   /* read command line parameters */
   dos_config_init(argc, argv);
