@@ -52,11 +52,6 @@ typedef struct _tag_TCPRAW_CFG {
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
 
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
-
 /*****************************************************************************
  * THREAD IMPLEMENTATION
  *****************************************************************************/
@@ -67,13 +62,13 @@ static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 
   /* check msg size and headers */
   if(size < sizeof(struct iphdr)
-  || ip_protocol(msg) != 6
-  || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+  || IP_PROTOCOL(msg) != 6
+  || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
     return 0;
 
   /* check msg */
-  return ip_header(msg)->saddr == tc->dhost.addr.in.addr
-      && ntohs(tcp_header(msg)->source) == tc->dhost.port
+  return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
+      && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
          ? -255 : 0;
 }
 
@@ -103,7 +98,8 @@ static void tcpraw__thread(THREAD_WORK *tw)
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_SYN, 5840, //13337,
                          seq, 0,
-                         (char *) tc->payload, tc->payload_size);
+                         (char *) tc->payload, tc->payload_size,
+                         NULL, 0);
     }
   }
 }

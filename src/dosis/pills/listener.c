@@ -33,11 +33,6 @@
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
 
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
-
 static char              iptables_tmp[255];
 static char              ip_forward_status;
 static int               ipq_on;

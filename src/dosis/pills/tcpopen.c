@@ -46,11 +46,6 @@ typedef struct _tag_TCPOPEN_CFG {
   LN_CONTEXT *lnc;
 } TCPOPEN_CFG;
 
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
-
 /*****************************************************************************
  * THREAD IMPLEMENTATION
  *****************************************************************************/
@@ -61,13 +56,13 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 
   /* check msg size and headers */
   if(size < sizeof(struct iphdr)
-  || ip_protocol(msg) != 6
-  || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+  || IP_PROTOCOL(msg) != 6
+  || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
     return 0;
 
   /* check msg */
-  return ip_header(msg)->saddr == tc->dhost.addr.in.addr
-      && ntohs(tcp_header(msg)->source) == tc->dhost.port
+  return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
+      && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
          ? -1 : 0;
 }
 
@@ -80,36 +75,38 @@ static void tcpopen__listen(THREAD_WORK *tw)
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
     TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-            ip_protocol(m->b),
-            (ip_header(m->b)->saddr >>  0) & 0x00ff,
-            (ip_header(m->b)->saddr >>  8) & 0x00ff,
-            (ip_header(m->b)->saddr >> 16) & 0x00ff,
-            (ip_header(m->b)->saddr >> 24) & 0x00ff,
-            tcp_header(m->b)->dest, tc->dhost.port,
-            tcp_header(m->b)->rst,
-            ip_header(m->b)->saddr, tc->shost.addr.in.addr);
+            IP_PROTOCOL(m->b),
+            (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
+            (IP_HEADER(m->b)->saddr >>  8) & 0x00ff,
+            (IP_HEADER(m->b)->saddr >> 16) & 0x00ff,
+            (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
+            TCP_HEADER(m->b)->dest, tc->dhost.port,
+            TCP_HEADER(m->b)->rst,
+            IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
-    if(tcp_header(m->b)->syn != 0
-    && tcp_header(m->b)->ack != 0)
+    if(TCP_HEADER(m->b)->syn != 0
+    && TCP_HEADER(m->b)->ack != 0)
     {
       /* send handshake and data TCP packet */
       ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_ACK,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
+                         ntohs(TCP_HEADER(m->b)->window),
+                         ntohl(TCP_HEADER(m->b)->ack_seq),
+                         ntohl(TCP_HEADER(m->b)->seq) + 1,
+                         NULL, 0,
                          NULL, 0);
       ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_ACK | TH_PUSH,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
-                         (char *) tc->payload, tc->payload_size);
+                         ntohs(TCP_HEADER(m->b)->window),
+                         ntohl(TCP_HEADER(m->b)->ack_seq),
+                         ntohl(TCP_HEADER(m->b)->seq) + 1,
+                         (char *) tc->payload, tc->payload_size,
+                         NULL, 0);
     }
 
     /* release msg buffer */

@@ -58,21 +58,6 @@ static char nullbuff[BUFSIZE];
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
-
-/*****************************************************************************
- * $Id: hashkssl.c,v 1.20 2007-05-28 17:01:51 gerardo Exp $
- *
- * SSL Handshake attack.
- *
- * ---------------------------------------------------------------------------
- * calltoarms - HTTP/S DoS Giver
- *   Coded Gerardo García Peña <gerardo@kung-foo.dhs.org>
- *****************************************************************************/
-
 #include <config.h>
 #include "calltoarms.h"
 #include "hashkssl.h"
