@@ -53,7 +53,8 @@ void ln_send_tcp_packet(LN_CONTEXT *lnc,
                         struct in_addr *dhost, int dport,
                         int flags, int window,
                         int seq, int ack,
-                        char *data, int data_sz)
+                        char *data, int data_sz,
+                        char *topt, int topt_sz)
 {
   int ip_size, tcp_size;
 
@@ -80,6 +81,19 @@ void ln_send_tcp_packet(LN_CONTEXT *lnc,
       lnc->tcp_p);              /* protocol tag to modify an existing header */
   if(lnc->tcp_p == -1)
     FAT("Can't build TCP header: %s", libnet_geterror(lnc->ln));
+
+  /* add TCP options (if any) */
+  if(topt_sz > 0)
+  {
+    lnc->tcp_p =
+      libnet_build_tcp_options(
+        topt,                   /* TCP options string                        */
+        topt_sz,                /* TCP options string size                   */
+        lnc->ln,                /* libnet context                            */
+        lnc->tcp_p);            /* protocol tag to modify an existing header */
+    if(lnc->tcp_p == -1)
+      FAT("Can't build TCP options: %s", libnet_geterror(lnc->ln));
+  }
 
   /* build container IP packet */
   lnc->ipv4_p =
@@ -163,4 +177,52 @@ unsigned ln_get_next_seq_random_port_number(unsigned *n)
 unsigned ln_get_next_random_port_number(unsigned *n)
 {
   return (*n = NEXT_RAND_PORT(*n));
+}
+
+void *ln_tcp_get_opt(void *msg, int sz, int sopt)
+{
+  void *p;
+  unsigned opt, len;
+
+  /* check msg size, protocol and headers */
+  if(sz < sizeof(struct iphdr)
+  || IP_PROTOCOL(msg) != 6
+  || sz < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2)
+  || sz < (TCP_HEADER(msg)->doff << 2) + (IP_HEADER(msg)->ihl << 2))
+    return NULL;
+
+  /* go to options section and process them */
+  for(p = msg + sizeof(struct tcphdr); p < msg + (TCP_HEADER(msg)->doff << 2); )
+  {
+    opt = *((unsigned char *) p);
+    switch(opt)
+    {
+      case 0: /* end of option list */
+        return opt == sopt ? p : NULL;
+      case 1: /* NOP */
+        len = 1;
+        if(opt == sopt)
+          return p;
+        break;
+      default:
+        DBG("Uknown TCP option (%d).", opt);
+      case 2: /* MSS                             */
+      case 3: /* Window scale                    */
+      case 4: /* SACK (selective acknowledgment) */
+      case 8: /* Timestamps                      */
+        if(opt == sopt)
+          return p;
+        len = *((unsigned char *) (p + 1));
+        break;
+    }
+    p += len;
+  }
+
+  return NULL;
+}
+
+int ln_tcp_get_mss(void *msg, int sz)
+{
+  void *p = ln_tcp_get_opt(msg, sz, 2);
+  return p != NULL ? *((unsigned short *) (p + 2)) : -1;
 }

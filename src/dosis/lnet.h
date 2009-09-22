@@ -32,6 +32,10 @@
 extern "C" {
 #endif
 
+/*****************************************************************************
+ * libnet mngmnt and packet forgering
+ *****************************************************************************/
+
 typedef struct _tag_LN_CONTEXT {
   libnet_t     *ln;
   int           ipv4_p;
@@ -47,11 +51,21 @@ void ln_send_tcp_packet(LN_CONTEXT *lnc,
                         struct in_addr *dhost, int dport,
                         int flags, int window,
                         int seq, int ack,
-                        char *data, int data_sz);
+                        char *data, int data_sz,
+                        char *opts, int opts_sz);
 void ln_send_udp_packet(LN_CONTEXT *lnc,
                         struct in_addr *shost, int sport,
                         struct in_addr *dhost, int dport,
                         char *data, int data_sz);
+
+/*****************************************************************************
+ * seq number generators
+ *
+ *   NEXT_PORT      - Programmable number generator (depends on p)
+ *   NEXT_SEQ_PORT  - Totally sequential number generator (0, 1, 2, 3, ...)
+ *   NEXT_SSEQ_PORT - The Strange Sequence [TM] (65535, 0, 65534, 1, ...)
+ *   NEXT_RAND_PORT - Pseudo-random sequence (totally impredictable x"D)
+ *****************************************************************************/
 
 #define NEXT_PORT(n,p)      (((n) + (p)) & 0x0000ffff)
 #define NEXT_SEQ_PORT(n)    NEXT_PORT(n,1)
@@ -60,6 +74,20 @@ void ln_send_udp_packet(LN_CONTEXT *lnc,
 
 unsigned ln_get_next_seq_random_port_number(unsigned *n);
 unsigned ln_get_next_random_port_number(unsigned *n);
+
+/*****************************************************************************
+ * IP/TCP/UDP helpers
+ *****************************************************************************/
+
+#define IP_PROTOCOL(x)      (((struct iphdr *) (x))->protocol)
+#define IP_HEADER(x)        ((struct iphdr *)  (x))
+#define TCP_HEADER(x)       ((struct tcphdr *) ((x) \
+                            + (((struct iphdr *) (x))->ihl << 2)))
+#define UDP_HEADER(x)       ((struct udphdr *) ((x) \
+                            + (((struct iphdr *) (x))->ihl << 2)))
+
+void *ln_tcp_get_opt(void *msg, int sz, int sopt);
+int ln_tcp_get_mss(void *msg, int sz);
 
 #ifdef __cplusplus
 }
