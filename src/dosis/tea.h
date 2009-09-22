@@ -30,18 +30,17 @@
 #include "script.h"
 
 typedef struct _tag_TEA_MSG {
-  unsigned int         s;
-  unsigned int         bs;
-  unsigned char       *b;
-  struct _tag_TEA_MSG *prev;
-  struct _tag_TEA_MSG *next;
+  unsigned int         s;    /* msg size                               */
+  unsigned char       *b;    /* msg bytes                              */
+  unsigned int         bs;   /* real buffer size (bs always >= than s) */
+  struct _tag_TEA_MSG *prev; /* (double linked list) previous message  */
+  struct _tag_TEA_MSG *next; /* (double linked list) next message      */
 } TEA_MSG;
 
 typedef struct _tag_TEA_MSG_QUEUE {
-  int                no_moar;
-  TEA_MSG           *first;
-  TEA_MSG           *last;
-  pthreadex_mutex_t  mutex;
+  TEA_MSG           *first;  /* first msg in list                      */
+  TEA_MSG           *last;   /* last msg (adding optimization)         */
+  pthreadex_mutex_t  mutex;  /* mutual exclusion lock to avoid RC      */
 } TEA_MSG_QUEUE;
 
 typedef struct _tag_THREAD_WORK {
