@@ -50,11 +50,13 @@ enum TYPES {
   TYPE_LIST_NUM = 2000,
   TYPE_SELECTOR,
   /* thread types */
-  TYPE_TO_TCP = 3000,
+  TYPE_TO_LISTEN = 3000,
+  TYPE_TO_SLOW,
+  TYPE_TO_TCP,
   TYPE_TO_TCPOPEN,
   TYPE_TO_TCPRAW,
   TYPE_TO_UDP,
-  TYPE_TO_LISTEN,
+  TYPE_TO_ZWIN,
   /* options */
   TYPE_OPT_CWAIT = 4000,
   TYPE_OPT_SSL,
@@ -62,6 +64,7 @@ enum TYPES {
   TYPE_OPT_DST,
   TYPE_OPT_FILE,
   TYPE_OPT_FLAGS,
+  TYPE_OPT_MSS,
   TYPE_OPT_OPEN,
   TYPE_OPT_RAW,
   TYPE_OPT_RWAIT,
@@ -116,6 +119,7 @@ typedef struct SNODE_tag {
       struct SNODE_tag *cwait;        /* TCP connection wait                 */
       struct SNODE_tag *rwait;        /* TCP read wait                       */
       struct SNODE_tag *sslcipher;    /* SSL cipher suite                    */
+      struct SNODE_tag *mss;          /* TCP Maximum Segment Size            */
 
       struct SNODE_tag *next;
     } option;

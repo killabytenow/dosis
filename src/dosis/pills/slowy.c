@@ -51,6 +51,7 @@ typedef struct _tag_TCPCON {
 typedef struct _tag_SLOWY_CFG {
   INET_ADDR   shost;
   INET_ADDR   dhost;
+  int         mss;
   int         zerowin;
   unsigned    timeout;
   char       *payload;
@@ -364,6 +365,9 @@ static void slowy__cleanup(THREAD_WORK *tw)
     }
     free(tc);
     tw->data = NULL;
+
+    /* free conntrack pool */
+    /* XXX TODO XXX */
   }
   TDBG("Finalized.");
 }
