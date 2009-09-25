@@ -101,7 +101,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_SYN, 5840, //13337,
+                         TH_SYN, 13337,
                          seq, 0,
                          (char *) tc->payload, tc->payload_size);
     }
