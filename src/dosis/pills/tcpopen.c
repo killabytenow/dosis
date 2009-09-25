@@ -79,7 +79,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
   /* listen the radio */
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
-    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d,syn=%d,ack=%d) => [%08x/%08x] >>",
             ip_protocol(m->b),
             (ip_header(m->b)->saddr >>  0) & 0x00ff,
             (ip_header(m->b)->saddr >>  8) & 0x00ff,
@@ -87,6 +87,8 @@ static void tcpopen__listen(THREAD_WORK *tw)
             (ip_header(m->b)->saddr >> 24) & 0x00ff,
             tcp_header(m->b)->dest, tc->dhost.port,
             tcp_header(m->b)->rst,
+            tcp_header(m->b)->syn,
+            tcp_header(m->b)->ack,
             ip_header(m->b)->saddr, tc->shost.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
@@ -98,7 +100,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
                          &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_ACK,
-                         ntohs(tcp_header(m->b)->window),
+                         13337, //5840, //ntohs(tcp_header(m->b)->window),
                          ntohl(tcp_header(m->b)->ack_seq),
                          ntohl(tcp_header(m->b)->seq) + 1,
                          NULL, 0);
@@ -106,10 +108,23 @@ static void tcpopen__listen(THREAD_WORK *tw)
                          &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_ACK | TH_PUSH,
-                         ntohs(tcp_header(m->b)->window),
+                         13337, //5840, //ntohs(tcp_header(m->b)->window),
                          ntohl(tcp_header(m->b)->ack_seq),
                          ntohl(tcp_header(m->b)->seq) + 1,
                          (char *) tc->payload, tc->payload_size);
+    }
+    if(tcp_header(m->b)->syn == 0
+    && tcp_header(m->b)->ack == 0)
+    {
+      TDBG2("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX SUZUKI DE SESION");
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         TH_ACK,
+                         ntohs(tcp_header(m->b)->window),
+                         ntohl(tcp_header(m->b)->ack_seq),
+                         ntohl(tcp_header(m->b)->seq) + 1,
+                         NULL, 0);
     }
 
     /* release msg buffer */
