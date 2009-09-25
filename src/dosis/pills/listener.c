@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -32,11 +32,6 @@
 
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
-
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define tcp_header(x)  ((struct tcphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
 
 static char              iptables_tmp[255];
 static char              ip_forward_status;

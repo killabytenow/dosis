@@ -6,7 +6,7 @@ dnl ## DioNiSio configuration script.
 dnl ##
 dnl ## ------------------------------------------------------------------------
 dnl ## dosis - DoS: Internet Sodomizer
-dnl ##   (C) 2008 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+dnl ##   (C) 2008 Gerardo García Peña <gerardo@kung-foo.net>
 dnl ##
 dnl ##   This program is free software; you can redistribute it and/or modify
 dnl ##   it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@ dnl ---------------------------------------------------------------------------
 dnl Basic configuration of autoconf+automake
 dnl ---------------------------------------------------------------------------
 
-AC_INIT([Dosis],DOS_AC_VERSION,[gerardo@kung-foo.dhs.org],[dosis])
+AC_INIT([Dosis],DOS_AC_VERSION,[gerardo@kung-foo.net],[dosis])
 AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(include/autoconfig.h)
 

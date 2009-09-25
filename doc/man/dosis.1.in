@@ -41,7 +41,7 @@ If you only want to work in some computers in network 192.168.0.0/16, from
 192.168.5.10 to 192.168.7.59, you can use this notation:
 
 .SH AUTHOR
-Gerardo García Peña (gerardo (at) kung-foo.dhs.org)
+Gerardo García Peña (gerardo (at) kung-foo.net)
 .PP
 Visit Dosis's home page.
 .RS

@@ -6,7 +6,7 @@
 #
 # -----------------------------------------------------------------------------
 # dosis - DoS: Internet Sodomizer
-#   (C) 2008 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+#   (C) 2008 Gerardo García Peña <gerardo@kung-foo.net>
 #
 #   This program is free software; you can redistribute it and/or modify it
 #   under the terms of the GNU General Public License as published by the Free
@@ -37,6 +37,7 @@ dosis_SOURCES = dosis.c           dosis.h           \
                 script.y          script.h          \
                 tea.c             tea.h             \
                 pills/listener.c  pills/listener.h  \
+                pills/slowy.c     pills/slowy.h     \
                 pills/tcp.c       pills/tcp.h       \
                 pills/tcpopen.c   pills/tcpopen.h   \
                 pills/tcpraw.c    pills/tcpraw.h    \
@@ -45,7 +46,7 @@ if SSL_ENABLED
 dosis_SOURCES += sslthread.c      sslthread.h
 endif
 
-CFLAGS += -DYYERROR_VERBOSE
+AM_CFLAGS = -DYYERROR_VERBOSE
 
 splint: $(dosis_SOURCES:%.y=%.c)
 	splint -f dosis.splintrc $(DEFS) $(DEFAULT_INCLUDES) $(dosis_SOURCES:%.y=%.c)

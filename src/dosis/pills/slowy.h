@@ -1,7 +1,9 @@
 /*****************************************************************************
- * udp.h
+ * slowy.c
  *
- * UDP packet generator.
+ * DoS on TCP servers by
+ *  - slowloris attack
+ *  - zero window size
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
@@ -23,11 +25,11 @@
  *
  *****************************************************************************/
 
-#ifndef __UDP_H__
-#define __UDP_H__
+#ifndef __SLOWY_H__
+#define __SLOWY_H__
 
 #include "tea.h"
 
-extern TEA_OBJECT teaUDP;
+extern TEA_OBJECT teaSLOWY;
 
 #endif

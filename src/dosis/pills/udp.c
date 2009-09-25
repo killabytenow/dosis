@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.dhs.org>
+ *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -52,11 +52,6 @@ typedef struct _tag_UDP_CFG {
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-#define ip_protocol(x) (((struct iphdr *) (x))->protocol)
-#define ip_header(x)   ((struct iphdr *)  (x))
-#define udp_header(x)  ((struct udphdr *) ((x) \
-                       + (((struct iphdr *) (x))->ihl << 2)))
-
 #if 0
 /* the best from performance view is to do nothing */
 static int udp__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
@@ -65,19 +60,19 @@ static int udp__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
 
   /* check msg size and headers */
   if(size < sizeof(struct iphdr)
-  || ip_protocol(msg) != 17
-  || size < sizeof(struct udphdr) + (ip_header(msg)->ihl << 2))
+  || IP_PROTOCOL(msg) != 17
+  || size < sizeof(struct udphdr) + (IP_HEADER(msg)->ihl << 2))
     return 0;
 
   /* check msg */
 TDBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
      tw->methods->name,
-     ip_header(msg)->saddr == tu->dhost.addr.in.addr
-     && ntohs(udp_header(msg)->source) == tu->dhost.port,
-     ip_header(msg)->saddr, ntohs(udp_header(msg)->source),
+     IP_HEADER(msg)->saddr == tu->dhost.addr.in.addr
+     && ntohs(UDP_HEADER(msg)->source) == tu->dhost.port,
+     IP_HEADER(msg)->saddr, ntohs(UDP_HEADER(msg)->source),
      tu->dhost.addr.in.addr, tu->dhost.port);
-  return ip_header(msg)->saddr == tu->dhost.addr.in.addr
-      && ntohs(udp_header(msg)->source) == tu->dhost.port
+  return IP_HEADER(msg)->saddr == tu->dhost.addr.in.addr
+      && ntohs(UDP_HEADER(msg)->source) == tu->dhost.port
          ? -255 : 0;
 }
 #endif
