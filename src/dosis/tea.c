@@ -35,6 +35,7 @@
 #include "tea.h"
 
 #include "pills/listener.h"
+#include "pills/slowy.h"
 #include "pills/tcp.h"
 #include "pills/tcpopen.h"
 #include "pills/tcpraw.h"
@@ -677,6 +678,8 @@ void tea_timer(SNODE *program)
             case TYPE_TO_TCP:     to = &teaTCP;      break;
             case TYPE_TO_TCPRAW:  to = &teaTCPRAW;   break;
             case TYPE_TO_UDP:     to = &teaUDP;      break;
+            case TYPE_TO_ZWIN:    to = &teaSlowy;    break;
+            case TYPE_TO_SLOW:    to = &teaSlowy;    break;
             default:
               FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }

@@ -30,6 +30,6 @@
 
 #include "tea.h"
 
-extern TEA_OBJECT teaSLOWY;
+extern TEA_OBJECT teaSlowy;
 
 #endif

@@ -59,6 +59,7 @@ extern "C" {
 #include <signal.h>
 #include <assert.h>
 #include <limits.h>
+#include <math.h>
 
 /* uio */
 #include <sys/uio.h>

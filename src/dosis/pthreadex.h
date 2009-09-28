@@ -125,8 +125,6 @@ typedef struct _tag_pthreadex_lock_t
 #define PTHREADEX_LOCK_SHARED       0
 #define PTHREADEX_LOCK_EXCLUSIVE    1
 
-typedef struct timespec pthreadex_timer_t;
-
 void pthreadex_barrier_init(pthreadex_barrier_t *barrier, int n);
 void pthreadex_barrier_destroy(pthreadex_barrier_t *barrier);
 void pthreadex_barrier_wait(pthreadex_barrier_t *barrier);
@@ -149,12 +147,16 @@ void pthreadex_lock_fini(pthreadex_lock_t *ex);
 #define pthreadex_lock_get_shared(x)    pthreadex_lock_get(x, PTHREADEX_LOCK_SHARED)
 #define pthreadex_lock_get_exclusive(x) pthreadex_lock_get(x, PTHREADEX_LOCK_EXCLUSIVE)
 
+typedef struct timespec pthreadex_timer_t;
+
 void   pthreadex_timer_init(pthreadex_timer_t *t, double secs);
 void   pthreadex_timer_set(pthreadex_timer_t *t, double secs);
 void   pthreadex_timer_set_frequency(pthreadex_timer_t *t, double tps);
 double pthreadex_timer_get(pthreadex_timer_t *t);
 int    pthreadex_timer_wait(pthreadex_timer_t *t);
 void   pthreadex_timer_destroy(pthreadex_timer_t *t);
+
+double pthreadex_time_get(void);
 
 /*****************************************************************************
  * FLAGS

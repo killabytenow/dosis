@@ -23,13 +23,9 @@
  *
  *****************************************************************************/
 
+#include <config.h>
+#include "log.h"
 #include "pthreadex.h"
-
-#include <errno.h>
-#include <math.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <string.h>
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   + SIGNAL CALLBACK
@@ -95,6 +91,16 @@ int pthreadex_timer_wait(pthreadex_timer_t *t)
       }
   }
   return ret;
+}
+
+double pthreadex_time_get(void)
+{
+  struct timespec t;
+
+  if(clock_gettime(CLOCK_REALTIME, &t) < 0)
+    FAT("Cannot read CLOCK_REALTIME.");
+
+  return ((double) t.tv_sec) + (((double) t.tv_nsec) / 1000000000.0);
 }
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -310,7 +316,7 @@ void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
       break;
 
     default:
-      fprintf(stderr, "pthreadex_lock_get(): warning: Unknown type '%d'.\n", type);
+      WRN("warning: Unknown type '%d'.", type);
 
     case PTHREADEX_LOCK_EXCLUSIVE:
       while(l->lock_count != 0)
