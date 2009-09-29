@@ -140,10 +140,10 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
   switch(cn->type)
   {
     case TYPE_PERIODIC:
-      tc->npackets = tea_get_int(cn->pattern.periodic.n);
+      tc->npackets = tea_snode_get_int(cn->pattern.periodic.n);
 
     case TYPE_PERIODIC_LIGHT:
-      tc->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+      tc->hitratio = tea_snode_get_float(cn->pattern.periodic.ratio);
       if(tc->hitratio < 0)
         TFAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
       if(tc->npackets <= 0)
@@ -158,25 +158,25 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     switch(cn->type)
     {
       case TYPE_OPT_SRC:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->shost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tc->shost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_DST:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_FLAGS:
-        s = tea_get_string(cn->option.flags);
+        s = tea_snode_get_string(cn->option.flags);
         tc->flags = 0;
         for(i = 0; s[i]; i++)
           switch(toupper(s[i]))

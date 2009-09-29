@@ -45,7 +45,7 @@ void payload_get(SNODE *n, char **buffer, unsigned int *size)
   switch(n->type)
   {
     case TYPE_OPT_PAYLOAD_FILE:
-      s2 = tea_get_string(n->option.payload);
+      s2 = tea_snode_get_string(n->option.payload);
       s = dosis_search_file(s2);
       free(s2);
       if(stat(s, &pls) < 0)
@@ -65,7 +65,7 @@ void payload_get(SNODE *n, char **buffer, unsigned int *size)
       break;
 
     case TYPE_OPT_PAYLOAD_RANDOM:
-      *size = tea_get_int(n->option.payload);
+      *size = tea_snode_get_int(n->option.payload);
       if(*size > 0)
       {
         if((*buffer = malloc(*size)) == NULL)
@@ -77,7 +77,7 @@ void payload_get(SNODE *n, char **buffer, unsigned int *size)
       break;
 
     case TYPE_OPT_PAYLOAD_STR:
-      *buffer = tea_get_string(n->option.payload);
+      *buffer = tea_snode_get_string(n->option.payload);
       *size   = strlen(*buffer);
       break;
       

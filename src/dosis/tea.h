@@ -84,10 +84,10 @@ TEA_MSG *tea_msg_get(void);
 void     tea_msg_release(TEA_MSG *msg);
 
 /*- NODE UTILITIES ----------------------------------------------------------*/
-char    *tea_get_var(SNODE *n);
-char    *tea_get_string(SNODE *n);
-int      tea_get_int(SNODE *n);
-double   tea_get_float(SNODE *n);
+char    *tea_snode_get_var(SNODE *n);
+char    *tea_snode_get_string(SNODE *n);
+int      tea_snode_get_int(SNODE *n);
+double   tea_snode_get_float(SNODE *n);
 
 /*- THREAD LOG UTILITIES ----------------------------------------------------*/
 #define GFAT(msg, ...)   FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)

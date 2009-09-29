@@ -150,10 +150,10 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
   switch(cn->type)
   {
     case TYPE_PERIODIC:
-      tu->npackets = tea_get_int(cn->pattern.periodic.n);
+      tu->npackets = tea_snode_get_int(cn->pattern.periodic.n);
 
     case TYPE_PERIODIC_LIGHT:
-      tu->hitratio = tea_get_float(cn->pattern.periodic.ratio);
+      tu->hitratio = tea_snode_get_float(cn->pattern.periodic.ratio);
       if(tu->hitratio < 0)
         TFAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
       if(tu->npackets <= 0)
@@ -168,21 +168,21 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
     switch(cn->type)
     {
       case TYPE_OPT_SRC:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tu->shost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tu->shost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tu->shost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_DST:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tu->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tu->dhost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tu->dhost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:

@@ -403,7 +403,7 @@ int tea_thread_msg_push(int tid, TEA_MSG *m)
   return r;
 }
 
-char *tea_get_var(SNODE *n)
+char *tea_snode_get_var(SNODE *n)
 {
   char *r;
 
@@ -420,7 +420,7 @@ char *tea_get_var(SNODE *n)
   return r;
 }
 
-char *tea_get_string(SNODE *n)
+char *tea_snode_get_string(SNODE *n)
 {
   char *r = NULL;
 
@@ -431,7 +431,7 @@ char *tea_get_string(SNODE *n)
         FAT("Cannot dup string.");
       break;
     case TYPE_VAR:
-      r = tea_get_var(n);
+      r = tea_snode_get_var(n);
       break;
     default:
       FAT("Node of type %d cannot be converted to string.", n->type);
@@ -440,7 +440,7 @@ char *tea_get_string(SNODE *n)
   return r;
 }
 
-int tea_get_int(SNODE *n)
+int tea_snode_get_int(SNODE *n)
 {
   int r;
   char *v;
@@ -451,7 +451,7 @@ int tea_get_int(SNODE *n)
       r = n->nint;
       break;
     case TYPE_VAR:
-      v = tea_get_var(n);
+      v = tea_snode_get_var(n);
       r = atoi(v);
       free(v);
       break;
@@ -462,7 +462,7 @@ int tea_get_int(SNODE *n)
   return r;
 }
 
-double tea_get_float(SNODE *n)
+double tea_snode_get_float(SNODE *n)
 {
   double r;
   char *v;
@@ -476,7 +476,7 @@ double tea_get_float(SNODE *n)
       r = n->nfloat;
       break;
     case TYPE_VAR:
-      v = tea_get_var(n);
+      v = tea_snode_get_var(n);
       r = atof(v);
       free(v);
       break;
@@ -497,7 +497,7 @@ int tea_iter_get(TEA_ITER *ti)
       break;
     case TYPE_LIST_NUM:
       i = ti->c
-            ? tea_get_int(ti->c->list_num.val)
+            ? tea_snode_get_int(ti->c->list_num.val)
             : 0;
       break;
     default:
@@ -513,10 +513,10 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
   {
     case TYPE_SELECTOR:
       ti->i1 = ti->first->range.min != NULL
-                 ? tea_get_int(ti->first->range.min)
+                 ? tea_snode_get_int(ti->first->range.min)
                  : 0;
       ti->i2 = ti->first->range.max != NULL
-                 ? tea_get_int(ti->first->range.max)
+                 ? tea_snode_get_int(ti->first->range.max)
                  : cfg.maxthreads - 1;
       if(ti->i1 < 0)
         FAT("Bad range minimum value '%d'.", ti->i1);
@@ -641,7 +641,7 @@ void tea_timer(SNODE *program)
 
     if(cmd->command.time)
     {
-      ntime = tea_get_float(cmd->command.time->ntime.n);
+      ntime = tea_snode_get_float(cmd->command.time->ntime.n);
       if(ntime > 0)
       {
         if(cmd->command.time->ntime.rel)
@@ -704,7 +704,7 @@ void tea_timer(SNODE *program)
         if(!cmd->command.setvar.cond
         || !getenv(cmd->command.setvar.var))
         {
-          char *val = tea_get_string(cmd->command.setvar.val);
+          char *val = tea_snode_get_string(cmd->command.setvar.val);
           LOG("[tea] %s='%s'", cmd->command.setvar.var, val);
           if(setenv(cmd->command.setvar.var, val, 1))
             FAT("Cannot set var '%s' with value '%s'.",

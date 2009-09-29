@@ -87,7 +87,7 @@ void ln_send_tcp_packet(LN_CONTEXT *lnc,
   {
     lnc->tcp_p =
       libnet_build_tcp_options(
-        topt,                   /* TCP options string                        */
+        (unsigned char *) topt, /* TCP options string                        */
         topt_sz,                /* TCP options string size                   */
         lnc->ln,                /* libnet context                            */
         lnc->tcp_p);            /* protocol tag to modify an existing header */
@@ -192,7 +192,8 @@ void *ln_tcp_get_opt(void *msg, int sz, int sopt)
     return NULL;
 
   /* go to options section and process them */
-  for(p = msg + sizeof(struct tcphdr); p < msg + (TCP_HEADER(msg)->doff << 2); )
+  for(p = msg + (IP_HEADER(msg)->ihl << 2) + sizeof(struct tcphdr);
+      p < msg + (IP_HEADER(msg)->ihl << 2) + (TCP_HEADER(msg)->doff << 2); )
   {
     opt = *((unsigned char *) p);
     switch(opt)
@@ -211,7 +212,7 @@ void *ln_tcp_get_opt(void *msg, int sz, int sopt)
       case 4: /* SACK (selective acknowledgment) */
       case 8: /* Timestamps                      */
         if(opt == sopt)
-          return p;
+          return p + 2;
         len = *((unsigned char *) (p + 1));
         break;
     }
@@ -224,5 +225,5 @@ void *ln_tcp_get_opt(void *msg, int sz, int sopt)
 int ln_tcp_get_mss(void *msg, int sz)
 {
   void *p = ln_tcp_get_opt(msg, sz, 2);
-  return p != NULL ? *((unsigned short *) (p + 2)) : -1;
+  return p != NULL ? ntohs(*((unsigned short *) (p))) : -1;
 }
