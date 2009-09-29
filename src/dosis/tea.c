@@ -403,6 +403,12 @@ int tea_thread_msg_push(int tid, TEA_MSG *m)
   return r;
 }
 
+/*---------------------------------------------------------------------------*
+ * NODE UTILITIES                                                            *
+ *                                                                           *
+ *   Helper funcs to read and manipulate SNODE structures.                   *
+ *---------------------------------------------------------------------------*/
+
 char *tea_snode_get_var(SNODE *n)
 {
   char *r;
@@ -486,6 +492,12 @@ double tea_snode_get_float(SNODE *n)
 
   return r;
 }
+
+/*---------------------------------------------------------------------------*
+ * ITERATORS                                                                 *
+ *                                                                           *
+ *   Functions related to iterators.                                         *
+ *---------------------------------------------------------------------------*/
 
 int tea_iter_get(TEA_ITER *ti)
 {
@@ -571,7 +583,7 @@ int tea_iter_next(TEA_ITER *ti)
 /*---------------------------------------------------------------------------*
  * THE TEA CORE
  *
- *   Dump the tea.
+ *   Dump the tea (the tea interpreter).
  *---------------------------------------------------------------------------*/
 
 static double tea_time_get(void)
