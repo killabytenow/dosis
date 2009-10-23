@@ -34,7 +34,7 @@
 ###############################################################################
 
 # configuration
-THOST="213.96.47.81"
+#THOST="213.96.47.81"
 ? THOST="127.0.0.1"
 ? TPORT="80"
 ? SRT="10.0"
@@ -42,7 +42,7 @@ THOST="213.96.47.81"
 
 # script
 0.0 ON 1 LISTEN
-0.0 ON 2 TCP RAW DST $THOST $TPORT FLAGS S PERIODIC [ 0.2 ]
+0.0 ON 2 TCP RAW DST $THOST $TPORT FLAGS S PERIODIC [ 0.5 ]
 0.0 ON 3 TCP ZWIN DST $THOST $TPORT PAYLOAD FILE("tcpopen.payload")
 $SRT OFF 2
 $RT OFF *

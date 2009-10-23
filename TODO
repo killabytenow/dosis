@@ -5,6 +5,7 @@ TODO LIST
 - tcpraw:
     - set window to 0, and persisting.
     - acknowledge before receive.
+    - zero window after syn+ack (test demostrated more than 300sec FIN1_WAIT)
 - make gram more restrictive
 - stress tests
 - implement include statement
