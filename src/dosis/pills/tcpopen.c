@@ -170,21 +170,21 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
     switch(cn->type)
     {
       case TYPE_OPT_SRC:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->shost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tc->shost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tc->shost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_DST:
-        s = tea_get_string(cn->option.addr);
+        s = tea_snode_get_string(cn->option.addr);
         if(ip_addr_parse(s, &tc->dhost))
           TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
         free(s);
         if(cn->option.port)
-          ip_addr_set_port(&tc->dhost, tea_get_int(cn->option.port));
+          ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:

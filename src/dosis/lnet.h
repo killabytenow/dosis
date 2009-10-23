@@ -85,6 +85,9 @@ unsigned ln_get_next_random_port_number(unsigned *n);
                             + (((struct iphdr *) (x))->ihl << 2)))
 #define UDP_HEADER(x)       ((struct udphdr *) ((x) \
                             + (((struct iphdr *) (x))->ihl << 2)))
+#define TCP_DATA(x)         ((void *) (x)                \
+                            + (IP_HEADER(x)->ihl   << 2) \
+                            + (TCP_HEADER(x)->doff << 2))
 
 void *ln_tcp_get_opt(void *msg, int sz, int sopt);
 int ln_tcp_get_mss(void *msg, int sz);
