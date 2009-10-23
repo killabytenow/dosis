@@ -57,7 +57,7 @@
 %type  <snode>    input
 %type  <snode>    var nint nfloat ntime string
 %type  <snode>    list_num_enum list_num range selection
-%type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait o_mss
+%type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait o_mss o_window
 %type  <snode>    rawp_opt
 %type  <snode>    tcp_opt tcp_opts
 %type  <snode>    udp_opt udp_opts
@@ -70,6 +70,7 @@
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
 %token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL OPT_SSL OPT_ZWIN
+%token            OPT_WINDOW
 %token            TO_LISTEN TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
@@ -203,6 +204,8 @@ o_cwait: OPT_CWAIT nint          { $$ = new_node(TYPE_OPT_CWAIT);
 o_rwait: OPT_RWAIT nint          { $$ = new_node(TYPE_OPT_RWAIT);
                                    $$->option.rwait = $2; }
        ;
+o_window: OPT_WINDOW nint        { $$ = new_node(TYPE_OPT_WINDOW);
+                                   $$->option.window = $2; }
 
 /*---------------------------------------------------------------------------
     COMMANDS' OPTIONS
@@ -212,7 +215,6 @@ o_rwait: OPT_RWAIT nint          { $$ = new_node(TYPE_OPT_RWAIT);
 rawp_opt: o_src
         | o_dst
         | o_payload
-        | o_mss
         ;
 
 /* command TCP (TCP/SSL) */
@@ -231,6 +233,8 @@ tcpo_opt: rawp_opt ;
 /* command TCP RAW */
 tcpr_opt: rawp_opt
         | o_flags
+        | o_mss
+        | o_window
         ;
 
 /* command LISTEN */
@@ -448,6 +452,7 @@ int yylex(void)
     { "SSL",      OPT_SSL     },
     { "TCP",      TO_TCP      },
     { "UDP",      TO_UDP      },
+    { "WINDOW",   OPT_WINDOW  },
     { "ZWIN",     OPT_ZWIN    },
     { NULL,       0           }
   }, *token;

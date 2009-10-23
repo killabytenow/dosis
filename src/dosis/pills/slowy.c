@@ -206,6 +206,7 @@ static void slowy__listen(THREAD_WORK *tw)
 
       /* send handshake */
       TDBG2("  # (%d) sending handshake", c->sport);
+      TERR("  # (%d) window %d", c->sport, c->window);
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
@@ -361,6 +362,16 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
         free(s);
         if(cn->option.port)
           ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
+        break;
+
+      case TYPE_OPT_MSS:
+        /* XXX TODO XXX */
+        break;
+
+      case TYPE_OPT_WINDOW:
+        tc->window = tea_snode_get_int(cn->option.window);
+        if(tc->window < 0)
+          TFAT("%d: Cannot set a negative window (%d).", cn->line, tc->window);
         break;
 
       case TYPE_OPT_PAYLOAD_FILE:

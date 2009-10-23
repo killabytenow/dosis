@@ -69,6 +69,7 @@ enum TYPES {
   TYPE_OPT_RAW,
   TYPE_OPT_RWAIT,
   TYPE_OPT_SRC,
+  TYPE_OPT_WINDOW,
   TYPE_OPT_PAYLOAD_DLL,
   TYPE_OPT_PAYLOAD_FILE,
   TYPE_OPT_PAYLOAD_NULL,
@@ -120,6 +121,7 @@ typedef struct SNODE_tag {
       struct SNODE_tag *rwait;        /* TCP read wait                       */
       struct SNODE_tag *sslcipher;    /* SSL cipher suite                    */
       struct SNODE_tag *mss;          /* TCP Maximum Segment Size            */
+      struct SNODE_tag *window;       /* TCP Maximum Segment Size            */
 
       struct SNODE_tag *next;
     } option;
