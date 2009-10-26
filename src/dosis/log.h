@@ -48,6 +48,8 @@ extern "C" {
 #define DBG(...)              d_dbg(THIS, __VA_ARGS__)
 #define DBG2(...)             d_db2(THIS, __VA_ARGS__)
 
+#define STACKTRACE(...)       d_stacktrace(THIS, __VA_ARGS__)
+
 void d_log_level(int level, char *file, char *function, char *format, ...);
 void d_dbg(char *file, char *function, char *format, ...);
 void d_db2(char *file, char *function, char *format, ...);
@@ -55,6 +57,8 @@ void d_log(char *file, char *function, char *format, ...);
 void d_wrn(char *file, char *function, char *format, ...);
 void d_err(char *file, char *function, char *format, ...);
 void d_fat(char *file, char *function, char *format, ...) __attribute__ ((__noreturn__));;
+
+void d_stacktrace(char *file, char *function, char *format, ...);
 
 void log_init(void);
 

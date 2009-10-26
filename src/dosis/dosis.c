@@ -41,6 +41,9 @@ void handle_termination__signal(int s)
     cfg.finalize = -1;
   } else {
     FAT("Program termination forced (signal %d).", s);
+
+    /* print stacktrace and exit */
+    d_stacktrace();
     exit(EXIT_FAILURE);
   }
 }

@@ -79,6 +79,11 @@ extern "C" {
 /* getopt is used to read command line parameters */
 #include <getopt.h>
 
+/* debugging (optional) */
+#if HAVE_EXECINFO_H
+#include <execinfo.h>
+#endif
+
 /* offsetof macro (if not exists then use this implementation) */
 #ifndef offsetof
 #define offsetof(st, f)  (((char *) &(((st *) 0)->f)) - ((char *) 0))

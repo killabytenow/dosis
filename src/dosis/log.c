@@ -151,6 +151,21 @@ void d_fat(char *file, char *function, char *format, ...)
   exit(1);
 }
 
+void d_stacktrace(void);
+{
+  void *array[255];
+  size_t size;
+
+  /* get void*'s for all entries on the stack */
+  size = backtrace(array, sizeof(array)/sizeof(void *));
+
+  /* print out all the frames to stderr */
+  d_fat(file, function, "Backtrace:");
+  backtrace_symbols_fd(array, size, 2);
+         char **backtrace_symbols(void *const *buffer, int size);
+
+}
+
 void log_init(void)
 {
   logfile = stderr;
