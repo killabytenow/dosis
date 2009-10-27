@@ -408,8 +408,8 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    TDBG2("[%d] config.options.dhost   = %s", buff);
-    TDBG2("[%d] config.options.payload = %d bytes", tc->payload_size);
+    TDBG2("config.options.dhost   = %s", buff);
+    TDBG2("config.options.payload = %d bytes", tc->payload_size);
   }
 
   return 0;
