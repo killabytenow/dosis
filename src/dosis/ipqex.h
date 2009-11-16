@@ -50,7 +50,11 @@ typedef struct _tag_ipqex_msg_t {
   unsigned char    *b;        /* packet buffer               */
   union {
     ipq_packet_msg_t *m;      /* (state > 0) packet msg      */
-    int               e;      /* (state < 0) error msg       */
+    struct {                  /* (state < 0)                 */
+      int           ipq;      /*   ipq error code            */
+      int           errnum;   /*   errorno code              */
+      char         *str;      /*   error description         */
+    } err;
   };
 } ipqex_msg_t;
 

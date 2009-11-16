@@ -254,9 +254,9 @@ static void listener__thread(THREAD_WORK *tw)
     pthreadex_mutex_begin(&ipq_mutex);
     if(ipq_on)
     {
-      r = ipqex_msg_read(&lcfg->imsg, 0);
+      r = ipqex_msg_read(&lcfg->imsg, 500000);
       if(r < 0)
-        TERR("Error reading from IPQ: %s (errno %s)", ipq_errstr(), strerror(errno));
+        TERR("Error reading from IPQ: %s", lcfg->imsg.err.str);
     } else
       r = -1;
     pthreadex_mutex_end();

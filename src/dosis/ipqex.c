@@ -78,12 +78,31 @@ void ipqex_msg_destroy(ipqex_msg_t *m)
 
 int ipqex_msg_read(ipqex_msg_t *m, int timeout)
 {
-  if((m->s = ipq_read(m->i->ipqh, m->b, m->i->bufsize, timeout)) != 0)
+  /* be optimistic */
+  m->err.ipq    = 0;
+  m->err.errnum = 0;
+  m->err.str    = NULL;
+
+  /* read packet */
+  m->s = ipq_read(m->i->ipqh, m->b, m->i->bufsize, timeout);
+
+  /* evaluate... */
+  if(m->s < 0)
   { 
+    /* Input/output error */
+    m->err.ipq    = 0;
+    m->err.errnum = errno;
+    m->err.str    = strerror(m->err.errnum);
+  } else
+  if(m->s > 0)
+  {
     switch(ipq_message_type(m->b))
     {
       case NLMSG_ERROR:
-        m->e = ipq_get_msgerr(m->b);
+        m->s            = -1;
+        m->err.ipq    = ipq_get_msgerr(m->b);
+        m->err.errnum = errno;
+        m->err.str    = ipq_errstr();
         break;
 
       case IPQM_PACKET:
@@ -91,13 +110,13 @@ int ipqex_msg_read(ipqex_msg_t *m, int timeout)
         break;
 
       default:
-        m->s = -1;
-        m->e = 74; /* Bad message */
+        /* Bad message */
+        m->s            = -1;
+        m->err.ipq    = 0;
+        m->err.errnum = 74;
+        m->err.str    = strerror(m->err.errnum);
     }
-  } else
-    m->e = m->s < 0
-            ? 5 /* Input/output error */
-            : errno;
+  }
 
   return m->s;
 }
