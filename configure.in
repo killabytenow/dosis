@@ -142,6 +142,7 @@ AC_CHECK_HEADERS([getopt.h          \
                  AC_MSG_ERROR([Essential header file not found.]))
 
 AC_CHECK_HEADERS([execinfo.h], [], [])
+AC_CHECK_HEADERS([elf.h link.h gnu/libc-version.h], [], [])
 
 AC_CHECK_TYPES([struct sockaddr_in],
                [], [I need at least a 'struct sockaddr_in'],

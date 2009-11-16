@@ -80,8 +80,18 @@ extern "C" {
 #include <getopt.h>
 
 /* debugging (optional) */
+#include <sys/mman.h>
 #if HAVE_EXECINFO_H
 #include <execinfo.h>
+#if HAVE_GNU_LIBC_VERSION_H
+#include <gnu/libc-version.h>
+#endif
+#if HAVE_ELF_H
+#include <elf.h>
+#endif
+#if HAVE_LINK_H
+#include <link.h>
+#endif
 #endif
 
 /* offsetof macro (if not exists then use this implementation) */

@@ -40,10 +40,10 @@ void handle_termination__signal(int s)
     WRN("One more termination signal will force program termination.");
     cfg.finalize = -1;
   } else {
-    FAT("Program termination forced (signal %d).", s);
+    ERR("Program termination forced (signal %d).", s);
 
     /* print stacktrace and exit */
-    d_stacktrace();
+    d_stacktrace(LOG_LEVEL_DEBUG);
     exit(EXIT_FAILURE);
   }
 }
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 {
   SNODE *script;
 
-  log_init();
+  log_init(*argv);
   tea_init();
   script_init();
 #ifdef HAVE_SSL

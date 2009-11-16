@@ -58,9 +58,9 @@ void d_wrn(char *file, char *function, char *format, ...);
 void d_err(char *file, char *function, char *format, ...);
 void d_fat(char *file, char *function, char *format, ...) __attribute__ ((__noreturn__));;
 
-void d_stacktrace(char *file, char *function, char *format, ...);
+void d_stacktrace(int level);
 
-void log_init(void);
+void log_init(char *argv0);
 
 #ifdef __cplusplus
 }
