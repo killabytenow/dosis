@@ -266,6 +266,7 @@ static void d_elf_open(int f, struct elf_info *ei)
   int i;
 
   /* map binary */
+DBG("mapping bin");
   if(fstat(binfile, &stbuf) < 0)
     ERR("Cannot stat binfile.");
   ei->size = stbuf.st_size;
@@ -273,6 +274,7 @@ static void d_elf_open(int f, struct elf_info *ei)
     ERR("Cannot mmap binfile.");
 
   /* parse header and search sections */
+DBG("parsing bin headers");
   ehdr = ei->base;
   for(i = 0; i < ehdr->e_shnum; i++)
   {
@@ -289,35 +291,48 @@ static void d_elf_open(int f, struct elf_info *ei)
       case SHT_STRTAB: ei->strtab = shdr; break;
     }
   }
+DBG("  * symtab = 0x%08x", ei->symtab);
+DBG("  * strtab = 0x%08x", ei->strtab);
   ei->nsyms = ei->symtab->sh_size / ei->symtab->sh_entsize;
   if(ei->symtab->sh_size > (ei->nsyms * ei->symtab->sh_entsize))
     WRN("symtab is not multiple of entsize(%d)", ei->symtab->sh_entsize);
+DBG("  * nsysm  = %d", ei->nsyms);
 }
 
-char *d_elf_resolve(struct elf_info *ei, void *addr)
+static char *d_elf_symname(struct elf_info *ei, ElfW(Sym) *sym)
 {
   int i;
-  ElfW(Sym) *sym;
+  if(sym->st_name >= ei->strtab->sh_size)
+  {
+    i = ((unsigned) sym - (unsigned) ei->base - ei->symtab->sh_offset) / ei->symtab->sh_entsize;
+    i = 0;
+    ERR("Symbol %d (binfile offset 0x%08x), name outside of string table (st_name = 0x%08x).",
+        i, ei->symtab->sh_offset + ei->symtab->sh_entsize * i,
+        sym->st_name);
+    return NULL;
+  }
+  return !sym->st_name
+           ? "[no-name]"
+           : ei->base + ei->strtab->sh_offset + sym->st_name;
+}
 
+static char *d_elf_resolve(struct elf_info *ei, void *addr)
+{
+  int i;
+  ElfW(Sym) *sym, *minsym = NULL;
+
+DBG("searching pointer 0x%08x", addr);
   for(i = 0; i < ei->nsyms; i++)
   {
     sym = ei->base + ei->symtab->sh_offset + ei->symtab->sh_entsize * i;
     if((void *) sym->st_value == addr)
-    {
-      if(sym->st_name >= ei->strtab->sh_size)
-      {
-        ERR("Symbol %d (binfile offset 0x%08x), name outside of string table (st_name = 0x%08x).",
-            i, ei->symtab->sh_offset + ei->symtab->sh_entsize * i,
-            sym->st_name);
-        return NULL;
-      }
-      return !sym->st_name
-               ? "[no-name]"
-               : ei->base + ei->strtab->sh_offset + sym->st_name;
-    }
+      return d_elf_symname(ei, sym);
+    if(minsym == NULL
+    || (sym->st_value > minsym->st_value && sym->st_value < (ElfW(Addr)) addr))
+      minsym = sym;
   }
 
-  return NULL;
+  return minsym != NULL ? d_elf_symname(ei, minsym) : NULL;
 }
 #endif
 
@@ -335,7 +350,7 @@ void d_stacktrace(int level)
 
   /* get void*'s for all entries on the stack */
   s = backtrace(stt, sizeof(stt)/sizeof(void *));
-  syt  = backtrace_symbols(stt, s);
+  syt = backtrace_symbols(stt, s);
 
   /* open elf file (if system supports elf bin format) */
 #if HAVE_ELF_H
