@@ -171,80 +171,13 @@ struct _tag_d_stacktrace_info {
   Elf_Symndx       hashTableSize;
 } d_stacktrace_info;
 
-#define IO_GET_PT(x,y)   case DT_##x: d_stacktrace_info.y = dyn->d_un.d_ptr; break;
-#define IO_GET_VL(x,y)   case DT_##x: d_stacktrace_info.y = dyn->d_un.d_val; break;
-#define LINUX_LIBC_VABS(x,y,z)  (((((x) * 1000) + (y)) * 1000) + (z))
-#define LINUX_LIBC_MINVER       LINUX_LIBC_VABS(LINUX_LIBC_VMAJ_MIN, \
-                                                LINUX_LIBC_VMIN_MIN, \
-                                                LINUX_LIBC_VREV_MIN)
-#define LINUX_LIBC_MAXVER       LINUX_LIBC_VABS(LINUX_LIBC_VMAJ_MAX, \
-                                                LINUX_LIBC_VMIN_MAX, \
-                                                LINUX_LIBC_VREV_MAX)
-static void d_stacktrace_init(int level)
-{
-  static int initialized = 0;
-  unsigned int vlibc_maj,
-               vlibc_min,
-               vlibc_rev,
-               vlibc;
-  ElfW(Dyn) *dyn;
-
-  /* one time execution */
-  if(initialized)
-    return;
-
-  /* get gnu libc version */
-  if(sscanf(gnu_get_libc_version(), "%u.%u.%u",
-            &vlibc_maj, &vlibc_min, &vlibc_rev) != 3)
-  {
-    vlibc_rev = 0;
-    if(sscanf(gnu_get_libc_version(), "%u.%u", &vlibc_maj, &vlibc_min) != 2)
-      FAT(THIS, "GNU libc version string cannot be parsed (%s)",
-                 gnu_get_libc_version());
-  }
-  vlibc = LINUX_LIBC_VABS(vlibc_maj, vlibc_min, vlibc_rev);
-
-  /* search MAIN link map */
-  d_stacktrace_info.lm = _r_debug.r_map;
-  d_log_level(level, THIS, "link map head '%s' 0x%08x",
-              d_stacktrace_info.lm->l_name, d_stacktrace_info.lm->l_addr);
-
-  /* parse Elf structures */
-  for(dyn = d_stacktrace_info.lm->l_ld; dyn->d_tag != DT_NULL; dyn++)
-    switch(dyn->d_tag)
-    {
-      IO_GET_PT(STRTAB, stringTable)
-      IO_GET_VL(STRSZ,  stringTableSize)
-      IO_GET_PT(SYMTAB, symbolTable)
-      IO_GET_VL(SYMENT, symbolSize)
-      case DT_HASH:
-        d_stacktrace_info.hashTable = vlibc < LINUX_LIBC_VABS(2,3,0)
-                                        ? dyn->d_un.d_ptr + d_stacktrace_info.lm->l_addr
-                                        : dyn->d_un.d_ptr;
-        d_stacktrace_info.hashTableData = ((Elf_Symndx *) d_stacktrace_info.hashTable) + 2;
-        d_stacktrace_info.hashTableSize = *(((Elf_Symndx *) d_stacktrace_info.hashTable) + 0)
-                                        + *(((Elf_Symndx *) d_stacktrace_info.hashTable) + 1);
-        break;
-    }
-
-  /* check mandatory sections are present */
-  d_stacktrace_info.ptok = d_stacktrace_info.stringTable     != 0
-                        && d_stacktrace_info.stringTableSize != 0
-                        && d_stacktrace_info.symbolTable     != 0
-                        && d_stacktrace_info.symbolSize      != 0
-                        && d_stacktrace_info.hashTable       != 0;
-  if(!d_stacktrace_info.ptok)
-    WRN("Mandatory elf sections not found; resolving static symbols is not possible.");
-
-  initialized = -1;
-}
-
 #if HAVE_EXECINFO_H && HAVE_ELF_H
 struct elf_info {
   void       *base;
   off_t       size;
   int         nsyms;
   ElfW(Shdr) *symtab;
+  ElfW(Shdr) *shstrtab;
   ElfW(Shdr) *strtab;
 };
 
@@ -258,24 +191,43 @@ static void d_elf_close(struct elf_info *ei)
   ei->size = 0;
 }
 
+static char *d_elf_shname(struct elf_info *ei, ElfW(Shdr) *shdr)
+{
+  if(!ei->base)
+    return NULL;
+  return ei->base + ei->shstrtab->sh_offset + shdr->sh_name;
+}
+
 static void d_elf_open(int f, struct elf_info *ei)
 {
   ElfW(Ehdr) *ehdr;
   ElfW(Shdr) *shdr;
   struct stat stbuf;
   int i;
+  char *shname;
 
   /* map binary */
-DBG("mapping bin");
   if(fstat(binfile, &stbuf) < 0)
     ERR("Cannot stat binfile.");
   ei->size = stbuf.st_size;
   if((ei->base = mmap(NULL, ei->size, PROT_READ, MAP_PRIVATE, f, 0)) < 0)
     ERR("Cannot mmap binfile.");
 
-  /* parse header and search sections */
-DBG("parsing bin headers");
+  /* get elf header */
   ehdr = ei->base;
+
+  /* get section header string table */
+  if(ehdr->e_shstrndx != SHN_UNDEF
+  && ehdr->e_shstrndx < ehdr->e_shnum)
+  {
+    ei->shstrtab = ei->base + ehdr->e_shoff + ehdr->e_shstrndx * ehdr->e_shentsize;
+  } else {
+    ERR("This file has not a section header string table :(");
+    d_elf_close(ei);
+    return;
+  }
+
+  /* parse header and search sections */
   for(i = 0; i < ehdr->e_shnum; i++)
   {
     shdr = ei->base + ehdr->e_shoff + i * ehdr->e_shentsize;
@@ -285,23 +237,54 @@ DBG("parsing bin headers");
       d_elf_close(ei);
       return;
     }
-    switch(shdr->sh_type)
-    {
-      case SHT_SYMTAB: ei->symtab = shdr; break;
-      case SHT_STRTAB: ei->strtab = shdr; break;
-    }
+    shname = d_elf_shname(ei, shdr);
+    if(!strcmp(shname, ".symtab")) ei->symtab = shdr; else
+    if(!strcmp(shname, ".strtab")) ei->strtab = shdr;
   }
-DBG("  * symtab = 0x%08x", ei->symtab);
-DBG("  * strtab = 0x%08x", ei->strtab);
+  if(!ei->symtab || !ei->strtab)
+  {
+    ERR("No symbol or string table present on main :(");
+    d_elf_close(ei);
+    return;
+  }
   ei->nsyms = ei->symtab->sh_size / ei->symtab->sh_entsize;
   if(ei->symtab->sh_size > (ei->nsyms * ei->symtab->sh_entsize))
     WRN("symtab is not multiple of entsize(%d)", ei->symtab->sh_entsize);
-DBG("  * nsysm  = %d", ei->nsyms);
+}
+
+static int d_elf_chekaddr(struct elf_info *ei, void *addr)
+{
+  ElfW(Ehdr) *ehdr;
+  ElfW(Shdr) *shdr;
+  int i;
+
+  if(!ei->base)
+    return 0;
+
+  ehdr = ei->base;
+  for(i = 0; i < ehdr->e_shnum; i++)
+  {
+    shdr = ei->base + ehdr->e_shoff + i * ehdr->e_shentsize;
+    if((void *) shdr >= ei->base + ei->size)
+    {
+      ERR("Invalid ELF binfile (shdr out of range).");
+      return 0;
+    }
+    if(shdr->sh_type == SHT_PROGBITS
+    && (ElfW(Addr)) addr >= shdr->sh_addr
+    && (ElfW(Addr)) addr <= shdr->sh_addr + shdr->sh_size)
+      return -1;
+  }
+  return 0;
 }
 
 static char *d_elf_symname(struct elf_info *ei, ElfW(Sym) *sym)
 {
   int i;
+
+  if(!ei->base)
+    return NULL;
+
   if(sym->st_name >= ei->strtab->sh_size)
   {
     i = ((unsigned) sym - (unsigned) ei->base - ei->symtab->sh_offset) / ei->symtab->sh_entsize;
@@ -316,23 +299,25 @@ static char *d_elf_symname(struct elf_info *ei, ElfW(Sym) *sym)
            : ei->base + ei->strtab->sh_offset + sym->st_name;
 }
 
-static char *d_elf_resolve(struct elf_info *ei, void *addr)
+static ElfW(Sym) *d_elf_resolve(struct elf_info *ei, void *addr)
 {
   int i;
   ElfW(Sym) *sym, *minsym = NULL;
 
-DBG("searching pointer 0x%08x", addr);
+  if(!ei->base || !d_elf_chekaddr(ei, addr))
+    return NULL;
+
   for(i = 0; i < ei->nsyms; i++)
   {
     sym = ei->base + ei->symtab->sh_offset + ei->symtab->sh_entsize * i;
-    if((void *) sym->st_value == addr)
-      return d_elf_symname(ei, sym);
     if(minsym == NULL
-    || (sym->st_value > minsym->st_value && sym->st_value < (ElfW(Addr)) addr))
+    || (minsym->st_value < sym->st_value && sym->st_value < (ElfW(Addr)) addr))
       minsym = sym;
+    if((void *) sym->st_value == addr)
+      return sym;
   }
 
-  return minsym != NULL ? d_elf_symname(ei, minsym) : NULL;
+  return minsym;
 }
 #endif
 
@@ -344,9 +329,9 @@ void d_stacktrace(int level)
   size_t s, i;
 #if HAVE_ELF_H
   struct elf_info ei;
+  ElfW(Sym) *sym;
+  char buff[512];
 #endif
-
-  d_stacktrace_init(level);
 
   /* get void*'s for all entries on the stack */
   s = backtrace(stt, sizeof(stt)/sizeof(void *));
@@ -362,11 +347,17 @@ void d_stacktrace(int level)
   for(i = 0; i < s; i++)
   {
 #if HAVE_ELF_H
-    name = d_elf_resolve(&ei, stt[i]);
+    if((sym = d_elf_resolve(&ei, stt[i])) != NULL)
+    {
+      snprintf(buff, sizeof(buff), "MAIN(%s+%d) [0x%08x]",
+                 d_elf_symname(&ei, sym),
+                 ((UINT_POINTER) stt[i]) - sym->st_value,
+                 ((UINT_POINTER) stt[i]));
+      name = buff;
+    } else
 #endif
-    if(!name)
       name = syt[i];
-    d_log_level(level, THIS, "%s at 0x%08x", name, (UINT_POINTER) stt[i]);
+    d_log_level(level, THIS, "%s", name, stt[i]);
   }
   d_log_level(level, THIS, "<< end of stacktrace >>");
 
