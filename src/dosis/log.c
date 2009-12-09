@@ -177,7 +177,7 @@ static void log_fini(void)
 #endif
 }
 
-void log_init(char *argv0)
+void log_init(void)
 {
   /* init log file */
   logfile = stderr;
@@ -187,7 +187,7 @@ void log_init(char *argv0)
   if((lst = dlopen("libstacktrace.so", RTLD_LAZY)) != NULL)
   {
     void (*stacktrace_init)(int) = dlsym(lst, "stacktrace_init");
-    stacktrace_init(-1);
+    stacktrace_init(0);
   } else
     DBG("Cannot load libstacktrace.");
 #endif

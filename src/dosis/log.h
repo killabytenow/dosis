@@ -60,7 +60,7 @@ void d_fat(char *file, char *function, char *format, ...) __attribute__ ((__nore
 
 void d_stacktrace(int level);
 
-void log_init(char *argv0);
+void log_init(void);
 
 #ifdef __cplusplus
 }
