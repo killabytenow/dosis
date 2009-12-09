@@ -141,8 +141,7 @@ AC_CHECK_HEADERS([getopt.h          \
                  [],
                  AC_MSG_ERROR([Essential header file not found.]))
 
-AC_CHECK_HEADERS([execinfo.h], [], [])
-AC_CHECK_HEADERS([elf.h link.h gnu/libc-version.h], [], [])
+AC_CHECK_HEADERS([dlfcn.h], [], [])
 
 AC_CHECK_TYPES([struct sockaddr_in],
                [], [I need at least a 'struct sockaddr_in'],
@@ -166,11 +165,12 @@ AC_ARG_WITH([ssl],
             [ac_cv_use_ssl=$withval],
             [ac_cv_use_ssl=yes])
 
-AC_CHECK_LIB(ipq,     ipq_read,       [], AC_MSG_ERROR("Missing library."))
-AC_CHECK_LIB(m,       floor,          [], AC_MSG_ERROR("Missing math library."))
-AC_CHECK_LIB(net,     libnet_init,    [], AC_MSG_ERROR("Missing library."))
-AC_CHECK_LIB(pthread, pthread_create, [], AC_MSG_ERROR("Missing library."))
-AC_CHECK_LIB(rt,      clock_gettime,  [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(ipq,        ipq_read,       [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(m,          floor,          [], AC_MSG_ERROR("Missing math library."))
+AC_CHECK_LIB(net,        libnet_init,    [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(pthread,    pthread_create, [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(rt,         clock_gettime,  [], AC_MSG_ERROR("Missing library."))
+AC_CHECK_LIB(dl,         dlopen,         [], [])
 
 dnl ---------------------------------------------------------------------------
 dnl SSL configuration
