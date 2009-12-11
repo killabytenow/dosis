@@ -50,13 +50,13 @@ extern "C" {
 
 #define STACKTRACE(...)       d_stacktrace(THIS, __VA_ARGS__)
 
-void d_log_level(int level, char *file, char *function, char *format, ...);
-void d_dbg(char *file, char *function, char *format, ...);
-void d_db2(char *file, char *function, char *format, ...);
-void d_log(char *file, char *function, char *format, ...);
-void d_wrn(char *file, char *function, char *format, ...);
-void d_err(char *file, char *function, char *format, ...);
-void d_fat(char *file, char *function, char *format, ...) __attribute__ ((__noreturn__));;
+void d_log_level(int level, char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 4, 5)));
+void d_dbg(char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 3, 4)));
+void d_db2(char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 3, 4)));
+void d_log(char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 3, 4)));
+void d_wrn(char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 3, 4)));
+void d_err(char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 3, 4)));
+void d_fat(char *file, char *function, char *format, ...) __attribute__ ((__format__ (__printf__, 3, 4), __noreturn__));;
 
 void d_stacktrace(int level);
 

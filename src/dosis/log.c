@@ -30,7 +30,7 @@
 #include "log.h"
 
 #if HAVE_DLFCN_H
-void *lst;
+void *lst = NULL;
 #endif
 
 /******************************************************************************
@@ -174,6 +174,7 @@ static void log_fini(void)
 #if HAVE_DLFCN_H
   if(lst)
     dlclose(lst);
+  lst = NULL;
 #endif
 }
 
@@ -187,7 +188,16 @@ void log_init(void)
   if((lst = dlopen("libstacktrace.so", RTLD_LAZY)) != NULL)
   {
     void (*stacktrace_init)(int) = dlsym(lst, "stacktrace_init");
-    stacktrace_init(0);
+    int  (*stacktrace_version_check)(int, int, int) = dlsym(lst, "stacktrace_version_check");
+
+    if(stacktrace_version_check
+    && stacktrace_version_check(1, 1, 2))
+    {
+      stacktrace_init(0);
+    } else {
+      dlclose(lst);
+      lst = NULL;
+    }
   } else
     DBG("Cannot load libstacktrace.");
 #endif

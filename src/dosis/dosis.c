@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 {
   SNODE *script;
 
-  log_init(*argv);
+  log_init();
   tea_init();
   script_init();
 #ifdef HAVE_SSL
