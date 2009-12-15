@@ -27,21 +27,8 @@
 #define __TEA_H__
 
 #include "pthreadex.h"
+#include "mqueue.h"
 #include "script.h"
-
-typedef struct _tag_TEA_MSG {
-  unsigned int         s;    /* msg size                               */
-  unsigned char       *b;    /* msg bytes                              */
-  unsigned int         bs;   /* real buffer size (bs always >= than s) */
-  struct _tag_TEA_MSG *prev; /* (double linked list) previous message  */
-  struct _tag_TEA_MSG *next; /* (double linked list) next message      */
-} TEA_MSG;
-
-typedef struct _tag_TEA_MSG_QUEUE {
-  TEA_MSG           *first;  /* first msg in list                      */
-  TEA_MSG           *last;   /* last msg (adding optimization)         */
-  pthreadex_mutex_t  mutex;  /* mutual exclusion lock to avoid RC      */
-} TEA_MSG_QUEUE;
 
 typedef struct _tag_THREAD_WORK {
   /* generic info */
@@ -71,17 +58,6 @@ typedef struct _tag_TEA_OBJECT {
 /*- THREAD MANAGAMENT -------------------------------------------------------*/
 int  tea_thread_msg_push(int tid, TEA_MSG *m);
 int  tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
-
-/*- MQUEUE MANAGAMENT -------------------------------------------------------*/
-void     tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
-TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq);
-
-/*- MESSAGE MANAGAMENT ------------------------------------------------------*/
-TEA_MSG *tea_msg_allocate(void);
-void     tea_msg_destroy(TEA_MSG *m);
-void     tea_msg_fill(TEA_MSG *m, char *b, unsigned int s);
-TEA_MSG *tea_msg_get(void);
-void     tea_msg_release(TEA_MSG *msg);
 
 /*- NODE UTILITIES ----------------------------------------------------------*/
 char    *tea_snode_get_var(SNODE *n);

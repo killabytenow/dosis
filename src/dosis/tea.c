@@ -23,10 +23,13 @@
  *
  *****************************************************************************/
 
+/*
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+*/
+#include "config.h"
 
 #include "dosconfig.h"
 #include "dosis.h"
@@ -43,148 +46,12 @@
 
 static THREAD_WORK     **ttable;
 static pthreadex_lock_t  ttable_lock;
-static TEA_MSG_QUEUE    *msg_free;
 
 typedef struct {
   SNODE *first;
   int    i1, i2, i;
   SNODE *c;
 } TEA_ITER;
-
-/*---------------------------------------------------------------------------*
- * MSG AND MQUEUE MANAGAMENT
- *
- *   MQUEUE objects are threadsafe queues for making FIFO queues of raw
- *   network messages. This interface provides a simple message passing
- *   facility to deliver raw packets from the listener threads to other
- *   types of threads that need a raw network input.
- *---------------------------------------------------------------------------*/
-
-static TEA_MSG_QUEUE *tea_mqueue_create(void)
-{
-  TEA_MSG_QUEUE *mq;
-
-  if((mq = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
-    FAT("No memory for a tea message queue.");
-  pthreadex_mutex_init(&(mq->mutex));
-
-  return mq;
-}
-
-static void tea_mqueue_destroy(TEA_MSG_QUEUE *mq)
-{
-  TEA_MSG *m;
-
-  /* empty queue */
-  while((m = tea_mqueue_shift(mq)) != NULL)
-    if(mq == msg_free)
-      tea_msg_destroy(m);
-    else
-      tea_msg_release(m);
-
-  /* destroy mutex */
-  pthreadex_mutex_destroy(&mq->mutex);
-
-  /* free queue */
-  free(mq);
-}
-
-void tea_mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
-{
-  pthreadex_mutex_begin(&(mq->mutex));
-  m->next = NULL;
-  m->prev = mq->last;
-  if(mq->last)
-    mq->last->next = m;
-  else
-    mq->first = m;
-  mq->last = m;
-  pthreadex_mutex_end();
-}
-
-TEA_MSG *tea_mqueue_shift(TEA_MSG_QUEUE *mq)
-{
-  TEA_MSG *m;
-
-  if(!mq)
-    return NULL;
-
-  pthreadex_mutex_begin(&(mq->mutex));
-  m = mq->first;
-  if(m)
-  {
-    mq->first = m->next;
-    if(mq->first)
-      mq->first->prev = NULL;
-    else
-      mq->last = NULL;
-    m->prev = NULL;
-    m->next = NULL;
-  }
-  pthreadex_mutex_end();
-
-  return m;
-}
-
-/*---------------------------------------------------------------------------*
- * MESSAGE MANAGAMENT
- *
- *   Following functions create, get, release and destroy messages.
- *---------------------------------------------------------------------------*/
-
-TEA_MSG *tea_msg_allocate(void)
-{
-  TEA_MSG *m;
-
-  if((m = tea_mqueue_shift(msg_free)) == NULL)
-    if((m = calloc(1, sizeof(TEA_MSG))) == NULL)
-      FAT("No memory for msg.");
-
-  m->b  = NULL;
-  m->s  = 0;
-  m->bs = 0;
-
-  return m;
-}
-
-void tea_msg_destroy(TEA_MSG *m)
-{
-  free(m->b);
-  m->b  = NULL;
-  m->s  = 0;
-  m->bs = 0;
-}
-
-TEA_MSG *tea_msg_get(void)
-{
-  TEA_MSG *m;
-
-  if((m = tea_mqueue_shift(msg_free)) == NULL)
-    m = tea_msg_allocate();
-
-  return m;
-}
-
-void tea_msg_release(TEA_MSG *m)
-{
-  tea_mqueue_push(msg_free, m);
-}
-
-void tea_msg_fill(TEA_MSG *m, char *b, unsigned int s)
-{
-  /* get moar mem, if necessary */
-  if(s > m->bs)
-  {
-    if((m->b = realloc(m->b, s)) == NULL)
-      FAT("No memory for msg of size %d.", s);
-    m->bs = s;
-  }
-
-  /* copy msg */
-  m->s  = s;
-  if(s > 0)
-    memcpy(m->b, b, s);
-}
 
 /*---------------------------------------------------------------------------*
  * THREAD MANAGAMENT
@@ -217,7 +84,7 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
     if(mq)
     {
       DBG2("  [cleanup %d] mqueue cleanup", tw->id);
-      tea_mqueue_destroy(mq);
+      mqueue_destroy(mq);
     }
   }
 
@@ -244,6 +111,7 @@ static void *tea_thread(void *data)
   {
     while(1)
     {
+      /* XXX TIMEOUT HERE?? XXX */
       pthreadex_flag_wait(&(tw->mwaiting));
       tw->methods->listen(tw);
     }
@@ -277,7 +145,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 
   /* check methods */
   tw->mqueue = tw->methods->listen
-                 ? tea_mqueue_create()
+                 ? mqueue_create()
                  : NULL;
   pthreadex_flag_init(&(tw->mwaiting), 0);
 
@@ -391,10 +259,10 @@ int tea_thread_msg_push(int tid, TEA_MSG *m)
   {
     if(ttable[tid]->mqueue)
     {
-      tea_mqueue_push(ttable[tid]->mqueue, m);
+      mqueue_push(ttable[tid]->mqueue, m);
       pthreadex_flag_up(&(ttable[tid]->mwaiting));
     } else
-      tea_msg_release(m);
+      msg_release(m);
   } else
     r = -1;
 
@@ -617,7 +485,8 @@ static void tea_fini(void)
   }
 
   pthreadex_lock_fini(&ttable_lock);
-  tea_mqueue_destroy(msg_free);
+
+  mqueue_fini();
 
   DBG("tea timer finished.");
 }
@@ -630,7 +499,7 @@ void tea_init(void)
   if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
     FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
 
-  msg_free = tea_mqueue_create();
+  mqueue_init();
 }
 
 void tea_timer(SNODE *program)

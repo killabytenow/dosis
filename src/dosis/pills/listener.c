@@ -271,14 +271,14 @@ repeat_search:
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
       /* copy this msg and send to the thread */
-      tmsg = tea_msg_get();
-      tea_msg_fill(tmsg, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+      tmsg = msg_get();
+      msg_fill(tmsg, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
       r = tea_thread_msg_push(id, tmsg);
 
       /* if the msg cannot be pushed... repeat this until it is pushed */
       if(r < 0)
       {
-        tea_msg_release(tmsg);
+        msg_release(tmsg);
         pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
         pthread_testcancel();
         goto repeat_search;

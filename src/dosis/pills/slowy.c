@@ -29,7 +29,7 @@
 
 #include "dosis.h"
 #include "dosconfig.h"
-#include "tea.h"
+#include "mqueue.h"
 #include "slowy.h"
 #include "lnet.h"
 #include "payload.h"
@@ -168,7 +168,7 @@ static void slowy__listen(THREAD_WORK *tw)
   double t;
 
   /* listen the radio */
-  while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
+  while((m = mqueue_shift(tw->mqueue)) != NULL)
   {
     TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
             IP_PROTOCOL(m->b),
@@ -278,7 +278,7 @@ static void slowy__listen(THREAD_WORK *tw)
     }
 
     /* release msg buffer */
-    tea_msg_release(m);
+    msg_release(m);
   }
 
   /* send scheduled packets */
@@ -326,6 +326,9 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
       TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
   }
+
+  /* XXX set defaults XXX */
+  tc->window = 13373;
 
   /* select attack type */
   switch(command->command.thc.to->type)
@@ -410,6 +413,7 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost   = %s", buff);
     TDBG2("config.options.payload = %d bytes", tc->payload_size);
+    TDBG2("config.options.winow   = %d bytes", tc->window);
   }
 
   return 0;

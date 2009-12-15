@@ -72,7 +72,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
   TEA_MSG *m;
 
   /* listen the radio */
-  while((m = tea_mqueue_shift(tw->mqueue)) != NULL)
+  while((m = mqueue_shift(tw->mqueue)) != NULL)
   {
     TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d,syn=%d,ack=%d) => [%08x/%08x] >>",
             IP_PROTOCOL(m->b),
@@ -129,7 +129,7 @@ static void tcpopen__listen(THREAD_WORK *tw)
 #endif
 
     /* release msg buffer */
-    tea_msg_release(m);
+    msg_release(m);
   }
 }
 
@@ -221,8 +221,8 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    TDBG2("[%d] config.options.dhost   = %s", buff);
-    TDBG2("[%d] config.options.payload = %d bytes", tc->payload_size);
+    TDBG2("config.options.dhost   = %s", buff);
+    TDBG2("config.options.payload = %d bytes", tc->payload_size);
   }
 
   return 0;

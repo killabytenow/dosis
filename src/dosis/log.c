@@ -180,6 +180,11 @@ static void log_fini(void)
 
 void log_init(void)
 {
+#if HAVE_DLFCN_H
+  int  (*stacktrace_version_check)(int, int, int);
+  void (*stacktrace_init)(int);
+#endif
+
   /* init log file */
   logfile = stderr;
 
@@ -187,13 +192,13 @@ void log_init(void)
 #if HAVE_DLFCN_H
   if((lst = dlopen("libstacktrace.so", RTLD_LAZY)) != NULL)
   {
-    void (*stacktrace_init)(int) = dlsym(lst, "stacktrace_init");
-    int  (*stacktrace_version_check)(int, int, int) = dlsym(lst, "stacktrace_version_check");
+    stacktrace_version_check = dlsym(lst, "stacktrace_version_check");
 
-    if(stacktrace_version_check
-    && stacktrace_version_check(1, 1, 2))
+    if(!dlerror() && stacktrace_version_check(1, 1, 2))
     {
-      stacktrace_init(0);
+      stacktrace_init = dlsym(lst, "stacktrace_init");
+      if(!dlerror())
+        stacktrace_init(0);
     } else {
       dlclose(lst);
       lst = NULL;

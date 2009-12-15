@@ -38,7 +38,7 @@
 ? THOST="127.0.0.1"
 ? TPORT="80"
 ? SRT="10.0"
-? RT="50.0"
+? RT="20.0"
 
 # script
 0.0 ON 1 LISTEN
