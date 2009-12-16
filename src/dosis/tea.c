@@ -23,12 +23,6 @@
  *
  *****************************************************************************/
 
-/*
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-*/
 #include "config.h"
 
 #include "dosconfig.h"
@@ -107,16 +101,23 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
-  if(tw->methods->listen)
+  while(1)
   {
-    while(1)
+    /* set timeout/wait condition */
+    XXX
+
+    /* do actions */
+    if(tw->methods->listen)
     {
-      /* XXX TIMEOUT HERE?? XXX */
-      pthreadex_flag_wait(&(tw->mwaiting));
-      tw->methods->listen(tw);
-    }
-  } else
-    tw->methods->thread(tw);
+      while(1)
+      {
+        /* XXX TIMEOUT HERE?? XXX */
+        pthreadex_flag_wait(&(tw->mwaiting));
+        tw->methods->listen(tw);
+      }
+    } else
+      tw->methods->thread(tw);
+  }
 
   /* finish him */
   pthread_cleanup_pop(1);

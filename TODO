@@ -1,7 +1,22 @@
 TODO LIST
 =========
 
-- permit choose seq generation algorithm for tcpraw thread.
+- implement main loop in another way:
+    current situation:
+      - two types of loops
+          - send
+          - receive
+          - wtf is a listener?
+      - send loops manage their own timer
+      - receive loops depend on a flag mutex, so they are blocked indefinetely
+        until a message arrives.
+    desired situation:
+      - easier to understand
+      - only one type of thread? or three? four? five?
+      - timer management easier for threads
+      - thread config more homogeneus.
+          - perhaps config hashtable?
+- allow to choose seq generation algorithm for tcpraw thread.
 - tcpraw:
     - set window to 0, and persisting.
     - acknowledge before receive.

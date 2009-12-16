@@ -40,8 +40,9 @@ typedef struct _tag_THREAD_WORK {
   /* listener info */
   TEA_MSG_QUEUE           *mqueue;
   pthreadex_flag_t         mwaiting;
-  struct _tag_THREAD_WORK *prev_listener;
-  struct _tag_THREAD_WORK *next_listener;
+  /* XXX optimization not implemented XXX */
+  /*struct _tag_THREAD_WORK *prev_listener;*/
+  /*struct _tag_THREAD_WORK *next_listener;*/
 } THREAD_WORK;
 
 typedef struct _tag_TEA_OBJECT {
