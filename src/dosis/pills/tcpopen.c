@@ -66,14 +66,21 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
          ? -1 : 0;
 }
 
-static void tcpopen__listen(THREAD_WORK *tw)
+static void tcpopen__thread(THREAD_WORK *tw)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
   TEA_MSG *m;
 
   /* listen the radio */
-  while((m = mqueue_shift(tw->mqueue)) != NULL)
+  while(1)
   {
+    /* check for messages */
+    pthreadex_flag_wait(&(tw->mwaiting));
+
+    /* shift a message */
+    if((m = mqueue_shift(tw->mqueue)) == NULL)
+      continue;
+
     TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d,syn=%d,ack=%d) => [%08x/%08x] >>",
             IP_PROTOCOL(m->b),
             (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
@@ -260,7 +267,7 @@ TEA_OBJECT teaTCPOPEN = {
   .name         = "TCPOPEN",
   .configure    = tcpopen__configure,
   .cleanup      = tcpopen__cleanup,
-  .listen       = tcpopen__listen,
+  .thread       = tcpopen__thread,
   .listen_check = tcpopen__listen_check,
 };
 

@@ -101,23 +101,22 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
-  while(1)
-  {
-    /* set timeout/wait condition */
-    XXX
+  tw->methods->thread(tw);
 
-    /* do actions */
-    if(tw->methods->listen)
-    {
-      while(1)
-      {
-        /* XXX TIMEOUT HERE?? XXX */
-        pthreadex_flag_wait(&(tw->mwaiting));
-        tw->methods->listen(tw);
-      }
-    } else
-      tw->methods->thread(tw);
-  }
+  /*
+   *# set timeout/wait condition
+   *XXX
+   *# do actions
+   *if(tw->methods->listen)
+   *{
+   *  while(1)
+   *  {
+   *    # XXX TIMEOUT HERE?? XXX
+   *    pthreadex_flag_wait(&(tw->mwaiting));
+   *    tw->methods->listen(tw);
+   *  }
+   *} else
+   */
 
   /* finish him */
   pthread_cleanup_pop(1);

