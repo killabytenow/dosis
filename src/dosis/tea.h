@@ -57,8 +57,10 @@ typedef struct _tag_TEA_OBJECT {
 } TEA_OBJECT;
 
 /*- THREAD MANAGAMENT -------------------------------------------------------*/
-int  tea_thread_msg_push(int tid, TEA_MSG *m);
-int  tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
+TEA_MSG *tea_thread_msg_get(THREAD_WORK *tw);
+TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw);
+int      tea_thread_msg_push(int tid, TEA_MSG *m);
+int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
 
 /*- NODE UTILITIES ----------------------------------------------------------*/
 char    *tea_snode_get_var(SNODE *n);

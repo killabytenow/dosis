@@ -197,7 +197,7 @@ static void slowy__listen(THREAD_WORK *tw)
        PROCESS INPUT PACKETS
       ------------------------------------------------------------------------*/
 
-    while((m = mqueue_shift(tw->mqueue)) != NULL)
+    while((m = tea_thread_msg_get(tw)) != NULL)
     {
       TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
               IP_PROTOCOL(m->b),

@@ -249,6 +249,23 @@ int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
   return stid;
 }
 
+TEA_MSG *tea_thread_msg_get(THREAD_WORK *tw)
+{
+  return mqueue_shift(tw->mqueue);
+}
+
+TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw)
+{
+  TEA_MSG *m;
+
+  do {
+    pthreadex_flag_wait(&(tw->mwaiting));
+    m = mqueue_shift(tw->mqueue);
+  } while(!m);
+
+  return m;
+}
+
 int tea_thread_msg_push(int tid, TEA_MSG *m)
 {
   int r = 0;
