@@ -106,6 +106,8 @@ static void dos_config_parse_command(int argc, char **argv)
       case 'o':
           if(!optarg || strlen(optarg) == 0)
             FAT("Required a valid filename.");
+          if(cfg.output)
+            free(cfg.output);
           if((cfg.output = strdup(optarg)) == NULL)
             FAT("No mem for ouput filename.");
           break;
@@ -138,8 +140,7 @@ static void dos_config_parse_command(int argc, char **argv)
             FAT("A minimum of 1 thread is needed.");
           break;
       case 'v':
-          if(!optarg)
-            s = "3";
+          s = optarg ? optarg : "3";
           cfg.verbosity = atoi(s);
           break;
       case 'Z':
@@ -238,11 +239,11 @@ void dos_get_routes(void)
     READ_FIELD("irtt",        '\n'); /* - IRTT        */
 
     DBG("+ iface %s.", r->iface);
-    ip_addr_snprintf(&r->destination, sizeof(buff), buff);
+    ip_addr_snprintf(&r->destination, (int) sizeof(buff), buff);
     DBG("· destination %s.", buff);
-    ip_addr_snprintf(&r->gateway, sizeof(buff), buff);
+    ip_addr_snprintf(&r->gateway, (int) sizeof(buff), buff);
     DBG("· gateway %s.", buff);
-    ip_addr_snprintf(&r->mask, sizeof(buff), buff);
+    ip_addr_snprintf(&r->mask, (int) sizeof(buff), buff);
     DBG("· mask %s.", buff);
   }
 
