@@ -75,11 +75,7 @@ static void tcpopen__thread(THREAD_WORK *tw)
   while(1)
   {
     /* check for messages */
-    pthreadex_flag_wait(&(tw->mwaiting));
-
-    /* shift a message */
-    if((m = mqueue_shift(tw->mqueue)) == NULL)
-      continue;
+    m = tea_thread_msg_wait(tw);
 
     TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d,syn=%d,ack=%d) => [%08x/%08x] >>",
             IP_PROTOCOL(m->b),
