@@ -219,7 +219,7 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
     char buff[255];
 
     TDBG2("config.periodic.n     = %d", tu->npackets);
-    TDBG2("config.periodic.ratio = %d", tu->hitratio);
+    TDBG2("config.periodic.ratio = %f", tu->hitratio);
 
     ip_addr_snprintf(&tu->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost  = %s", buff);
