@@ -17,6 +17,8 @@ TODO LIST
       - thread config more homogeneus.
           - perhaps config hashtable?
 - allow to choose seq generation algorithm for tcpraw thread.
+- tcpopen:
+    - integrste send function.
 - tcpraw:
     - set window to 0, and persisting.
     - acknowledge before receive.
@@ -32,3 +34,5 @@ TODO LIST
     5) ack again A bytes
 - monkey in the middle
 - slow loris
+- make a free-list in snode (a list for freeing memory at program
+  finalizatoin).
