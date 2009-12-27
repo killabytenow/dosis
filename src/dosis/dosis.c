@@ -48,6 +48,13 @@ void handle_termination__signal(int s)
   }
 }
 
+void handle_crash__signal(int s)
+{
+  ERR("Snow crash!");
+  d_stacktrace(LOG_LEVEL_DEBUG);
+  abort();
+}
+
 int handle_pthreadex_eintr(void)
 {
   ERR("EINTR at pthreadex!");
@@ -70,7 +77,10 @@ int main(int argc, char *argv[])
   if(signal(SIGHUP,  handle_termination__signal) == SIG_ERR
   || signal(SIGINT,  handle_termination__signal) == SIG_ERR
   || signal(SIGQUIT, handle_termination__signal) == SIG_ERR
-  || signal(SIGTERM, handle_termination__signal) == SIG_ERR)
+  || signal(SIGTERM, handle_termination__signal) == SIG_ERR
+  || signal(SIGILL,  handle_crash__signal) == SIG_ERR
+  || signal(SIGFPE,  handle_crash__signal) == SIG_ERR
+  || signal(SIGSEGV, handle_crash__signal) == SIG_ERR)
     FAT("Cannot install signal handlers.");
 
   /* read command line parameters */

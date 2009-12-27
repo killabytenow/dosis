@@ -163,8 +163,8 @@ void d_stacktrace(int level)
     void *(*stacktrace)(void) = dlsym(lst, "stacktrace");
     stacktrace();
   } else
-    DBG("stacktrace library not available.");
 #endif
+    DBG("stacktrace library not available.");
 }
 
 static void log_fini(void)
@@ -198,7 +198,11 @@ void log_init(void)
     {
       stacktrace_init = dlsym(lst, "stacktrace_init");
       if(!dlerror())
+      {
         stacktrace_init(0);
+  ERR("XXXXXX %d", stacktrace_version_check(1, 1, 2));
+        DBG("libstacktrace loaded.");
+      }
     } else {
       dlclose(lst);
       lst = NULL;
