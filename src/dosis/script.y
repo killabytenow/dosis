@@ -57,19 +57,13 @@
 %type  <snode>    input
 %type  <snode>    var nint nfloat ntime string
 %type  <snode>    list_num_enum list_num range selection
-%type  <snode>    o_ssl o_src o_dst o_flags o_payload o_cwait o_rwait o_mss o_window
-%type  <snode>    rawp_opt
-%type  <snode>    tcp_opt tcp_opts
-%type  <snode>    udp_opt udp_opts
-%type  <snode>    tcpo_opt tcpo_opts
-%type  <snode>    tcpr_opt tcpr_opts
-%type  <snode>    pattern
+%type  <snode>    opts pattern
 %type  <snode>    o_ntime command
 %type  <snode>    to
-%token            PERIODIC
+%token            PERIODIC _FILE RANDOM
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
-%token            OPT_PAYLOAD OPT_FILE OPT_RANDOM OPT_NULL OPT_DLL OPT_SSL OPT_ZWIN
+%token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_ZWIN
 %token            OPT_WINDOW
 %token            TO_LISTEN TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
@@ -115,12 +109,16 @@ ntime: '+' nfloat { $$ = new_node(TYPE_NTIME);
                     $$->ntime.n   = $1; }
      ;
 
-string: STRING  { $$ = new_node(TYPE_STRING);
-                  $$->string.parse = -1;
-                  $$->string.value = $1; }
-      | LITERAL { $$ = new_node(TYPE_STRING);
-                  $$->string.parse = 0;
-                  $$->string.value = $1; }
+string: STRING                  { $$ = new_node(TYPE_STRING);
+                                  $$->string.parse = -1;
+                                  $$->string.value = $1; }
+      | LITERAL                 { $$ = new_node(TYPE_STRING);
+                                  $$->string.parse = 0;
+                                  $$->string.value = $1; }
+      | RANDOM '(' nint ')'     { $$ = new_node(TYPE_RANDOM);
+                                  $$->random.len = $3; }
+      | _FILE '(' string ')'    { $$ = new_node(TYPE_FILE);
+                                  $$->random.path = $3; }
       | var
       /*
       | NFLOAT  { $$ = new_node(TYPE_NFLOAT);
@@ -157,102 +155,30 @@ selection: range
          ;
 
 /*---------------------------------------------------------------------------
-    OPTIONS STOCK (all possible dosis command parameters - not associated to)
+    OPTIONS (all possible dosis command parameters)
   ---------------------------------------------------------------------------*/
 
-o_ssl: OPT_SSL                   { $$ = new_node(TYPE_OPT_SSL);
-                                   $$->option.sslcipher = NULL; }
-     | OPT_SSL string            { $$ = new_node(TYPE_OPT_SSL);
-                                   $$->option.sslcipher = $2; }
-     ;
-o_src: OPT_SRC string            { $$ = new_node(TYPE_OPT_SRC);
-                                   $$->option.addr = $2;
-                                   $$->option.port = NULL; }
-     | OPT_SRC string nint       { $$ = new_node(TYPE_OPT_SRC);
-                                   $$->option.addr = $2;
-                                   $$->option.port = $3; }
-     ;
-o_dst: OPT_DST string            { $$ = new_node(TYPE_OPT_DST);
-                                   $$->option.addr = $2;
-                                   $$->option.port = NULL; }
-     | OPT_DST string nint       { $$ = new_node(TYPE_OPT_DST);
-                                   $$->option.addr = $2;
-                                   $$->option.port = $3; }
-     ;
-o_mss: OPT_MSS nint              { $$ = new_node(TYPE_OPT_MSS);
-                                   $$->option.mss = $2; }
-       ;
-o_flags: OPT_FLAGS string        { $$ = new_node(TYPE_OPT_FLAGS);
-                                   $$->option.flags = $2; }
-       ;
-o_payload: OPT_PAYLOAD string    { $$ = new_node(TYPE_OPT_PAYLOAD_STR);
-                                   $$->option.payload = $2; }
-         | OPT_PAYLOAD OPT_NULL  { $$ = new_node(TYPE_OPT_PAYLOAD_NULL); }
-         | OPT_PAYLOAD OPT_RANDOM '(' nint ')'
-                                 { $$ = new_node(TYPE_OPT_PAYLOAD_RANDOM);
-                                   $$->option.payload = $4; }
-         | OPT_PAYLOAD OPT_FILE '(' string ')'
-                                 { $$ = new_node(TYPE_OPT_PAYLOAD_FILE);
-                                   $$->option.payload = $4; }
+opts:
+  /* none */                { $$ = hash_new(); }
+ /* SSL [ciphersuite] */
+| OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_add_entry($$, "payload",   NULL); }
+| OPT_PAYLOAD string opts   { $$ = $3; hash_add_entry($$, "payload",   $2);   }
+| OPT_SSL opts              { $$ = $2; hash_add_entry($$, "ssl",       NULL); }
+| OPT_SSL string opts       { $$ = $3; hash_add_entry($$, "ssl",       $2);   }
+| OPT_SRC string opts       { $$ = $3; hash_add_entry($$, "src_addr",  $2);   }
+| OPT_SRC string nint opts  { $$ = $4; hash_add_entry($$, "src_addr",  $2);
+                                       hash_add_entry($$, "src_port",  $3);   }
+| OPT_DST string opts       { $$ = $3; hash_add_entry($$, "dst_addr",  $2);   }
+| OPT_DST string nint opts  { $$ = $4; hash_add_entry($$, "dst_addr",  $2);
+                                       hash_add_entry($$, "dst_port",  $3);   }
+| OPT_MSS nint opts         { $$ = $3; hash_add_entry($$, "tcp_mss",   $2);   }
+| OPT_FLAGS string opts     { $$ = $3; hash_add_entry($$, "tcp_flags", $2);   }
+| OPT_CWAIT nint opts       { $$ = $3; hash_add_entry($$, "tcp_cwait", $2);   }
+| OPT_RWAIT nint opts       { $$ = $3; hash_add_entry($$, "tcp_rwait", $2);   }
+| OPT_WINDOW nint opts      { $$ = $3; hash_add_entry($$, "tcp_win",   $2);   }
        /*| OPT_PAYLOAD OPT_DLL '(' string ')'
                                  { $$ = new_node(TYPE_OPT_PAYLOAD_DLL);
                                    $$->option.payload = $4; }*/
-         ;
-o_cwait: OPT_CWAIT nint          { $$ = new_node(TYPE_OPT_CWAIT);
-                                   $$->option.cwait = $2; }
-       ;
-o_rwait: OPT_RWAIT nint          { $$ = new_node(TYPE_OPT_RWAIT);
-                                   $$->option.rwait = $2; }
-       ;
-o_window: OPT_WINDOW nint        { $$ = new_node(TYPE_OPT_WINDOW);
-                                   $$->option.window = $2; }
-
-/*---------------------------------------------------------------------------
-    COMMANDS' OPTIONS
-  ---------------------------------------------------------------------------*/
-
-/* raw packet cmd basic options */
-rawp_opt: o_src
-        | o_dst
-        | o_payload
-        ;
-
-/* command TCP (TCP/SSL) */
-tcp_opt: o_ssl
-       | o_dst
-       | o_payload
-       | o_cwait
-       | o_rwait
-       ;
-/* command UDP */
-udp_opt: rawp_opt ;
-
-/* command TCP OPEN */
-tcpo_opt: rawp_opt ;
-
-/* command TCP RAW */
-tcpr_opt: rawp_opt
-        | o_flags
-        | o_mss
-        | o_window
-        ;
-
-/* command LISTEN */
-tcp_opts: /* empty */         { $$ = NULL; }
-        | tcp_opt tcp_opts    { $$ = $1;
-                                $$->option.next = $2; }
-        ;
-udp_opts: /* empty */         { $$ = NULL; }
-        | udp_opt udp_opts    { $$ = $1;
-                                $$->option.next = $2; }
-        ;
-tcpo_opts: /* empty */        { $$ = NULL; }
-         | tcpo_opt tcpo_opts { $$ = $1;
-                                $$->option.next = $2; }
-         ;
-tcpr_opts: /* empty */        { $$ = NULL; }
-         | tcpr_opt tcpr_opts { $$ = $1;
-                                $$->option.next = $2; }
          ;
 
 /*---------------------------------------------------------------------------
@@ -276,22 +202,22 @@ o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-to: TO_TCP tcp_opts pattern             { $$ = new_node(TYPE_TO_TCP);
+to: TO_TCP opts pattern                 { $$ = new_node(TYPE_TO_TCP);
                                           $$->to.options = $2;
                                           $$->to.pattern = $3; }
-  | TO_UDP udp_opts pattern             { $$ = new_node(TYPE_TO_UDP);
+  | TO_UDP opts pattern                 { $$ = new_node(TYPE_TO_UDP);
                                           $$->to.options = $2;
                                           $$->to.pattern = $3; }
-  | TO_TCP OPT_OPEN tcpo_opts           { $$ = new_node(TYPE_TO_TCPOPEN);
+  | TO_TCP OPT_OPEN opts                { $$ = new_node(TYPE_TO_TCPOPEN);
                                           $$->to.options = $3;
                                           $$->to.pattern = NULL; }
-  | TO_TCP OPT_ZWIN tcpr_opts           { $$ = new_node(TYPE_TO_ZWIN);
+  | TO_TCP OPT_ZWIN opts                { $$ = new_node(TYPE_TO_ZWIN);
                                           $$->to.options = $3;
                                           $$->to.pattern = NULL; }
-  | TO_TCP OPT_SLOW tcpr_opts           { $$ = new_node(TYPE_TO_SLOW);
+  | TO_TCP OPT_SLOW opts                { $$ = new_node(TYPE_TO_SLOW);
                                           $$->to.options = $3;
                                           $$->to.pattern = NULL; }
-  | TO_TCP OPT_RAW tcpr_opts pattern    { $$ = new_node(TYPE_TO_TCPRAW);
+  | TO_TCP OPT_RAW opts pattern         { $$ = new_node(TYPE_TO_TCPRAW);
                                           $$->to.options = $3;
                                           $$->to.pattern = $4; }
   | TO_LISTEN                           { $$ = new_node(TYPE_TO_LISTEN);
@@ -324,7 +250,7 @@ command: o_ntime CMD_ON selection to    { $$ = new_node(TYPE_CMD_ON);
     /* | o_ntime CMD_INCLUDE string     { } */
        ;
 %%
-SNODE *new_node(int type)
+static SNODE *new_node(int type)
 {
   SNODE *n;
   if((n = calloc(1, sizeof(SNODE))) == NULL)
@@ -687,6 +613,183 @@ SNODE *script_parse(void)
   yyparse();
 
   return script;
+}
+
+/*---------------------------------------------------------------------------*
+ * NODE UTILITIES                                                            *
+ *                                                                           *
+ *   Helper funcs to read and manipulate SNODE structures.                   *
+ *---------------------------------------------------------------------------*/
+
+char *tea_snode_get_var(SNODE *n)
+{
+  char *r;
+
+  if(n->type != TYPE_VAR)
+    FAT("Node of type %d is not a var.", n->type);
+
+  r = getenv(n->varname);
+  if(!r)
+    FAT("Non-existent variable '%s'.", n->varname);
+
+  if((r = strdup(r)) == NULL)
+    FAT("No memory for var '%s' content.", n->varname);
+
+  return r;
+}
+
+char *tea_snode_get_string(SNODE *n)
+{
+  char *r = NULL;
+
+  switch(n->type)
+  {
+    case TYPE_STRING:
+      if((r = strdup(n->string.value)) == NULL)
+        FAT("Cannot dup string.");
+      break;
+    case TYPE_VAR:
+      r = tea_snode_get_var(n);
+      break;
+    default:
+      FAT("Node of type %d cannot be converted to string.", n->type);
+  }
+
+  return r;
+}
+
+int tea_snode_get_int(SNODE *n)
+{
+  int r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = n->nint;
+      break;
+    case TYPE_VAR:
+      v = tea_snode_get_var(n);
+      r = atoi(v);
+      free(v);
+      break;
+    default:
+      FAT("Node of type %d cannot be converted to integer.", n->type);
+  }
+
+  return r;
+}
+
+double tea_snode_get_float(SNODE *n)
+{
+  double r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = (double) n->nint;
+      break;
+    case TYPE_NFLOAT:
+      r = n->nfloat;
+      break;
+    case TYPE_VAR:
+      v = tea_snode_get_var(n);
+      r = atof(v);
+      free(v);
+      break;
+    default:
+      FAT("Node of type %d cannot be converted to float.", n->type);
+  }
+
+  return r;
+}
+
+/*---------------------------------------------------------------------------*
+ * ITERATORS                                                                 *
+ *                                                                           *
+ *   Functions related to iterators.                                         *
+ *---------------------------------------------------------------------------*/
+
+int tea_iter_get(TEA_ITER *ti)
+{
+  int i = 0;
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      i = ti->i;
+      break;
+    case TYPE_LIST_NUM:
+      i = ti->c
+            ? tea_snode_get_int(ti->c->list_num.val)
+            : 0;
+      break;
+    default:
+      FAT("Bad selector node.");
+  }
+  return i;
+}
+
+int tea_iter_start(SNODE *s, TEA_ITER *ti)
+{
+  ti->first = s;
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      ti->i1 = ti->first->range.min != NULL
+                 ? tea_snode_get_int(ti->first->range.min)
+                 : 0;
+      ti->i2 = ti->first->range.max != NULL
+                 ? tea_snode_get_int(ti->first->range.max)
+                 : cfg.maxthreads - 1;
+      if(ti->i1 < 0)
+        FAT("Bad range minimum value '%d'.", ti->i1);
+      if(ti->i2 >= cfg.maxthreads)
+        FAT("Bad range maximum value '%d' (maxthreads set to %d).", ti->i2, cfg.maxthreads);
+      if(ti->i1 > ti->i2)
+        FAT("Bad range.");
+      ti->i = ti->i1;
+      break;
+    case TYPE_LIST_NUM:
+      ti->c = ti->first;
+      break;
+    default:
+      FAT("Bad selector node.");
+  }
+
+  return tea_iter_get(ti);
+}
+
+int tea_iter_finish(TEA_ITER *ti)
+{
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      return ti->i > ti->i2;
+    case TYPE_LIST_NUM:
+      return ti->c == NULL;
+    default:
+      FAT("Bad selector node.");
+  }
+  return -1;
+}
+
+int tea_iter_next(TEA_ITER *ti)
+{
+  switch(ti->first->type)
+  {
+    case TYPE_SELECTOR:
+      ti->i++;
+      break;
+    case TYPE_LIST_NUM:
+      if(ti->c)
+        ti->c = ti->c->list_num.next;
+      break;
+    default:
+      FAT("Bad selector node.");
+  }
+
+  return tea_iter_get(ti);
 }
 
 

@@ -27,6 +27,7 @@
 #define __SCRIPT_H__
 
 #include "ip.h"
+#include "hash.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,25 +107,9 @@ typedef struct SNODE_tag {
     /* --------------------------------------------------------------------- */
     /* to snode - It specifies a thread type and its options                 */
     struct {
-      struct SNODE_tag *options;        /* options snode                     */
+      HASH             *options;        /* options snode                     */
       struct SNODE_tag *pattern;        /* pattern snode                     */
     } to;
-
-    /* --------------------------------------------------------------------- */
-    /* option snode - Options specified for a certain command                */
-    struct {
-      struct SNODE_tag *addr;         /* target/source address               */
-      struct SNODE_tag *port;         /* target/source port                  */
-      struct SNODE_tag *flags;        /* flags                               */
-      struct SNODE_tag *payload;      /* payload for packets                 */
-      struct SNODE_tag *cwait;        /* TCP connection wait                 */
-      struct SNODE_tag *rwait;        /* TCP read wait                       */
-      struct SNODE_tag *sslcipher;    /* SSL cipher suite                    */
-      struct SNODE_tag *mss;          /* TCP Maximum Segment Size            */
-      struct SNODE_tag *window;       /* TCP Maximum Segment Size            */
-
-      struct SNODE_tag *next;
-    } option;
 
     /* --------------------------------------------------------------------- */
     /* pattern snode - Pattern used by ON command                            */
@@ -167,6 +152,12 @@ typedef struct SNODE_tag {
   /* memory management pointer (lazy free) */
   struct SNODE_tag *next_allocated;
 } SNODE;
+
+typedef struct {
+  SNODE *first;
+  int    i1, i2, i;
+  SNODE *c;
+} TEA_ITER;
 
 extern void script_init(void);
 extern SNODE *script_parse(void);
