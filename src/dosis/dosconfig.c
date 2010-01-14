@@ -127,12 +127,7 @@ static void dos_config_parse_command(int argc, char **argv)
       case 'I':
           if(!optarg || strlen(optarg) == 0)
             FAT("Required pathname.");
-          for(i = 0; i < MAX_INCLUDE_DIRS && cfg.includedir[i]; i++)
-            ;
-          if(i >= MAX_INCLUDE_DIRS)
-            FAT("No space for more include directories.");
-          if((cfg.includedir[i] = strdup(optarg)) == NULL)
-            FAT("No mem for pathname.");
+          dosis_add_include_dir(optarg, 0);
           break;
       case 't':
           cfg.maxthreads = atoi(optarg);
@@ -158,9 +153,11 @@ static void dos_config_parse_command(int argc, char **argv)
     FAT("Specify only one script file.");
   if(argc - optind < 1)
     cfg.script = NULL;
-  else
+  else {
+    dosis_add_include_dir(argv[optind], 1);
     if((cfg.script = dosis_search_file(argv[optind])) == NULL)
       FAT("Script '%s' not found.", argv[optind]);
+  }
 }
 
 /*****************************************************************************
@@ -392,6 +389,37 @@ void dosis_atexit(char *name, void (*func)(void))
   a->func = func;
   a->next = dosis_atexit_list;
   dosis_atexit_list = a;
+}
+
+void dosis_add_include_dir(char *p, int dirname)
+{
+  int i, j;
+
+  if((p = strdup(p)) == NULL)
+    FAT("No mem for pathname.");
+
+  if(dirname)
+  {
+    for(i = 0; p[i] && p[i] != '/'; i++)
+      ;
+    if(!p[i])
+    {
+      free(p);
+      return;
+    }
+    j = i;
+    while(p[++i])
+      if(p[i] == '/')
+        j = i;
+    p[j] = '\0';
+  }
+
+  for(i = 0; i < MAX_INCLUDE_DIRS && cfg.includedir[i]; i++)
+    ;
+  if(i >= MAX_INCLUDE_DIRS)
+    FAT("No space for more include directories.");
+  if((cfg.includedir[i] = p) == NULL)
+    FAT("No mem for pathname.");
 }
 
 char *dosis_search_file(char *file)
