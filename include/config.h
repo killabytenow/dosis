@@ -60,6 +60,7 @@ extern "C" {
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
+#include <time.h>
 
 /* uio */
 #include <sys/uio.h>

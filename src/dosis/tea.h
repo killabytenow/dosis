@@ -62,12 +62,6 @@ TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw);
 int      tea_thread_msg_push(int tid, TEA_MSG *m);
 int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
 
-/*- NODE UTILITIES ----------------------------------------------------------*/
-char    *tea_snode_get_var(SNODE *n);
-char    *tea_snode_get_string(SNODE *n);
-int      tea_snode_get_int(SNODE *n);
-double   tea_snode_get_float(SNODE *n);
-
 /*- THREAD LOG UTILITIES ----------------------------------------------------*/
 #define GFAT(msg, ...)   FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)
 #define GERR(msg, ...)   ERR("[%s] " msg, MODNAME, ## __VA_ARGS__)

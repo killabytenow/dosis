@@ -28,23 +28,23 @@
   #define _GNU_SOURCE 1
   #endif
 
-  #include <string.h>
-  #include <ctype.h>
+  #include "config.h"
 
   #include "script.h"
   #include "log.h"
   #include "ip.h"
   #include "dosconfig.h"
 
-  int yylex (void);
-  void yyerror (char const *);
-  SNODE *new_node(int type);
+  static int yylex (void);
+  static void yyerror (char const *);
+  static SNODE *new_node(int type);
 
   static int lineno;
   static SNODE *script;
   static SNODE *allocated_list;
 %}
 %union {
+  HASH      *hash;
   SNODE     *snode;
   int        nint;
   double     nfloat;
@@ -54,10 +54,11 @@
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
+%type  <hash>     opts
 %type  <snode>    input
-%type  <snode>    var nint nfloat ntime string
+%type  <snode>    var nint nfloat ntime data string
 %type  <snode>    list_num_enum list_num range selection
-%type  <snode>    opts pattern
+%type  <snode>    pattern
 %type  <snode>    o_ntime command
 %type  <snode>    to
 %token            PERIODIC _FILE RANDOM
@@ -115,10 +116,6 @@ string: STRING                  { $$ = new_node(TYPE_STRING);
       | LITERAL                 { $$ = new_node(TYPE_STRING);
                                   $$->string.parse = 0;
                                   $$->string.value = $1; }
-      | RANDOM '(' nint ')'     { $$ = new_node(TYPE_RANDOM);
-                                  $$->random.len = $3; }
-      | _FILE '(' string ')'    { $$ = new_node(TYPE_FILE);
-                                  $$->random.path = $3; }
       | var
       /*
       | NFLOAT  { $$ = new_node(TYPE_NFLOAT);
@@ -127,7 +124,12 @@ string: STRING                  { $$ = new_node(TYPE_STRING);
                   $$->nfloat     = $1; }
       */
       ;
-
+data:   string
+      | RANDOM '(' nint ')'     { $$ = new_node(TYPE_RANDOM);
+                                  $$->random.len = $3; }
+      | _FILE '(' string ')'    { $$ = new_node(TYPE_FILE);
+                                  $$->file.path = $3; }
+      ;
 list_num_enum: nint                   { $$ = new_node(TYPE_LIST_NUM);
                                         $$->list_num.val  = $1;
                                         $$->list_num.next = NULL; }
@@ -162,7 +164,7 @@ opts:
   /* none */                { $$ = hash_new(); }
  /* SSL [ciphersuite] */
 | OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_add_entry($$, "payload",   NULL); }
-| OPT_PAYLOAD string opts   { $$ = $3; hash_add_entry($$, "payload",   $2);   }
+| OPT_PAYLOAD data opts     { $$ = $3; hash_add_entry($$, "payload",   $2);   }
 | OPT_SSL opts              { $$ = $2; hash_add_entry($$, "ssl",       NULL); }
 | OPT_SSL string opts       { $$ = $3; hash_add_entry($$, "ssl",       $2);   }
 | OPT_SRC string opts       { $$ = $3; hash_add_entry($$, "src_addr",  $2);   }
@@ -250,6 +252,10 @@ command: o_ntime CMD_ON selection to    { $$ = new_node(TYPE_CMD_ON);
     /* | o_ntime CMD_INCLUDE string     { } */
        ;
 %%
+/*****************************************************************************
+ * YYPARSE FUNCTIONS (SYNTAX PARSER)
+ *****************************************************************************/
+
 static SNODE *new_node(int type)
 {
   SNODE *n;
@@ -264,44 +270,17 @@ static SNODE *new_node(int type)
   return n;
 }
 
-static void script_fini(void)
+SNODE *script_parse(void)
 {
-  SNODE *n, *n2;
+  yyparse();
 
-  for(n = allocated_list; n; )
-  {
-    n2 = n->next_allocated;
-    switch(n->type)
-    {
-      case TYPE_CMD_SETVAR:
-        free(n->command.setvar.var);
-        break;
-
-      case TYPE_STRING:
-        free(n->string.value);
-        break;
-
-      case TYPE_VAR:
-        free(n->varname);
-        break;
-    }
-    free(n);
-    n = n2;
-  }
+  return script;
 }
 
-void script_init(void)
-{
-  lineno = 1;
-  allocated_list = NULL;
+/*****************************************************************************
+ * YYLEX FUNCTIONS (LEXICAL PARSER)
+ *****************************************************************************/
 
-  dosis_atexit("SCRIPT", script_fini);
-}
-
-/* The lexical analyzer returns a double floating point
-   number on the stack and the token NUM, or the numeric code
-   of the character read if not a number.  It skips all blanks
-   and tabs, and returns 0 for end-of-input.  */
 #define BUFFLEN      512
 #define SRESET()     { bi = 0; buff[0] = '\0'; }
 #define SADD(c)      { if(bi >= BUFFLEN)             \
@@ -348,7 +327,7 @@ ha_roto_la_olla:
   FAT("You have agoted my pedazo of buffer (%s...).", buff);
 }
 
-int yylex(void)
+static int yylex(void)
 {
   int c, bi, f;
   char buff[BUFFLEN], *s;
@@ -359,7 +338,7 @@ int yylex(void)
     { "CWAIT",    OPT_CWAIT   },
     { "DLL",      OPT_DLL     },
     { "DST",      OPT_DST     },
-    { "FILE",     OPT_FILE    },
+    { "FILE",     TYPE_FILE   },
     { "FLAGS",    OPT_FLAGS   },
     { "LISTEN",   TO_LISTEN   },
     { "MOD",      CMD_MOD     },
@@ -370,7 +349,7 @@ int yylex(void)
     { "OPEN",     OPT_OPEN    },
     { "PAYLOAD",  OPT_PAYLOAD },
     { "PERIODIC", PERIODIC    },
-    { "RANDOM",   OPT_RANDOM  },
+    { "RANDOM",   TYPE_RANDOM },
     { "RAW",      OPT_RAW     },
     { "RWAIT",    OPT_RWAIT   },
     { "SLOW",     OPT_SLOW    },
@@ -603,16 +582,47 @@ ha_roto_la_olla:
   return 0;
 }
 
-void yyerror(char const *str)
+/*****************************************************************************
+ * INITIALIZATION AND FINALIZATION ROUTINES
+ *****************************************************************************/
+
+static void script_fini(void)
 {
-  ERR("parsing error: %d: %s", lineno, str);
+  SNODE *n, *n2;
+
+  for(n = allocated_list; n; )
+  {
+    n2 = n->next_allocated;
+    switch(n->type)
+    {
+      case TYPE_CMD_SETVAR:
+        free(n->command.setvar.var);
+        break;
+
+      case TYPE_STRING:
+        free(n->string.value);
+        break;
+
+      case TYPE_VAR:
+        free(n->varname);
+        break;
+    }
+    free(n);
+    n = n2;
+  }
 }
 
-SNODE *script_parse(void)
+void script_init(void)
 {
-  yyparse();
+  lineno = 1;
+  allocated_list = NULL;
 
-  return script;
+  dosis_atexit("SCRIPT", script_fini);
+}
+
+static void yyerror(char const *str)
+{
+  ERR("parsing error: %d: %s", lineno, str);
 }
 
 /*---------------------------------------------------------------------------*
@@ -621,7 +631,129 @@ SNODE *script_parse(void)
  *   Helper funcs to read and manipulate SNODE structures.                   *
  *---------------------------------------------------------------------------*/
 
-char *tea_snode_get_var(SNODE *n)
+char *script_get_data(SNODE *n, unsigned int *size)
+{
+  struct stat pls;
+  int i, f;
+  char *s, *s2;
+  char *buffer;
+
+  *size = 0;
+  buffer = NULL;
+
+  /* apply config */
+  switch(n->type)
+  {
+    case TYPE_STRING:
+      if((buffer = strdup(n->string.value)) == NULL)
+        FAT("Cannot dup string.");
+      *size = strlen(buffer);
+      break;
+
+    case TYPE_VAR:
+      buffer = script_get_var(n);
+      *size = strlen(buffer);
+      break;
+
+    case TYPE_FILE:
+      s2 = script_get_string(n->file.path);
+      s = dosis_search_file(s2);
+      free(s2);
+      if(stat(s, &pls) < 0)
+        FAT("%d: Cannot stat file '%s': %s", n->line, s, strerror(errno));
+      *size = pls.st_size;
+      if((buffer = malloc(*size + 1)) == NULL)
+        FAT("%d: Cannot alloc %d bytes for payload.", n->line, *size);
+      buffer[*size] = '\0';
+      if((f = open(s, O_RDONLY)) < 0)
+        FAT("%d: Cannot open payload: %s", n->line, strerror(errno));
+      if(read(f, buffer, *size) < *size)
+        FAT("%d: Cannot read the payload file: %s", n->line, strerror(errno));
+      close(f);
+      free(s);
+      break;
+
+    case TYPE_RANDOM:
+      *size = script_get_int(n->random.len);
+      if(*size > 0)
+      {
+        if((buffer = malloc(*size + 1)) == NULL)
+          FAT("%d: Cannot alloc %d bytes for payload.", n->line, *size);
+        srand(time(NULL));
+        for(i = 0; i < *size; i++)
+          *(buffer + i) = rand() & 0x000000FF;
+        buffer[*size] = '\0';
+      }
+      break;
+
+    default:
+      FAT("%d: Uknown option %d.", n->line, n->type);
+  }
+
+  return buffer;
+}
+
+char *script_get_string(SNODE *n)
+{
+  char *r = NULL;
+  unsigned int l;
+
+  r = script_get_data(n, &l);
+  if(strlen(r) != l)
+    FAT("%d: String contains null characters.", n->line);
+
+  return r;
+}
+
+
+int script_get_int(SNODE *n)
+{
+  int r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = n->nint;
+      break;
+    case TYPE_VAR:
+      v = script_get_var(n);
+      r = atoi(v);
+      free(v);
+      break;
+    default:
+      FAT("Node of type %d cannot be converted to integer.", n->type);
+  }
+
+  return r;
+}
+
+double script_get_float(SNODE *n)
+{
+  double r;
+  char *v;
+
+  switch(n->type)
+  {
+    case TYPE_NINT:
+      r = (double) n->nint;
+      break;
+    case TYPE_NFLOAT:
+      r = n->nfloat;
+      break;
+    case TYPE_VAR:
+      v = script_get_var(n);
+      r = atof(v);
+      free(v);
+      break;
+    default:
+      FAT("Node of type %d cannot be converted to float.", n->type);
+  }
+
+  return r;
+}
+
+char *script_get_var(SNODE *n)
 {
   char *r;
 
@@ -638,72 +770,6 @@ char *tea_snode_get_var(SNODE *n)
   return r;
 }
 
-char *tea_snode_get_string(SNODE *n)
-{
-  char *r = NULL;
-
-  switch(n->type)
-  {
-    case TYPE_STRING:
-      if((r = strdup(n->string.value)) == NULL)
-        FAT("Cannot dup string.");
-      break;
-    case TYPE_VAR:
-      r = tea_snode_get_var(n);
-      break;
-    default:
-      FAT("Node of type %d cannot be converted to string.", n->type);
-  }
-
-  return r;
-}
-
-int tea_snode_get_int(SNODE *n)
-{
-  int r;
-  char *v;
-
-  switch(n->type)
-  {
-    case TYPE_NINT:
-      r = n->nint;
-      break;
-    case TYPE_VAR:
-      v = tea_snode_get_var(n);
-      r = atoi(v);
-      free(v);
-      break;
-    default:
-      FAT("Node of type %d cannot be converted to integer.", n->type);
-  }
-
-  return r;
-}
-
-double tea_snode_get_float(SNODE *n)
-{
-  double r;
-  char *v;
-
-  switch(n->type)
-  {
-    case TYPE_NINT:
-      r = (double) n->nint;
-      break;
-    case TYPE_NFLOAT:
-      r = n->nfloat;
-      break;
-    case TYPE_VAR:
-      v = tea_snode_get_var(n);
-      r = atof(v);
-      free(v);
-      break;
-    default:
-      FAT("Node of type %d cannot be converted to float.", n->type);
-  }
-
-  return r;
-}
 
 /*---------------------------------------------------------------------------*
  * ITERATORS                                                                 *
@@ -721,7 +787,7 @@ int tea_iter_get(TEA_ITER *ti)
       break;
     case TYPE_LIST_NUM:
       i = ti->c
-            ? tea_snode_get_int(ti->c->list_num.val)
+            ? script_get_int(ti->c->list_num.val)
             : 0;
       break;
     default:
@@ -737,10 +803,10 @@ int tea_iter_start(SNODE *s, TEA_ITER *ti)
   {
     case TYPE_SELECTOR:
       ti->i1 = ti->first->range.min != NULL
-                 ? tea_snode_get_int(ti->first->range.min)
+                 ? script_get_int(ti->first->range.min)
                  : 0;
       ti->i2 = ti->first->range.max != NULL
-                 ? tea_snode_get_int(ti->first->range.max)
+                 ? script_get_int(ti->first->range.max)
                  : cfg.maxthreads - 1;
       if(ti->i1 < 0)
         FAT("Bad range minimum value '%d'.", ti->i1);

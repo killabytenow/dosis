@@ -42,9 +42,11 @@ enum TYPES {
   TYPE_CMD_SETVAR,
   TYPE_CMD_LISTEN,
   /* basic types */
-  TYPE_NINT = 1000,
+  TYPE_FILE = 1000,
+  TYPE_NINT,
   TYPE_NFLOAT,
   TYPE_NTIME,
+  TYPE_RANDOM,
   TYPE_STRING,
   TYPE_VAR,
   /* lists and selectors */
@@ -63,7 +65,6 @@ enum TYPES {
   TYPE_OPT_SSL,
   TYPE_OPT_DLL,
   TYPE_OPT_DST,
-  TYPE_OPT_FILE,
   TYPE_OPT_FLAGS,
   TYPE_OPT_MSS,
   TYPE_OPT_OPEN,
@@ -74,7 +75,6 @@ enum TYPES {
   TYPE_OPT_PAYLOAD_DLL,
   TYPE_OPT_PAYLOAD_FILE,
   TYPE_OPT_PAYLOAD_NULL,
-  TYPE_OPT_PAYLOAD_RANDOM,
   TYPE_OPT_PAYLOAD_STR,
   /* patterns */
   TYPE_PERIODIC = 5000,
@@ -125,14 +125,23 @@ typedef struct SNODE_tag {
     struct {
       int   parse;              /* 1 parse vars, 0 is a literal string       */
       char *value;              /* string or var to be processed             */
+    /*int   len;         XXX TODO: string length (for raw binary data)       */
     } string;
+    double  nfloat;             /* float                                     */
+    int     nint;               /* int                                       */
+    char   *varname;            /* var name                                  */
     struct {
       int    rel;               /* if !=0, then it is a time-relative offset */
       struct SNODE_tag *n;      /* time                                      */
     } ntime;
-    double  nfloat;             /* float                                     */
-    int     nint;               /* int                                       */
-    char   *varname;            /* var name                                  */
+    struct {
+      struct SNODE_tag *path;   /* path to input file                        */
+      struct SNODE_tag *offset; /* seek offset                               */
+      struct SNODE_tag *size;   /* max bytes to read                         */
+    } file;
+    struct {                    /* random data                               */
+      struct SNODE_tag *len;    /* length of random data                     */
+    } random;
 
     /* --------------------------------------------------------------------- */
     /* list_num snode - snode used to specify a list of integers             */
@@ -161,6 +170,12 @@ typedef struct {
 
 extern void script_init(void);
 extern SNODE *script_parse(void);
+
+char    *script_get_data(SNODE *n, unsigned int *size);
+double   script_get_float(SNODE *n);
+int      script_get_int(SNODE *n);
+char    *script_get_string(SNODE *n);
+char    *script_get_var(SNODE *n);
 
 #ifdef __cplusplus
 }
