@@ -32,9 +32,6 @@
 #include "payload.h"
 #include "tea.h"
 
-#define DEFAULT_CWAIT           3000000
-#define DEFAULT_RWAIT           10000000
-
 typedef struct _tag_TCPSSL_CFG {
   /* options */
   INET_ADDR          dhost;

@@ -55,15 +55,14 @@ typedef struct _tag_TCPCON {
 } TCP_CON;
 
 typedef struct _tag_SLOWY_CFG {
-  INET_ADDR   shost;
-  INET_ADDR   dhost;
-  int         mss;      /* default mss                       */
-  int         window;   /* window                            */
-  int         zerowin;
+  TEA_TYPE_ADDR   shost;
+  TEA_TYPE_ADDR   dhost;
+  TEA_TYPE_INT         mss;      /* default mss                       */
+  TEA_TYPE_INT         window;   /* window                            */
+  TEA_TYPE_INT         zerowin;
   double      ltimeout; /* lost-packet timeout */
   double      ntimeout; /* next-packet timeout */
-  char       *payload;
-  unsigned    payload_size;
+  TEA_TYPE_DATA   payload;
   TCP_CON    *conns[256];
   TCP_CON    *fconns;
   LN_CONTEXT *lnc;
@@ -188,7 +187,7 @@ static void slowy__listen(THREAD_WORK *tw)
                              ntohs(c->window),
                              ntohl(c->seq),
                              ntohl(c->ack),
-                             ((char *) tc->payload) + c->offset, c->tosend,
+                             ((char *) tc->payload.data) + c->offset, c->tosend,
                              NULL, 0);
           c->timeout = 0;
         }
@@ -261,12 +260,12 @@ static void slowy__listen(THREAD_WORK *tw)
         s = tc->zerowin ? c->mss : (rand() & 0x07) + 1;
 
         /* (both) send data (if there is any available) */
-        if(c->offset + s < tc->payload_size)
+        if(c->offset + s < tc->payload.size)
         {
           c->tosend  = s;
           c->flags   = TH_ACK;
         } else {
-          c->tosend  = tc->payload_size - c->offset;
+          c->tosend  = tc->payload.size - c->offset;
           c->flags   = c->tosend > 0 ? TH_ACK | TH_PUSH : TH_ACK;
         }
 
@@ -322,8 +321,6 @@ static void slowy__listen(THREAD_WORK *tw)
 static int slowy__configure(THREAD_WORK *tw, SNODE *command)
 {
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
-  SNODE *cn;
-  char *s;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
@@ -338,9 +335,6 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
     ln_init_context(tc->lnc);
   }
 
-  /* XXX set defaults XXX */
-  tc->window = 13373;
-
   /* select attack type */
   switch(command->command.thc.to->type)
   {
@@ -350,55 +344,8 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
       TFAT("Uknown attack type %d.", command->command.thc.to->type);
   }
 
-  /* read from SNODE command parameters */
-  if(command->command.thc.to != NULL)
-  if(command->command.thc.to->to.pattern != NULL)
-    TFAT("%d: SLOWY does not accept a pattern.",
-         command->command.thc.to->to.pattern->line);
-  
-  /* read from SNODE command options */
-  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
-    switch(cn->type)
-    {
-      case TYPE_OPT_SRC:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tc->shost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tc->shost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_DST:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tc->dhost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_MSS:
-        /* XXX TODO XXX */
-        break;
-
-      case TYPE_OPT_WINDOW:
-        tc->window = tea_snode_get_int(cn->option.window);
-        if(tc->window < 0)
-          TFAT("%d: Cannot set a negative window (%d).", cn->line, tc->window);
-        break;
-
-      case TYPE_OPT_PAYLOAD_FILE:
-      case TYPE_OPT_PAYLOAD_RANDOM:
-      case TYPE_OPT_PAYLOAD_STR:
-        payload_get(cn, &tc->payload, &tc->payload_size);
-        break;
-
-      default:
-        TFAT("%d: Uknown option %d.", cn->line, cn->type);
-    }
-
   /* configure src address (if not defined) */
+  /* TODO: check dest address is INET */
   if(tc->dhost.type == INET_FAMILY_NONE)
     TFAT("I need a target address.");
   if(tc->shost.type == INET_FAMILY_NONE)
@@ -417,13 +364,11 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
   {
     char buff[255];
 
-    TDBG2("config.periodic.bytes  = %d", tc->payload_size);
-
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost   = %s", buff);
-    TDBG2("config.options.payload = %d bytes", tc->payload_size);
+    TDBG2("config.options.payload = %d bytes", tc->payload.size);
     TDBG2("config.options.winow   = %d bytes", tc->window);
   }
 
@@ -443,10 +388,11 @@ static void slowy__cleanup(THREAD_WORK *tw)
       free(tc->lnc);
       tc->lnc = NULL;
     }
-    if(tc->payload)
+    if(tc->payload.data)
     {
-      free(tc->payload);
-      tc->payload = NULL;
+      free(tc->payload.data);
+      tc->payload.data = NULL;
+      tc->payload.size = 0;
     }
     free(tc);
     tw->data = NULL;
@@ -461,11 +407,22 @@ static void slowy__cleanup(THREAD_WORK *tw)
  * TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+TOC_BEGIN(teaSlowy_cfg)
+  TOC("src_addr", TEA_TYPE_ADDR, 0, SLOWY_CFG, shost,   NULL)
+  TOC("src_port", TEA_TYPE_PORT, 0, SLOWY_CFG, shost,   NULL)
+  TOC("dst_addr", TEA_TYPE_ADDR, 1, SLOWY_CFG, dhost,   NULL)
+  TOC("dst_port", TEA_TYPE_PORT, 0, SLOWY_CFG, dhost,   NULL)
+  TOC("tcp_mss",  TEA_TYPE_INT,  0, SLOWY_CFG, mss,     NULL)
+  TOC("tcp_win",  TEA_TYPE_INT,  0, SLOWY_CFG, window,  NULL)
+  TOC("payload",  TEA_TYPE_DATA, 1, SLOWY_CFG, payload, NULL)
+TOC_END
+
 TEA_OBJECT teaSlowy = {
   .name         = "Slowy",
   .configure    = slowy__configure,
   .cleanup      = slowy__cleanup,
   .listen       = slowy__listen,
   .listen_check = slowy__listen_check,
+  .cparams      = teaSlowy_cfg,
 };
 

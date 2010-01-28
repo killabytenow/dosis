@@ -43,6 +43,7 @@ enum TYPES {
   TYPE_CMD_LISTEN,
   /* basic types */
   TYPE_FILE = 1000,
+  TYPE_BOOL,
   TYPE_NINT,
   TYPE_NFLOAT,
   TYPE_NTIME,
@@ -106,10 +107,7 @@ typedef struct SNODE_tag {
 
     /* --------------------------------------------------------------------- */
     /* to snode - It specifies a thread type and its options                 */
-    struct {
-      HASH             *options;        /* options snode                     */
-      struct SNODE_tag *pattern;        /* pattern snode                     */
-    } to;
+    HASH *options;        /* options snode                     */
 
     /* --------------------------------------------------------------------- */
     /* pattern snode - Pattern used by ON command                            */
@@ -129,6 +127,7 @@ typedef struct SNODE_tag {
     } string;
     double  nfloat;             /* float                                     */
     int     nint;               /* int                                       */
+    int     nbool;              /* bool                                      */
     char   *varname;            /* var name                                  */
     struct {
       int    rel;               /* if !=0, then it is a time-relative offset */
@@ -168,6 +167,14 @@ typedef struct {
   SNODE *c;
 } TEA_ITER;
 
+typedef struct SCONFIG_PARAMETER_tag {
+  char   *param;
+  int     type;
+  SNODE  *defval;
+
+  struct SCONFIG_PARAMETER_tag *next;
+} SCONFIG_PARAMETER;
+
 extern void script_init(void);
 extern SNODE *script_parse(void);
 
@@ -176,6 +183,13 @@ double   script_get_float(SNODE *n);
 int      script_get_int(SNODE *n);
 char    *script_get_string(SNODE *n);
 char    *script_get_var(SNODE *n);
+
+SNODE   *script_get_default(char *param);
+
+int tea_iter_get(TEA_ITER *ti);
+int tea_iter_start(SNODE *s, TEA_ITER *ti);
+int tea_iter_finish(TEA_ITER *ti);
+int tea_iter_next(TEA_ITER *ti);
 
 #ifdef __cplusplus
 }

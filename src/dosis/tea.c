@@ -119,9 +119,64 @@ static void *tea_thread(void *data)
   return NULL;
 }
 
+/* XXX */
+static void tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
+{
+  char *s;
+
+  /* check tea object */
+  switch(oc->type)
+  {
+    case TEA_TYPE_ADDR_ID:
+      {
+        TEA_TYPE_ADDR *a = tw->data + oc->offset;
+        s = script_get_string(v);
+        if(ip_addr_parse(s, a))
+          TFAT("%d: Cannot parse address '%s'.", v->line, s);
+        free(s);
+      }
+      break;
+
+    case TEA_TYPE_PORT_ID:
+      {
+        TEA_TYPE_ADDR *a = tw->data + oc->offset;
+        ip_addr_set_port(a, script_get_int(v));
+      }
+      break;
+
+    case TEA_TYPE_BOOL_ID:
+    case TEA_TYPE_INT_ID:
+      *((int *) (tw->data + oc->offset)) = script_get_int(v);
+      break;
+    /*
+    TYPE_FILE = 1000,
+    TYPE_BOOL,
+    TYPE_NINT,
+    TYPE_NFLOAT,
+    TYPE_NTIME,
+    TYPE_RANDOM,
+    TYPE_STRING,
+    TYPE_VAR,
+    */
+    case TEA_TYPE_DATA_ID:
+      {
+        TEA_TYPE_DATA *d = tw->data + oc->offset;
+        d->data = script_get_data(v, &d->size);
+      }
+      break;
+
+    default:
+      FAT("Unknown type %d.", oc->type);
+  }
+
+  /* get from local config if defined */
+  //*defval = 0;
+}
+
 static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 {
   THREAD_WORK *tw;
+  TEA_OBJCFG *ocline;
 
   pthreadex_lock_get_exclusive(&ttable_lock);
 
@@ -150,7 +205,29 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
     tw->methods->global_init();
   }
 
-  /* configure thread here */
+  /* set params (apply configuration) */
+  for(ocline = to->cparams; ocline && ocline->name; ocline++)
+  {
+    SNODE *val;
+
+    /* get configured value (or set default value if not specified) */
+    val = script_get_default(ocline->name);
+    if(hash_key_exists(command->options, ocline->name))
+      val = hash_get_entry(command->options, ocline->name);
+
+    /* check if parameter is optional */
+    if(!val)
+    {
+      if(ocline->needed)
+        FAT("%d:%s: Parameter %s is mandatory.", command->line, to->name, ocline->name);
+      continue;
+    }
+
+    /* set value */
+    tea_thread_param_value_set(tw, ocline, val);
+  }
+
+  /* once configuration applied, launch thread configuration routine */
   if(tw->methods->configure)
     tw->methods->configure(tw, command);
 
@@ -356,7 +433,7 @@ void tea_timer(SNODE *program)
 
     if(cmd->command.time)
     {
-      ntime = tea_snode_get_float(cmd->command.time->ntime.n);
+      ntime = script_get_float(cmd->command.time->ntime.n);
       if(ntime > 0)
       {
         if(cmd->command.time->ntime.rel)
@@ -419,7 +496,7 @@ void tea_timer(SNODE *program)
         if(!cmd->command.setvar.cond
         || !getenv(cmd->command.setvar.var))
         {
-          char *val = tea_snode_get_string(cmd->command.setvar.val);
+          char *val = script_get_string(cmd->command.setvar.val);
           LOG("[tea] %s='%s'", cmd->command.setvar.var, val);
           if(setenv(cmd->command.setvar.var, val, 1))
             FAT("Cannot set var '%s' with value '%s'.",

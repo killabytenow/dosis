@@ -32,23 +32,21 @@
 #include "payload.h"
 #include "tea.h"
 
-#define DEFAULT_CWAIT           3000000
-#define DEFAULT_RWAIT           10000000
-
 #define BUFSIZE 4096
-
-#define DEFAULT_CIPHER_SUITE "DES-CBC3-SHA"
 
 typedef struct _tag_TCP_CFG {
   /* options */
-  INET_ADDR          dhost;
-  int                sslenabled;
+  TEA_TYPE_ADDR      dhost;
+  TEA_TYPE_DATA      payload;
+  TEA_TYPE_BOOL      ssl;
+  TEA_TYPE_STRING   *sslcipher;
+  TEA_TYPE_INT       cwait;
+  TEA_TYPE_INT       rwait;
 
   /* parameters */
+  int                pattern;
+  int                n;
   double             hitratio;
-  char              *payload;
-  unsigned           payload_size;
-  char              *sslcipher;
 
   /* other things */
   int                sock;
@@ -217,7 +215,7 @@ static void tcp__thread(THREAD_WORK *tw)
  
     /*** DATA SEND AND RECV **************************************************/
     TDBG2("prepared to send data...");
-    if(tt->sslenabled)
+    if(tt->ssl)
     {
 #ifdef HAVE_SSL
     TDBG2("  ssl data...");
@@ -244,8 +242,8 @@ static void tcp__thread(THREAD_WORK *tw)
 #endif
     } else {
       /* send request */
-      r = send(tt->sock, (void *) tt->payload, tt->payload_size, 0);
-      if(r < tt->payload_size)
+      r = send(tt->sock, tt->payload.data, tt->payload.size, 0);
+      if(r < tt->payload.size)
       {
         TERR("Send error.");
         continue;
@@ -285,8 +283,6 @@ static void tcp__thread(THREAD_WORK *tw)
 static int tcp__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCP_CFG *tt = (TCP_CFG *) tw->data;
-  SNODE *cn;
-  char *s;
 
   /* first initialization (specialized work thread data) */
   if(tt == NULL)
@@ -295,103 +291,26 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command)
       TFAT("No memory for TCP_CFG.");
     tw->data = (void *) tt;
 
-    tt->sockwait_cwait.tv_sec  = DEFAULT_CWAIT / 1000000;
-    tt->sockwait_cwait.tv_usec = DEFAULT_CWAIT % 1000000;
-    tt->sockwait_rwait.tv_sec  = DEFAULT_RWAIT / 1000000;
-    tt->sockwait_rwait.tv_usec = DEFAULT_RWAIT % 1000000;
 
     /* init timer */
     pthreadex_timer_init(&(tt->timer), 0.0);
   }
 
-  /* read from SNODE command parameters */
-  cn = command->command.thc.to->to.pattern;
-  if(cn->type != TYPE_PERIODIC_LIGHT)
-    TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
-  
-  tt->hitratio = tea_snode_get_float(cn->pattern.periodic.ratio);
+  /* check params sanity */
+  if(tt->pattern != TYPE_PERIODIC)
+    TFAT("Uknown pattern %d.", tt->pattern);
+  if(tt->n)
+    TWRN("Talking about number of packets here has non sense (ignoring periodic.n value %d).", tt->n);
   if(tt->hitratio < 0)
-    TFAT("%d: Bad hit ratio '%f'.", cn->line, tt->hitratio);
+    TFAT("Bad hit ratio '%f'.", tt->hitratio);
 
-  /* read from SNODE command options */
-  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
-    switch(cn->type)
-    {
-      case TYPE_OPT_SSL:
-        tt->sslenabled = -1;
-        if(tt->sslcipher)
-        {
-          free(tt->sslcipher);
-          tt->sslcipher = NULL;
-        }
-        if(cn->option.sslcipher)
-          tt->sslcipher = tea_snode_get_string(cn->option.sslcipher);
-        break;
+  /* update calculated params */
+  tt->sockwait_cwait.tv_sec  = tt->cwait / 1000000;
+  tt->sockwait_cwait.tv_usec = tt->cwait % 1000000;
+  tt->sockwait_rwait.tv_sec  = tt->rwait / 1000000;
+  tt->sockwait_rwait.tv_usec = tt->rwait % 1000000;
 
-      case TYPE_OPT_DST:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tt->dhost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tt->dhost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_PAYLOAD_FILE:
-      case TYPE_OPT_PAYLOAD_RANDOM:
-      case TYPE_OPT_PAYLOAD_STR:
-        payload_get(cn, &tt->payload, &tt->payload_size);
-        break;
-
-      case TYPE_OPT_CWAIT:
-        {
-          int t;
-          t = tea_snode_get_int(cn->option.cwait);
-          if(t < 0)
-            TFAT("%d: Bad connection wait (CWAIT) '%d'.", cn->line, t);
-          tt->sockwait_cwait.tv_sec  = t / 1000000;
-          tt->sockwait_cwait.tv_usec = t % 1000000;
-        }
-        break;
-
-      case TYPE_OPT_RWAIT:
-        {
-          int t;
-          t = tea_snode_get_int(cn->option.rwait);
-          if(t < 0)
-            TFAT("%d: Bad read wait (RWAIT) '%d'.", cn->line, t);
-          tt->sockwait_rwait.tv_sec  = t / 1000000;
-          tt->sockwait_rwait.tv_usec = t % 1000000;
-        }
-        break;
-
-      default:
-        TFAT("%d: Uknown option %d.", cn->line, cn->type);
-    }
-
-  /* check dst address and configure socket */
-  if(tt->dhost.type == INET_FAMILY_NONE)
-    TFAT("I need a target address.");
-  ip_addr_to_socket(&tt->dhost, &tt->dsockaddr);
-
-  if(tt->sslenabled && !tt->sslcipher)
-    if((tt->sslcipher = strdup(DEFAULT_CIPHER_SUITE)) == NULL)
-      TFAT("No mem for SSL cipher suite description.");
-
-  /* calculate timeout */
-
-  /* configure timer */
-  if(tt->hitratio > 0)
-    pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
-
-  /* (debug) print configuration */
-  {
-    char buff[255];
-
-    TDBG2("config.periodic.ratio = %d", tt->hitratio);
-    ip_addr_snprintf(&tt->dhost, sizeof(buff)-1, buff);
-    TDBG2("config.options.dhost  = %s", buff);
-  }
+  pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
 
   return 0;
 }
@@ -410,11 +329,12 @@ static void tcp__cleanup(THREAD_WORK *tw)
   if(tt->sslcipher)
     free(tt->sslcipher);
 
-  if(tt->payload)
-  {
-    free(tt->payload);
-    tt->payload = NULL;
-  }
+  /* XXX FREE payload XXX */
+  //if(tt->payload)
+  //{
+  //  free(tt->payload);
+  //  tt->payload = NULL;
+  //}
   free(tt);
   tw->data = NULL;
 
@@ -424,6 +344,20 @@ static void tcp__cleanup(THREAD_WORK *tw)
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  * TCP TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+TOC_BEGIN(teaSlowy_cfg)
+  TOC("cwait",          TEA_TYPE_INT,    1, TCP_CFG, cwait,      NULL)
+  TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCP_CFG, dhost,      NULL)
+  TOC("dst_port",       TEA_TYPE_PORT,   0, TCP_CFG, dhost,      NULL)
+  TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCP_CFG, hitratio,   NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,    1, TCP_CFG, n,          NULL)
+  TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
+  TOC("payload",        TEA_TYPE_DATA,   1, TCP_CFG, payload,    NULL)
+  TOC("ssl",            TEA_TYPE_BOOL,   0, TCP_CFG, ssl,        NULL)
+  TOC("ssl_cipher",     TEA_TYPE_STRING, 0, TCP_CFG, sslcipher,  NULL)
+  TOC("rwait",          TEA_TYPE_INT,    1, TCP_CFG, rwait,      NULL)
+TOC_END
 
 TEA_OBJECT teaTCP = {
   .name         = "TCP",

@@ -45,9 +45,44 @@ typedef struct _tag_THREAD_WORK {
   /*struct _tag_THREAD_WORK *next_listener;*/
 } THREAD_WORK;
 
+enum {
+  TEA_TYPE_ADDR_ID = 1,
+  TEA_TYPE_BOOL_ID,
+  TEA_TYPE_DATA_ID,
+  TEA_TYPE_FLOAT_ID,
+  TEA_TYPE_INT_ID,
+  TEA_TYPE_PORT_ID,
+  TEA_TYPE_STRING_ID,
+} TEA_TYPE_ID_LSIT;
+
+struct __TEA_DATA {
+  void     *data;
+  unsigned  size;
+};
+
+typedef INET_ADDR         TEA_TYPE_ADDR;
+typedef int               TEA_TYPE_BOOL;
+typedef struct __TEA_DATA TEA_TYPE_DATA;
+typedef int               TEA_TYPE_FLOAT;
+typedef int               TEA_TYPE_INT;
+typedef int               TEA_TYPE_STRING;
+
+typedef struct _tag_TEA_OBJCFG {
+  char     *name;
+  int       type;
+  int       needed;
+  unsigned  offset;
+  int       (*handler)(struct _tag_TEA_OBJCFG *oc, THREAD_WORK *tw);
+} TEA_OBJCFG;
+#define TOC_BEGIN(x)     TEA_OBJCFG x[] = {
+#define TOC(n,t,m,s,f,h) { n, t##_ID, m, offsetof(s, f), h },
+#define TOC_END          { NULL, 0, 0, 0 } };
+
 typedef struct _tag_TEA_OBJECT {
   char *name;
   int   initialized;
+  TEA_OBJCFG *cparams;
+
   void (*global_init)(void);
   int  (*configure)(THREAD_WORK *tw, SNODE *command);
   void (*cleanup)(THREAD_WORK *tw);

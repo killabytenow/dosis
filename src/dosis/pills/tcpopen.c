@@ -38,12 +38,12 @@
 #define BUFSIZE    2048
 
 typedef struct _tag_TCPOPEN_CFG {
-  INET_ADDR   shost;
-  INET_ADDR   dhost;
-  unsigned    npackets;
-  char       *payload;
-  unsigned    payload_size;
-  LN_CONTEXT *lnc;
+  INET_ADDR      shost;
+  INET_ADDR      dhost;
+  TEA_TYPE_INT   mss;
+  TEA_TYPE_INT   npackets;
+  TEA_TYPE_DATA  payload;
+  LN_CONTEXT    *lnc;
 } TCPOPEN_CFG;
 
 /*****************************************************************************
@@ -110,7 +110,7 @@ static void tcpopen__thread(THREAD_WORK *tw)
                          13337, //5840, //ntohs(tcp_header(m->b)->window),
                          ntohl(TCP_HEADER(m->b)->ack_seq),
                          ntohl(TCP_HEADER(m->b)->seq) + 1,
-                         (char *) tc->payload, tc->payload_size,
+                         (char *) tc->payload.data, tc->payload.size,
                          NULL, 0);
     }
 
@@ -146,8 +146,6 @@ static void tcpopen__thread(THREAD_WORK *tw)
 static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
-  SNODE *cn;
-  char *s;
 
   /* initialize specialized work thread data */
   if(tc == NULL)
@@ -161,44 +159,6 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
       TFAT("No memory for LN_CONTEXT.");
     ln_init_context(tc->lnc);
   }
-
-  /* read from SNODE command parameters */
-  if(command->command.thc.to != NULL)
-  if(command->command.thc.to->to.pattern != NULL)
-    TFAT("%d: TCPOPEN does not accept a pattern.",
-         command->command.thc.to->to.pattern->line);
-  
-  /* read from SNODE command options */
-  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
-    switch(cn->type)
-    {
-      case TYPE_OPT_SRC:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tc->shost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tc->shost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_DST:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tc->dhost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_PAYLOAD_FILE:
-      case TYPE_OPT_PAYLOAD_RANDOM:
-      case TYPE_OPT_PAYLOAD_STR:
-        payload_get(cn, &tc->payload, &tc->payload_size);
-        break;
-
-      default:
-        TFAT("%d: Uknown option %d.", cn->line, cn->type);
-    }
 
   /* configure src address (if not defined) */
   if(tc->dhost.type == INET_FAMILY_NONE)
@@ -219,13 +179,13 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
   {
     char buff[255];
 
-    TDBG2("config.periodic.bytes  = %d", tc->payload_size);
+    TDBG2("config.periodic.bytes  = %d", tc->payload.size);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost   = %s", buff);
-    TDBG2("config.options.payload = %d bytes", tc->payload_size);
+    TDBG2("config.options.payload = %d bytes", tc->payload.size);
   }
 
   return 0;
@@ -244,10 +204,10 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
       free(tc->lnc);
       tc->lnc = NULL;
     }
-    if(tc->payload)
+    if(tc->payload.data)
     {
-      free(tc->payload);
-      tc->payload = NULL;
+      free(tc->payload.data);
+      tc->payload.data = NULL;
     }
     free(tc);
     tw->data = NULL;
@@ -259,11 +219,21 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
  * TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+TOC_BEGIN(teaTCPOPEN_cfg)
+  TOC("src_addr", TEA_TYPE_ADDR, 0, TCPOPEN_CFG, shost,   NULL)
+  TOC("src_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, shost,   NULL)
+  TOC("dst_addr", TEA_TYPE_ADDR, 1, TCPOPEN_CFG, dhost,   NULL)
+  TOC("dst_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, dhost,   NULL)
+  TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, mss,     NULL)
+  TOC("payload",  TEA_TYPE_DATA, 1, TCPOPEN_CFG, payload, NULL)
+TOC_END
+
 TEA_OBJECT teaTCPOPEN = {
   .name         = "TCPOPEN",
   .configure    = tcpopen__configure,
   .cleanup      = tcpopen__cleanup,
   .thread       = tcpopen__thread,
   .listen_check = tcpopen__listen_check,
+  .cparams      = teaTCPOPEN_cfg
 };
 

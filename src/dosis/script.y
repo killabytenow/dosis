@@ -37,11 +37,19 @@
 
   static int yylex (void);
   static void yyerror (char const *);
+
   static SNODE *new_node(int type);
+  static SNODE *new_node_bool(int val);
+  static SNODE *new_node_float(double val);
+  static SNODE *new_node_int(int val);
+  static SNODE *new_node_string(char *val, int parse);
+  static SNODE *new_node_var(char *varname);
 
   static int lineno;
   static SNODE *script;
   static SNODE *allocated_list;
+
+  static HASH *defvalues;
 %}
 %union {
   HASH      *hash;
@@ -54,13 +62,13 @@
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
-%type  <hash>     opts
+%type  <hash>     opts pattern
 %type  <snode>    input
-%type  <snode>    var nint nfloat ntime data string
+%type  <snode>    data nbool nfloat nint ntime string var
 %type  <snode>    list_num_enum list_num range selection
-%type  <snode>    pattern
 %type  <snode>    o_ntime command
-%type  <snode>    to
+%type  <snode>    to to_pattern to_no_patt
+%token            BFALSE BTRUE
 %token            PERIODIC _FILE RANDOM
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
@@ -86,22 +94,18 @@ input: /* empty */        { $$ = NULL; }
     BASIC TYPES
   ---------------------------------------------------------------------------*/
 
-var:  VAR   { $$ = new_node(TYPE_VAR);
-              $$->varname = $1; }
+var:  VAR         { $$ = new_node_var($1); }
     ;
-
-nint: NINT  { $$ = new_node(TYPE_NINT);
-               $$->nint = $1; }
+nbool: BTRUE      { $$ = new_node_bool(1); }
+     | BFALSE     { $$ = new_node_bool(1); }
+     ;
+nint: NINT        { $$ = new_node_int($1); }
     | var
     ;
-
-nfloat: NFLOAT { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat = $1; }
-      | NINT   { $$ = new_node(TYPE_NFLOAT);
-                 $$->nfloat = $1; }
+nfloat: NFLOAT    { $$ = new_node_float($1); }
+      | NINT      { $$ = new_node_float($1); }
       | var
       ;
-
 ntime: '+' nfloat { $$ = new_node(TYPE_NTIME);
                     $$->ntime.rel = -1;
                     $$->ntime.n   = $2; }
@@ -109,20 +113,9 @@ ntime: '+' nfloat { $$ = new_node(TYPE_NTIME);
                     $$->ntime.rel = 0;
                     $$->ntime.n   = $1; }
      ;
-
-string: STRING                  { $$ = new_node(TYPE_STRING);
-                                  $$->string.parse = -1;
-                                  $$->string.value = $1; }
-      | LITERAL                 { $$ = new_node(TYPE_STRING);
-                                  $$->string.parse = 0;
-                                  $$->string.value = $1; }
+string: STRING                  { $$ = new_node_string($1, 1); }
+      | LITERAL                 { $$ = new_node_string($1, 0); }
       | var
-      /*
-      | NFLOAT  { $$ = new_node(TYPE_NFLOAT);
-                  $$->nfloat     = $1; }
-      | NINT    { $$ = new_node(TYPE_NINT);
-                  $$->nfloat     = $1; }
-      */
       ;
 data:   string
       | RANDOM '(' nint ')'     { $$ = new_node(TYPE_RANDOM);
@@ -163,21 +156,23 @@ selection: range
 opts:
   /* none */                { $$ = hash_new(); }
  /* SSL [ciphersuite] */
-| OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_add_entry($$, "payload",   NULL); }
-| OPT_PAYLOAD data opts     { $$ = $3; hash_add_entry($$, "payload",   $2);   }
-| OPT_SSL opts              { $$ = $2; hash_add_entry($$, "ssl",       NULL); }
-| OPT_SSL string opts       { $$ = $3; hash_add_entry($$, "ssl",       $2);   }
-| OPT_SRC string opts       { $$ = $3; hash_add_entry($$, "src_addr",  $2);   }
-| OPT_SRC string nint opts  { $$ = $4; hash_add_entry($$, "src_addr",  $2);
-                                       hash_add_entry($$, "src_port",  $3);   }
-| OPT_DST string opts       { $$ = $3; hash_add_entry($$, "dst_addr",  $2);   }
-| OPT_DST string nint opts  { $$ = $4; hash_add_entry($$, "dst_addr",  $2);
-                                       hash_add_entry($$, "dst_port",  $3);   }
-| OPT_MSS nint opts         { $$ = $3; hash_add_entry($$, "tcp_mss",   $2);   }
-| OPT_FLAGS string opts     { $$ = $3; hash_add_entry($$, "tcp_flags", $2);   }
-| OPT_CWAIT nint opts       { $$ = $3; hash_add_entry($$, "tcp_cwait", $2);   }
-| OPT_RWAIT nint opts       { $$ = $3; hash_add_entry($$, "tcp_rwait", $2);   }
-| OPT_WINDOW nint opts      { $$ = $3; hash_add_entry($$, "tcp_win",   $2);   }
+| OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_add_entry($$, "payload",    NULL); }
+| OPT_PAYLOAD data opts     { $$ = $3; hash_add_entry($$, "payload",    $2);   }
+| OPT_SSL nbool opts        { $$ = $3; hash_add_entry($$, "ssl",        $2);   }
+| OPT_SSL opts              { $$ = $2; hash_add_entry($$, "ssl",        new_node_bool(1)); }
+| OPT_SSL string opts       { $$ = $3; hash_add_entry($$, "ssl",        new_node_bool(1));
+                                       hash_add_entry($$, "ssl_cipher", $2);   }
+| OPT_SRC string opts       { $$ = $3; hash_add_entry($$, "src_addr",   $2);   }
+| OPT_SRC string nint opts  { $$ = $4; hash_add_entry($$, "src_addr",   $2);
+                                       hash_add_entry($$, "src_port",   $3);   }
+| OPT_DST string opts       { $$ = $3; hash_add_entry($$, "dst_addr",   $2);   }
+| OPT_DST string nint opts  { $$ = $4; hash_add_entry($$, "dst_addr",   $2);
+                                       hash_add_entry($$, "dst_port",   $3);   }
+| OPT_MSS nint opts         { $$ = $3; hash_add_entry($$, "tcp_mss",    $2);   }
+| OPT_FLAGS string opts     { $$ = $3; hash_add_entry($$, "tcp_flags",  $2);   }
+| OPT_CWAIT nint opts       { $$ = $3; hash_add_entry($$, "tcp_cwait",  $2);   }
+| OPT_RWAIT nint opts       { $$ = $3; hash_add_entry($$, "tcp_rwait",  $2);   }
+| OPT_WINDOW nint opts      { $$ = $3; hash_add_entry($$, "tcp_win",    $2);   }
        /*| OPT_PAYLOAD OPT_DLL '(' string ')'
                                  { $$ = new_node(TYPE_OPT_PAYLOAD_DLL);
                                    $$->option.payload = $4; }*/
@@ -188,12 +183,15 @@ opts:
   ---------------------------------------------------------------------------*/
 
 pattern: PERIODIC '[' nfloat ',' nint ']'
-           { $$ = new_node(TYPE_PERIODIC);
-             $$->pattern.periodic.ratio = $3;
-             $$->pattern.periodic.n     = $5; }
+           { $$ = hash_new();
+             hash_add_entry($$, "pattern", new_node_int(TYPE_PERIODIC));
+             hash_add_entry($$, "periodic_ratio", $3);
+             hash_add_entry($$, "periodic_n",     $5); }
        | PERIODIC '[' nfloat ']'
-           { $$ = new_node(TYPE_PERIODIC_LIGHT);
-             $$->pattern.periodic.ratio = $3; }
+           { $$ = hash_new();
+             hash_add_entry($$, "pattern", new_node_int(TYPE_PERIODIC));
+             hash_add_entry($$, "periodic_ratio", $3);
+             hash_add_entry($$, "periodic_n",     new_node_int(1)); }
        ;
 
 /*---------------------------------------------------------------------------
@@ -204,27 +202,21 @@ o_ntime: /* empty */ { $$ = NULL; }
        | ntime       { $$ = $1;   }
        ;
 
-to: TO_TCP opts pattern                 { $$ = new_node(TYPE_TO_TCP);
-                                          $$->to.options = $2;
-                                          $$->to.pattern = $3; }
-  | TO_UDP opts pattern                 { $$ = new_node(TYPE_TO_UDP);
-                                          $$->to.options = $2;
-                                          $$->to.pattern = $3; }
-  | TO_TCP OPT_OPEN opts                { $$ = new_node(TYPE_TO_TCPOPEN);
-                                          $$->to.options = $3;
-                                          $$->to.pattern = NULL; }
-  | TO_TCP OPT_ZWIN opts                { $$ = new_node(TYPE_TO_ZWIN);
-                                          $$->to.options = $3;
-                                          $$->to.pattern = NULL; }
-  | TO_TCP OPT_SLOW opts                { $$ = new_node(TYPE_TO_SLOW);
-                                          $$->to.options = $3;
-                                          $$->to.pattern = NULL; }
-  | TO_TCP OPT_RAW opts pattern         { $$ = new_node(TYPE_TO_TCPRAW);
-                                          $$->to.options = $3;
-                                          $$->to.pattern = $4; }
-  | TO_LISTEN                           { $$ = new_node(TYPE_TO_LISTEN);
-                                          $$->to.options = NULL;
-                                          $$->to.pattern = NULL; }
+to_pattern: TO_TCP          { $$ = new_node(TYPE_TO_TCP);     }
+          | TO_UDP          { $$ = new_node(TYPE_TO_UDP);     }
+          | TO_TCP OPT_RAW  { $$ = new_node(TYPE_TO_TCPRAW);  }
+          ;
+to_no_patt: TO_TCP OPT_OPEN { $$ = new_node(TYPE_TO_TCPOPEN); }
+          | TO_TCP OPT_ZWIN { $$ = new_node(TYPE_TO_ZWIN);    }
+          | TO_TCP OPT_SLOW { $$ = new_node(TYPE_TO_SLOW);    }
+          ;
+to: to_pattern opts pattern { $$ = $1;
+                              $1->options = hash_merge($2, $3, NULL);
+                              hash_destroy($3, NULL); }
+  | to_no_patt opts         { $$ = $1;
+                              $1->options = $2; }
+  | TO_LISTEN               { $$ = new_node(TYPE_TO_LISTEN);
+                              $$->options = NULL; }
   ;
 
 command: o_ntime CMD_ON selection to    { $$ = new_node(TYPE_CMD_ON);
@@ -267,6 +259,42 @@ static SNODE *new_node(int type)
   n->next_allocated = allocated_list;
   allocated_list = n;
 
+  return n;
+}
+
+static SNODE *new_node_float(double val)
+{
+  SNODE *n = new_node(TYPE_NFLOAT);
+  n->nfloat = val;
+  return n;
+}
+
+static SNODE *new_node_int(int val)
+{
+  SNODE *n = new_node(TYPE_NINT);
+  n->nint = val;
+  return n;
+}
+
+static SNODE *new_node_string(char *val, int parse)
+{
+  SNODE *n = new_node(TYPE_STRING);
+  n->string.value = val;
+  n->string.parse = parse;
+  return n;
+}
+
+static SNODE *new_node_var(char *varname)
+{
+  SNODE *n = new_node(TYPE_VAR);
+  n->varname = varname;
+  return n;
+}
+
+static SNODE *new_node_bool(int v)
+{
+  SNODE *n = new_node(TYPE_BOOL);
+  n->nbool = v != 0;
   return n;
 }
 
@@ -338,6 +366,7 @@ static int yylex(void)
     { "CWAIT",    OPT_CWAIT   },
     { "DLL",      OPT_DLL     },
     { "DST",      OPT_DST     },
+    { "FALSE",    BFALSE      },
     { "FILE",     TYPE_FILE   },
     { "FLAGS",    OPT_FLAGS   },
     { "LISTEN",   TO_LISTEN   },
@@ -356,6 +385,7 @@ static int yylex(void)
     { "SRC",      OPT_SRC     },
     { "SSL",      OPT_SSL     },
     { "TCP",      TO_TCP      },
+    { "TRUE",     BTRUE       },
     { "UDP",      TO_UDP      },
     { "WINDOW",   OPT_WINDOW  },
     { "ZWIN",     OPT_ZWIN    },
@@ -618,6 +648,29 @@ void script_init(void)
   allocated_list = NULL;
 
   dosis_atexit("SCRIPT", script_fini);
+
+  /* create config skeleton */
+  defvalues = hash_new();
+  hash_add_entry(defvalues, "payload",    NULL);
+  hash_add_entry(defvalues, "ssl",        NULL);
+  hash_add_entry(defvalues, "ssl_cipher", NULL);
+  hash_add_entry(defvalues, "src_addr",   NULL);
+  hash_add_entry(defvalues, "src_port",   NULL);
+  hash_add_entry(defvalues, "dst_addr",   NULL);
+  hash_add_entry(defvalues, "dst_port",   NULL);
+  hash_add_entry(defvalues, "tcp_mss",    NULL);
+  hash_add_entry(defvalues, "tcp_flags",  NULL);
+  hash_add_entry(defvalues, "tcp_cwait",  NULL);
+  hash_add_entry(defvalues, "tcp_rwait",  NULL);
+  hash_add_entry(defvalues, "tcp_win",    NULL);
+  hash_add_entry(defvalues, "ssl_cipher", NULL);
+
+  /* set default config */
+  hash_set_entry(defvalues, "tcp_cwait",  new_node_int(3000000));
+  hash_set_entry(defvalues, "tcp_rwait",  new_node_int(10000000));
+  hash_set_entry(defvalues, "tcp_win",    new_node_int(31337));
+  hash_set_entry(defvalues, "ssl_cipher", new_node_string("DES-CBC3-SHA", 0));
+
 }
 
 static void yyerror(char const *str)
@@ -770,6 +823,19 @@ char *script_get_var(SNODE *n)
   return r;
 }
 
+
+/*---------------------------------------------------------------------------
+ * CONFIGURATION
+ *---------------------------------------------------------------------------*/
+
+SNODE *script_get_default(char *param)
+{
+  /* try to get default value from default config */
+  if(!hash_key_exists(defvalues, param))
+    FAT("Cannot get invalid parameter '%s'.", param);
+
+  return hash_get_entry(defvalues, param);
+}
 
 /*---------------------------------------------------------------------------*
  * ITERATORS                                                                 *
