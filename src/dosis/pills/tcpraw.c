@@ -37,17 +37,16 @@
 
 typedef struct _tag_TCPRAW_CFG {
   /* options */
-  INET_ADDR          shost;
-  INET_ADDR          dhost;
-  int                flags;
-
-  /* parameters */
-  unsigned           npackets;
-  double             hitratio;
-  char              *payload;
-  unsigned           payload_size;
+  TEA_TYPE_ADDR      shost;
+  TEA_TYPE_ADDR      dhost;
+  TEA_TYPE_STRING    sflags;
+  TEA_TYPE_INT       pattern;
+  TEA_TYPE_INT       npackets;
+  TEA_TYPE_FLOAT     hitratio;
+  TEA_TYPE_DATA      payload;
 
   /* other things */
+  int                flags;
   pthreadex_timer_t  timer;
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
@@ -91,14 +90,14 @@ static void tcpraw__thread(THREAD_WORK *tw)
     for(i = 0; i < tc->npackets; i++)
     {
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-#warning "Set flags"
-#warning "Set window"
+/* XXX TODO: "Set flags" */
+/* XXX TODO: "Set window" */
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
                          &tc->dhost.addr.in.inaddr, tc->dhost.port,
                          TH_SYN, 13337,
                          seq, 0,
-                         (char *) tc->payload, tc->payload_size,
+                         (char *) tc->payload.data, tc->payload.size,
                          NULL, 0);
     }
   }
@@ -114,9 +113,6 @@ static void tcpraw__thread(THREAD_WORK *tw)
 static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
-  SNODE *cn;
-  char *s;
-  int i;
 
   /* first initialization (specialized work thread data) */
   if(tc == NULL)
@@ -133,80 +129,6 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
     pthreadex_timer_init(&(tc->timer), 0.0);
   }
 
-  /* read from SNODE command parameters */
-  cn = command->command.thc.to->to.pattern;
-  tc->npackets = 1;
-  tc->hitratio = 1.0;
-  switch(cn->type)
-  {
-    case TYPE_PERIODIC:
-      tc->npackets = tea_snode_get_int(cn->pattern.periodic.n);
-
-    case TYPE_PERIODIC_LIGHT:
-      tc->hitratio = tea_snode_get_float(cn->pattern.periodic.ratio);
-      if(tc->hitratio < 0)
-        TFAT("%d: Bad hit ratio '%f'.", cn->line, tc->hitratio);
-      if(tc->npackets <= 0)
-        TFAT("%d: Bad number of packets '%d'.", cn->line, tc->npackets);
-      break;
-    default:
-        TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
-  }
-
-  /* read from SNODE command options */
-  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
-    switch(cn->type)
-    {
-      case TYPE_OPT_SRC:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tc->shost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tc->shost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_DST:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tc->dhost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tc->dhost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_FLAGS:
-        s = tea_snode_get_string(cn->option.flags);
-        tc->flags = 0;
-        for(i = 0; s[i]; i++)
-          switch(toupper(s[i]))
-          {
-            case 'U': tc->flags |= 0x20; break; /* urgent */
-            case 'A': tc->flags |= 0x10; break; /* ack    */
-            case 'P': tc->flags |= 0x08; break; /* push   */
-            case 'R': tc->flags |= 0x04; break; /* reset  */
-            case 'S': tc->flags |= 0x02; break; /* syn    */
-            case 'F': tc->flags |= 0x01; break; /* fin    */
-            default:
-              TFAT("%d: Unknown TCP flag '%c'.", cn->line, s[i]);
-          }
-        free(s);
-        break;
-
-      case TYPE_OPT_PAYLOAD_FILE:
-      case TYPE_OPT_PAYLOAD_RANDOM:
-      case TYPE_OPT_PAYLOAD_STR:
-        payload_get(cn, &tc->payload, &tc->payload_size);
-        break;
-
-      default:
-        TFAT("%d: Uknown option %d.", cn->line, cn->type);
-    }
-
-  /* configure timer */
-  if(tc->hitratio > 0)
-    pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
-
   /* configure src address (if not defined) */
   if(tc->dhost.type == INET_FAMILY_NONE)
     TFAT("I need a target address.");
@@ -222,18 +144,30 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
       ip_addr_copy(&tc->shost, &ai->addr);
   }
 
+  /* check params sanity */
+  if(tc->pattern != TYPE_PERIODIC)
+    TFAT("Uknown pattern %d.", tc->pattern);
+  if(tc->npackets < 0)
+    TWRN("Bad number of packets %d.", tc->npackets);
+  if(tc->hitratio < 0)
+    TFAT("Bad hit ratio '%f'.", tc->hitratio);
+
+  /* configure timer */
+  if(tc->hitratio > 0)
+    pthreadex_timer_set_frequency(&(tc->timer), tc->hitratio);
+
   /* (debug) print configuration */
   {
     char buff[255];
 
-    TDBG2("config.periodic.n     = %d", tc->npackets);
-    TDBG2("config.periodic.ratio = %f", tc->hitratio);
+    TDBG2("config.periodic.npackets = %d", tc->npackets);
+    TDBG2("config.periodic.ratio    = %f", tc->hitratio);
 
     ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
-    TDBG2("config.options.shost  = %s", buff);
+    TDBG2("config.options.shost     = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
-    TDBG2("config.options.dhost  = %s", buff);
-    TDBG2("config.options.flags  = %x", tc->flags);
+    TDBG2("config.options.dhost     = %s", buff);
+    TDBG2("config.options.flags     = %x (%s)", tc->flags, tc->sflags);
   }
 
   return 0;
@@ -248,10 +182,10 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
   free(tc->lnc);
   pthreadex_timer_destroy(&tc->timer);
 
-  if(tc->payload)
+  if(tc->payload.data)
   {
-    free(tc->payload);
-    tc->payload = NULL;
+    free(tc->payload.data);
+    tc->payload.data = NULL;
   }
   free(tc);
   tw->data = NULL;
@@ -261,11 +195,48 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
  * TCPRAW TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+static int cfg_cb_update_flags(TEA_OBJCFG *oc, THREAD_WORK *tw)
+{
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+  int i;
+
+  /* precalculate flags */
+  tc->flags = 0;
+  for(i = 0; tc->sflags[i]; i++)
+    switch(toupper(tc->sflags[i]))
+    {
+      case 'U': tc->flags |= 0x20; break; /* urgent */
+      case 'A': tc->flags |= 0x10; break; /* ack    */
+      case 'P': tc->flags |= 0x08; break; /* push   */
+      case 'R': tc->flags |= 0x04; break; /* reset  */
+      case 'S': tc->flags |= 0x02; break; /* syn    */
+      case 'F': tc->flags |= 0x01; break; /* fin    */
+      default:
+        ERR("Unknown TCP flag '%c'.", tc->sflags[i]);
+        return -1;
+    }
+
+  return 0;
+}
+
+TOC_BEGIN(tcpraw_cfg_def)
+  TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,      NULL)
+  TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,      NULL)
+  TOC("flags",          TEA_TYPE_STRING, 1, TCPRAW_CFG, flags,      cfg_cb_update_flags)
+  TOC("pattern",        TEA_TYPE_INT,    1, TCPRAW_CFG, pattern,    NULL)
+  TOC("payload",        TEA_TYPE_DATA,   1, TCPRAW_CFG, payload,    NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCPRAW_CFG, hitratio,   NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,    1, TCPRAW_CFG, npackets,   NULL)
+  TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,      NULL)
+  TOC("src_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, shost,      NULL)
+TOC_END
+
 TEA_OBJECT teaTCPRAW = {
   .name         = "TCPRAW",
   .configure    = tcpraw__configure,
   .cleanup      = tcpraw__cleanup,
   .listen_check = tcpraw__listen_check,
   .thread       = tcpraw__thread,
+  .cparams      = tcpraw_cfg_def
 };
 

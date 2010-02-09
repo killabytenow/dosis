@@ -63,9 +63,9 @@ struct __TEA_DATA {
 typedef INET_ADDR         TEA_TYPE_ADDR;
 typedef int               TEA_TYPE_BOOL;
 typedef struct __TEA_DATA TEA_TYPE_DATA;
-typedef int               TEA_TYPE_FLOAT;
+typedef double            TEA_TYPE_FLOAT;
 typedef int               TEA_TYPE_INT;
-typedef int               TEA_TYPE_STRING;
+typedef char *            TEA_TYPE_STRING;
 
 typedef struct _tag_TEA_OBJCFG {
   char     *name;

@@ -33,15 +33,13 @@
 #include "tea.h"
 
 typedef struct _tag_UDP_CFG {
-  /* options */
-  INET_ADDR          shost;
-  INET_ADDR          dhost;
-
   /* parameters */
-  unsigned           npackets;
-  double             hitratio;
-  char              *payload;
-  unsigned           payload_size;
+  TEA_TYPE_ADDR          shost;
+  TEA_TYPE_ADDR          dhost;
+  TEA_TYPE_INT           npackets;
+  TEA_TYPE_FLOAT         hitratio;
+  TEA_TYPE_INT           pattern;
+  TEA_TYPE_DATA          payload;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -109,7 +107,7 @@ static void udp__thread(THREAD_WORK *tw)
       ln_send_udp_packet(tu->lnc,
                          &tu->shost.addr.in.inaddr, sport,
                          &tu->dhost.addr.in.inaddr, dport,
-                         tu->payload, tu->payload_size);
+                         tu->payload.data, tu->payload.size);
     }
   }
 }
@@ -124,8 +122,6 @@ static void udp__thread(THREAD_WORK *tw)
 static int udp__configure(THREAD_WORK *tw, SNODE *command)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
-  SNODE *cn;
-  char *s;
 
   /* first initialization (specialized work thread data) */
   if(tu == NULL)
@@ -143,57 +139,13 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
     pthreadex_timer_init(&(tu->timer), 0.0);
   }
 
-  /* read from SNODE command parameters */
-  cn = command->command.thc.to->to.pattern;
-  tu->npackets = 1;
-  tu->hitratio = 1.0;
-  switch(cn->type)
-  {
-    case TYPE_PERIODIC:
-      tu->npackets = tea_snode_get_int(cn->pattern.periodic.n);
-
-    case TYPE_PERIODIC_LIGHT:
-      tu->hitratio = tea_snode_get_float(cn->pattern.periodic.ratio);
-      if(tu->hitratio < 0)
-        TFAT("%d: Bad hit ratio '%f'.", cn->line, tu->hitratio);
-      if(tu->npackets <= 0)
-        TFAT("%d: Bad number of packets '%d'.", cn->line, tu->npackets);
-      break;
-    default:
-        TFAT("%d: Uknown pattern %d.", cn->line, cn->type);
-  }
-
-  /* read from SNODE command options */
-  for(cn = command->command.thc.to->to.options; cn; cn = cn->option.next)
-    switch(cn->type)
-    {
-      case TYPE_OPT_SRC:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tu->shost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tu->shost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_DST:
-        s = tea_snode_get_string(cn->option.addr);
-        if(ip_addr_parse(s, &tu->dhost))
-          TFAT("%d: Cannot parse source address '%s'.", cn->line, s);
-        free(s);
-        if(cn->option.port)
-          ip_addr_set_port(&tu->dhost, tea_snode_get_int(cn->option.port));
-        break;
-
-      case TYPE_OPT_PAYLOAD_FILE:
-      case TYPE_OPT_PAYLOAD_RANDOM:
-      case TYPE_OPT_PAYLOAD_STR:
-        payload_get(cn, &tu->payload, &tu->payload_size);
-        break;
-
-      default:
-        TFAT("%d: Uknown option %d.", cn->line, cn->type);
-    }
+  /* check params sanity */
+  if(tu->pattern != TYPE_PERIODIC)
+    TFAT("Uknown pattern %d.", tu->pattern);
+  if(tu->npackets < 0)
+    TWRN("Bad number of packets %d.", tu->npackets);
+  if(tu->hitratio < 0)
+    TFAT("Bad hit ratio '%f'.", tu->hitratio);
 
   /* configure timer */
   if(tu->hitratio > 0)
@@ -232,19 +184,19 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
 
 static void udp__cleanup(THREAD_WORK *tw)
 {
-  UDP_CFG *tc = (UDP_CFG *) tw->data;
+  UDP_CFG *tu = (UDP_CFG *) tw->data;
 
   /* collect libnet data */
-  ln_destroy_context(tc->lnc);
-  free(tc->lnc);
-  pthreadex_timer_destroy(&tc->timer);
+  ln_destroy_context(tu->lnc);
+  free(tu->lnc);
+  pthreadex_timer_destroy(&tu->timer);
 
-  if(tc->payload)
+  if(tu->payload.data)
   {
-    free(tc->payload);
-    tc->payload = NULL;
+    free(tu->payload.data);
+    tu->payload.data = NULL;
   }
-  free(tc);
+  free(tu);
   tw->data = NULL;
 
   TDBG("Finalized.");

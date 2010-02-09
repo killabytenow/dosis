@@ -29,6 +29,7 @@ dosis_SOURCES = dosis.c           dosis.h           \
                 dosconfig.c       dosconfig.h       \
                 ip.c              ip.h              \
                 ipqex.c           ipqex.h           \
+                hash.c            hash.h            \
                 help.c            help.h            \
                 lnet.c            lnet.h            \
                 log.c             log.h             \

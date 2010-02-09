@@ -170,7 +170,19 @@ static void tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v
   }
 
   /* get from local config if defined */
+  /* TODO: use handler */
   //*defval = 0;
+}
+
+static SNODE *tea_thread_param_value_get(HASH *opts, char *name)
+{
+  SNODE *r;
+
+  r = script_get_default(name);
+  if(hash_key_exists(opts, name))
+    r = hash_entry_get(opts, name);
+
+  return r;
 }
 
 static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
@@ -211,9 +223,10 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
     SNODE *val;
 
     /* get configured value (or set default value if not specified) */
+    val = tea_thread_param_value_get(command->options, ocline->name);
     val = script_get_default(ocline->name);
     if(hash_key_exists(command->options, ocline->name))
-      val = hash_get_entry(command->options, ocline->name);
+      val = hash_entry_get(command->options, ocline->name);
 
     /* check if parameter is optional */
     if(!val)

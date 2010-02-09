@@ -42,11 +42,11 @@ typedef struct _tag_TCP_CFG {
   TEA_TYPE_STRING   *sslcipher;
   TEA_TYPE_INT       cwait;
   TEA_TYPE_INT       rwait;
+  TEA_TYPE_INT       pattern;
+  TEA_TYPE_INT       n;
+  TEA_TYPE_FLOAT     hitratio;
 
   /* parameters */
-  int                pattern;
-  int                n;
-  double             hitratio;
 
   /* other things */
   int                sock;
@@ -345,7 +345,7 @@ static void tcp__cleanup(THREAD_WORK *tw)
  * TCP TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-TOC_BEGIN(teaSlowy_cfg)
+TOC_BEGIN(tcp_cfg_def)
   TOC("cwait",          TEA_TYPE_INT,    1, TCP_CFG, cwait,      NULL)
   TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCP_CFG, dhost,      NULL)
   TOC("dst_port",       TEA_TYPE_PORT,   0, TCP_CFG, dhost,      NULL)
@@ -364,5 +364,6 @@ TEA_OBJECT teaTCP = {
   .configure    = tcp__configure,
   .cleanup      = tcp__cleanup,
   .thread       = tcp__thread,
+  .cparams      = tcp_cfg_def
 };
 
