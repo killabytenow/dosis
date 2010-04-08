@@ -155,6 +155,62 @@ void d_fat(char *file, char *function, char *format, ...)
   exit(1);
 }
 
+/******************************************************************************
+ * Dump function
+ *
+ *   A nice hex-dumper!
+ */
+
+void d_dump(int level, char *file, char *func, char *prefix, char *buff, int size)
+{
+  char dump[255], *s;
+  unsigned char c;
+  int i, j, m, w;
+
+  if(cfg.verbosity < level)
+    return;
+
+  if(!prefix)
+    prefix = "";
+
+  w = 16;
+  for(i = 0; i < size; i += w)
+  {
+    /* max chars for this churro */
+    m = i + w;
+    /* start printing hex info */
+    s = dump;
+    for(j = i; j < m; j++)
+    {
+      if(!(j & 0x7)) *s++ = ' ';
+      if(j >= size)
+      {
+        *s++ = ' ';
+        *s++ = ' ';
+        *s++ = ' ';
+      } else
+        s += sprintf(s, " %02x", *(((unsigned char *) buff) + j));
+    }
+    /* concat printable-string churro */
+    *s++ = ' ';
+    if(m > size) m = size;
+    for(j = i; j < m; j++)
+    {
+      c = *(((unsigned char *) buff) + j);
+      if(!(j & 0x7)) *s++ = ' ';
+      *s++ = isgraph(c) ? c : '.';
+    }
+    *s = '\0';
+    /* output churro */
+    /* XXX: When threaded, get log library lock here */
+    d_log_prefix_print(level, file, func);
+    fprintf(logfile, "%s%04x %s\n", prefix, i, dump);
+  }
+  
+  if(level == LOG_LEVEL_FATAL)
+    exit(1);
+}
+
 void d_stacktrace(int level)
 {
 #if HAVE_DLFCN_H
@@ -173,7 +229,10 @@ static void log_fini(void)
     fclose(logfile);
 #if HAVE_DLFCN_H
   if(lst)
+  {
+    DBG("Closing libstacktrace.");
     dlclose(lst);
+  }
   lst = NULL;
 #endif
 }
