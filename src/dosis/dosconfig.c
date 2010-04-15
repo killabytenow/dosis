@@ -97,7 +97,6 @@ static void dos_config_parse_command(int argc, char **argv)
     switch(c)
     {
       case 'h':
-          cfg.verbosity = 3;
           dos_help_program_header();
           print_help();
           exit(0);
