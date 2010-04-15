@@ -34,12 +34,12 @@
 
 typedef struct _tag_UDP_CFG {
   /* parameters */
-  TEA_TYPE_ADDR          shost;
   TEA_TYPE_ADDR          dhost;
-  TEA_TYPE_INT           npackets;
-  TEA_TYPE_FLOAT         hitratio;
   TEA_TYPE_INT           pattern;
   TEA_TYPE_DATA          payload;
+  TEA_TYPE_FLOAT         hitratio;
+  TEA_TYPE_INT           npackets;
+  TEA_TYPE_ADDR          shost;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -81,7 +81,6 @@ static void udp__thread(THREAD_WORK *tw)
   int i;
   unsigned sport, dport;
 
-  TDBG("Started sender thread");
   sport = dport = 1337;
 
   /* ATTACK */
@@ -93,17 +92,15 @@ static void udp__thread(THREAD_WORK *tw)
         TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /* build UDP packet with payload (if requested) */
-    TDBG("Sending %d packet(s)...", tu->npackets);
-    if(tu->shost.port_defined)
-      sport = tu->shost.port;
-    if(tu->dhost.port_defined)
-      dport = tu->dhost.port;
+    TDBG2("Sending %d packet(s)...", tu->npackets);
     for(i = 0; i < tu->npackets; i++)
     {
-      if(!tu->shost.port_defined)
-        ln_get_next_random_port_number(&sport);
-      if(!tu->dhost.port_defined)
-        ln_get_next_random_port_number(&dport);
+      sport = tu->shost.port_defined
+                ? tu->shost.port
+                : NEXT_RAND_PORT(sport);
+      dport = tu->dhost.port_defined
+                ? tu->dhost.port
+                : NEXT_RAND_PORT(dport);
       ln_send_udp_packet(tu->lnc,
                          &tu->shost.addr.in.inaddr, sport,
                          &tu->dhost.addr.in.inaddr, dport,
@@ -119,41 +116,32 @@ static void udp__thread(THREAD_WORK *tw)
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int udp__configure(THREAD_WORK *tw, SNODE *command)
+static int udp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
 
   /* first initialization (specialized work thread data) */
-  if(tu == NULL)
+  if(first_time)
   {
-    if((tu = calloc(1, sizeof(UDP_CFG))) == NULL)
-      TFAT("No memory for UDP_CFG.");
-    tw->data = (void *) tu;
-
     /* initialize libnet */
     TDBG("Initializing libnet.");
     if((tu->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      TFAT("No memory for LN_CONTEXT.");
+    {
+      TERR("No memory for LN_CONTEXT.");
+      return -1;
+    }
     ln_init_context(tu->lnc);
 
     pthreadex_timer_init(&(tu->timer), 0.0);
+    pthreadex_timer_name(&(tu->timer), "udp-timer");
   }
-
-  /* check params sanity */
-  if(tu->pattern != TYPE_PERIODIC)
-    TFAT("Uknown pattern %d.", tu->pattern);
-  if(tu->npackets < 0)
-    TWRN("Bad number of packets %d.", tu->npackets);
-  if(tu->hitratio < 0)
-    TFAT("Bad hit ratio '%f'.", tu->hitratio);
-
-  /* configure timer */
-  if(tu->hitratio > 0)
-    pthreadex_timer_set_frequency(&(tu->timer), tu->hitratio);
 
   /* configure src address (if not defined) */
   if(tu->dhost.type == INET_FAMILY_NONE)
-    TFAT("I need a target address.");
+  {
+    TERR("I need a target address.");
+    return -1;
+  }
   if(tu->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -165,6 +153,24 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command)
     } else
       ip_addr_copy(&tu->shost, &ai->addr);
   }
+
+  /* check params sanity */
+  if(tu->pattern != TYPE_PERIODIC)
+  {
+    TERR("Uknown pattern %d.", tu->pattern);
+    return -1;
+  }
+  if(tu->npackets < 0)
+    TWRN("Bad number of packets %d.", tu->npackets);
+  if(tu->hitratio < 0)
+  {
+    TERR("Bad hit ratio '%f'.", tu->hitratio);
+    return -1;
+  }
+
+  /* configure timer */
+  if(tu->hitratio > 0)
+    pthreadex_timer_set_frequency(&(tu->timer), tu->hitratio);
 
   /* (debug) print configuration */
   {
@@ -196,8 +202,6 @@ static void udp__cleanup(THREAD_WORK *tw)
     free(tu->payload.data);
     tu->payload.data = NULL;
   }
-  free(tu);
-  tw->data = NULL;
 
   TDBG("Finalized.");
 }
@@ -206,11 +210,24 @@ static void udp__cleanup(THREAD_WORK *tw)
  * UDP TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+TOC_BEGIN(udp_cfg_def)
+  TOC("dst_addr",       TEA_TYPE_ADDR,   1, UDP_CFG, dhost,      NULL)
+  TOC("dst_port",       TEA_TYPE_PORT,   0, UDP_CFG, dhost,      NULL)
+  TOC("pattern",        TEA_TYPE_INT,    1, UDP_CFG, pattern,    NULL)
+  TOC("payload",        TEA_TYPE_DATA,   0, UDP_CFG, payload,    NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, UDP_CFG, hitratio,   NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,    1, UDP_CFG, npackets,   NULL)
+  TOC("src_addr",       TEA_TYPE_ADDR,   0, UDP_CFG, shost,      NULL)
+  TOC("src_port",       TEA_TYPE_PORT,   0, UDP_CFG, shost,      NULL)
+TOC_END
+
 TEA_OBJECT teaUDP = {
   .name         = "UDP",
+  .datasize     = sizeof(UDP_CFG),
   .configure    = udp__configure,
   .cleanup      = udp__cleanup,
 /*.listen_check = udp__listen_check,*/
   .thread       = udp__thread,
+  .cparams      = udp_cfg_def
 };
 
