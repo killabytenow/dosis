@@ -318,20 +318,19 @@ static void slowy__listen(THREAD_WORK *tw)
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int slowy__configure(THREAD_WORK *tw, SNODE *command)
+static int slowy__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 {
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
 
   /* initialize specialized work thread data */
-  if(tc == NULL)
+  if(first_time)
   {
-    if((tc = calloc(1, sizeof(SLOWY_CFG))) == NULL)
-      TFAT("No memory for SLOWY_CFG.");
-    tw->data = (void *) tc;
-
     /* initialize libnet */
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      TFAT("No memory for LN_CONTEXT.");
+    {
+      TERR("No memory for LN_CONTEXT.");
+      return -1;
+    }
     ln_init_context(tc->lnc);
   }
 
@@ -341,13 +340,17 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command)
     case TYPE_TO_ZWIN: tc->zerowin = 1; break;
     case TYPE_TO_SLOW: tc->zerowin = 0; break;
     default:
-      TFAT("Uknown attack type %d.", command->command.thc.to->type);
+      TERR("Uknown attack type %d.", command->command.thc.to->type);
+      return -1;
   }
 
   /* configure src address (if not defined) */
   /* TODO: check dest address is INET */
   if(tc->dhost.type == INET_FAMILY_NONE)
-    TFAT("I need a target address.");
+  {
+    TERR("I need a target address.");
+    return -1;
+  }
   if(tc->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -394,9 +397,6 @@ static void slowy__cleanup(THREAD_WORK *tw)
       tc->payload.data = NULL;
       tc->payload.size = 0;
     }
-    free(tc);
-    tw->data = NULL;
-
     /* free conntrack pool */
     /* XXX TODO XXX */
   }
@@ -419,6 +419,7 @@ TOC_END
 
 TEA_OBJECT teaSlowy = {
   .name         = "Slowy",
+  .datasize     = sizeof(SLOWY_CFG),
   .configure    = slowy__configure,
   .cleanup      = slowy__cleanup,
   .listen       = slowy__listen,
