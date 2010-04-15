@@ -42,8 +42,8 @@
   static SNODE *node_new_bool(int val);
   static SNODE *node_new_float(double val);
   static SNODE *node_new_int(int val);
-  static SNODE *node_new_string(char *val, int parse);
-  static SNODE *node_new_var(char *varname);
+  static SNODE *node_new_string(char *val, int parse, int dup);
+  static SNODE *node_new_var(char *varname, int dup);
 
   static int lineno;
   static SNODE *script;
@@ -54,26 +54,28 @@
 %union {
   HASH      *hash;
   SNODE     *snode;
+  int        nbool;
   int        nint;
   double     nfloat;
   char      *string;
 }
+%token <nbool>    NBOOL
 %token <nint>     NINT
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
 %type  <hash>     opts pattern
 %type  <snode>    input
-%type  <snode>    data nbool nfloat nint ntime string var
+%type  <snode>    data nbool nfloat nint ntime string var varval
 %type  <snode>    list_num_enum list_num range selection
 %type  <snode>    o_ntime command
 %type  <snode>    to to_pattern to_no_patt
 %token            BFALSE BTRUE
-%token            PERIODIC _FILE RANDOM
+%token            PERIODIC OPT_FILE OPT_RANDOM
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
-%token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_ZWIN
-%token            OPT_WINDOW
+%token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_CIPHER OPT_ZWIN
+%token            OPT_WINDOW OPT_DEBUG
 %token            TO_LISTEN TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
@@ -94,10 +96,10 @@ input: /* empty */        { $$ = NULL; }
     BASIC TYPES
   ---------------------------------------------------------------------------*/
 
-var:  VAR         { $$ = node_new_var($1); }
+var:  VAR         { $$ = node_new_var($1, 0); }
     ;
-nbool: BTRUE      { $$ = node_new_bool(1); }
-     | BFALSE     { $$ = node_new_bool(1); }
+nbool: NBOOL      { $$ = node_new_bool($1); }
+     | var
      ;
 nint: NINT        { $$ = node_new_int($1); }
     | var
@@ -113,14 +115,14 @@ ntime: '+' nfloat { $$ = node_new(TYPE_NTIME);
                     $$->ntime.rel = 0;
                     $$->ntime.n   = $1; }
      ;
-string: STRING                  { $$ = node_new_string($1, 1); }
-      | LITERAL                 { $$ = node_new_string($1, 0); }
+string: STRING                  { $$ = node_new_string($1, 1, 0); }
+      | LITERAL                 { $$ = node_new_string($1, 0, 0); }
       | var
       ;
 data:   string
-      | RANDOM '(' nint ')'     { $$ = node_new(TYPE_RANDOM);
+      | OPT_RANDOM '(' nint ')' { $$ = node_new(TYPE_RANDOM);
                                   $$->random.len = $3; }
-      | _FILE '(' string ')'    { $$ = node_new(TYPE_FILE);
+      | OPT_FILE '(' string ')' { $$ = node_new(TYPE_FILE);
                                   $$->file.path = $3; }
       ;
 list_num_enum: nint                   { $$ = node_new(TYPE_LIST_NUM);
@@ -156,22 +158,23 @@ selection: range
 opts:
   /* none */                { $$ = hash_new(); }
  /* SSL [ciphersuite] */
-| OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_entry_add($$, "payload",    NULL); }
-| OPT_PAYLOAD data opts     { $$ = $3; hash_entry_add($$, "payload",    $2);   }
-| OPT_SSL nbool opts        { $$ = $3; hash_entry_add($$, "ssl",        $2);   }
-| OPT_SSL opts              { $$ = $2; hash_entry_add($$, "ssl",        node_new_bool(1)); }
-| OPT_SSL string opts       { $$ = $3; hash_entry_add($$, "ssl",        node_new_bool(1));
-                                       hash_entry_add($$, "ssl_cipher", $2);   }
-| OPT_SRC string opts       { $$ = $3; hash_entry_add($$, "src_addr",   $2);   }
-| OPT_SRC string nint opts  { $$ = $4; hash_entry_add($$, "src_addr",   $2);
-                                       hash_entry_add($$, "src_port",   $3);   }
+| OPT_CWAIT nint opts       { $$ = $3; hash_entry_add($$, "tcp_cwait",  $2);   }
+| OPT_DEBUG nbool opts      { $$ = $3; hash_entry_add($$, "debug",      $2);   }
+| OPT_DEBUG opts            { $$ = $2; hash_entry_add($$, "debug",      node_new_bool(1)); }
 | OPT_DST string opts       { $$ = $3; hash_entry_add($$, "dst_addr",   $2);   }
 | OPT_DST string nint opts  { $$ = $4; hash_entry_add($$, "dst_addr",   $2);
                                        hash_entry_add($$, "dst_port",   $3);   }
-| OPT_MSS nint opts         { $$ = $3; hash_entry_add($$, "tcp_mss",    $2);   }
 | OPT_FLAGS string opts     { $$ = $3; hash_entry_add($$, "tcp_flags",  $2);   }
-| OPT_CWAIT nint opts       { $$ = $3; hash_entry_add($$, "tcp_cwait",  $2);   }
+| OPT_MSS nint opts         { $$ = $3; hash_entry_add($$, "tcp_mss",    $2);   }
+| OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_entry_add($$, "payload",    NULL); }
+| OPT_PAYLOAD data opts     { $$ = $3; hash_entry_add($$, "payload",    $2);   }
 | OPT_RWAIT nint opts       { $$ = $3; hash_entry_add($$, "tcp_rwait",  $2);   }
+| OPT_SRC string opts       { $$ = $3; hash_entry_add($$, "src_addr",   $2);   }
+| OPT_SRC string nint opts  { $$ = $4; hash_entry_add($$, "src_addr",   $2);
+                                       hash_entry_add($$, "src_port",   $3);   }
+| OPT_SSL nbool opts        { $$ = $3; hash_entry_add($$, "ssl",        $2);   }
+| OPT_SSL opts              { $$ = $2; hash_entry_add($$, "ssl",        node_new_bool(1)); }
+| OPT_CIPHER string opts    { $$ = $3; hash_entry_add($$, "ssl_cipher", $2);   }
 | OPT_WINDOW nint opts      { $$ = $3; hash_entry_add($$, "tcp_win",    $2);   }
        /*| OPT_PAYLOAD OPT_DLL '(' string ')'
                                  { $$ = node_new(TYPE_OPT_PAYLOAD_DLL);
@@ -209,16 +212,34 @@ to_pattern: TO_TCP          { $$ = node_new(TYPE_TO_TCP);     }
 to_no_patt: TO_TCP OPT_OPEN { $$ = node_new(TYPE_TO_TCPOPEN); }
           | TO_TCP OPT_ZWIN { $$ = node_new(TYPE_TO_ZWIN);    }
           | TO_TCP OPT_SLOW { $$ = node_new(TYPE_TO_SLOW);    }
+          | TO_LISTEN       { $$ = node_new(TYPE_TO_LISTEN);  }
           ;
 to: to_pattern opts pattern { $$ = $1;
                               $1->options = hash_merge($2, $3, NULL);
                               hash_destroy($3, NULL); }
   | to_no_patt opts         { $$ = $1;
                               $1->options = $2; }
-  | TO_LISTEN               { $$ = node_new(TYPE_TO_LISTEN);
-                              $$->options = NULL; }
   ;
 
+varval: string  { $$ = $1; }
+      | NBOOL   { char *s;
+                  if((s = strdup($1 ? "TRUE" : "FALSE")) == NULL)
+                    FAT("No mem. Cannot dup boolean.");
+                  $$ = node_new_string(s, 0, 0);
+                  WRN("%d: Var assigment requires BOOL to STRING conversion.", lineno); }
+      | NINT    { char buff[255], *s;
+                  snprintf(buff, sizeof(buff), "%d", $1);
+                  if((s = strdup(buff)) == NULL)
+                    FAT("No mem. Cannot dup integer.");
+                  $$ = node_new_string(s, 0, 0);
+                  WRN("%d: Var assigment requires INT to STRING conversion.", lineno); }
+      | NFLOAT  { char buff[255], *s;
+                  snprintf(buff, sizeof(buff), "%f", $1);
+                  if((s = strdup(buff)) == NULL)
+                    FAT("No mem. Cannot dup float.");
+                  $$ = node_new_string(s, 0, 0);
+                  WRN("%d: Var assigment requires FLOAT to STRING conversion.", lineno); }
+      ;
 command: o_ntime CMD_ON selection to    { $$ = node_new(TYPE_CMD_ON);
                                           $$->command.time          = $1;
                                           $$->command.thc.selection = $3;
@@ -231,12 +252,12 @@ command: o_ntime CMD_ON selection to    { $$ = node_new(TYPE_CMD_ON);
                                           $$->command.time          = $1;
                                           $$->command.thc.selection = $3;
                                           $$->command.thc.to        = NULL; }
-       | o_ntime LITERAL '=' string     { $$ = node_new(TYPE_CMD_SETVAR);
+       | o_ntime LITERAL '=' varval     { $$ = node_new(TYPE_CMD_SETVAR);
                                           $$->command.time          = $1;
                                           $$->command.setvar.var    = $2;
                                           $$->command.setvar.val    = $4;
                                           $$->command.setvar.cond   = 0; }
-       | o_ntime '?' LITERAL '=' string { $$ = node_new(TYPE_CMD_SETVAR);
+       | o_ntime '?' LITERAL '=' varval { $$ = node_new(TYPE_CMD_SETVAR);
                                           $$->command.time          = $1;
                                           $$->command.setvar.var    = $3;
                                           $$->command.setvar.val    = $5;
@@ -276,20 +297,26 @@ static SNODE *node_new_int(int val)
   return n;
 }
 
-static SNODE *node_new_string(char *val, int parse)
+static SNODE *node_new_string(char *val, int parse, int dup)
 {
   SNODE *n = node_new(TYPE_STRING);
-  if((n->string.value = strdup(val)) == NULL)
-    FAT("No mem for string '%s'.", val);
+  if(!dup)
+    n->string.value = val;
+  else
+    if((n->string.value = strdup(val)) == NULL)
+      FAT("No mem for string '%s'.", val);
   n->string.parse = parse;
   return n;
 }
 
-static SNODE *node_new_var(char *varname)
+static SNODE *node_new_var(char *varname, int dup)
 {
   SNODE *n = node_new(TYPE_VAR);
-  if((n->varname = strdup(varname)) == NULL)
-    FAT("No mem for var name '%s'.", varname);
+  if(!dup)
+    n->varname = varname;
+  else
+    if((n->varname = strdup(varname)) == NULL)
+      FAT("No mem for var name '%s'.", varname);
   return n;
 }
 
@@ -307,29 +334,36 @@ static void node_free(SNODE *n)
 
   switch(n->type)
   {
+    case TYPE_BOOL:
     case TYPE_CMD_MOD:
     case TYPE_CMD_OFF:
     case TYPE_CMD_ON:
-    case TYPE_CMD_SETVAR:
     case TYPE_FILE:
     case TYPE_LIST_NUM:
+    case TYPE_NFLOAT:
+    case TYPE_NINT:
     case TYPE_NTIME:
     case TYPE_RANDOM:
     case TYPE_SELECTOR:
-    case TYPE_TO_SLOW:
-    case TYPE_TO_TCPOPEN:
-    case TYPE_TO_ZWIN:
+    case TYPE_TO_LISTEN:
       /* do nothing */
       break;
 
+    case TYPE_TO_SLOW:
     case TYPE_TO_TCP:
+    case TYPE_TO_TCPOPEN:
     case TYPE_TO_TCPRAW:
     case TYPE_TO_UDP:
+    case TYPE_TO_ZWIN:
       hash_destroy(n->options, NULL);
-      break
+      break;
 
     case TYPE_STRING:
       free(n->string.value);
+      break;
+
+    case TYPE_CMD_SETVAR:
+      free(n->command.setvar.var);
       break;
 
     case TYPE_VAR:
@@ -402,16 +436,22 @@ ha_roto_la_olla:
 static int yylex(void)
 {
   int c, bi, f;
-  char buff[BUFFLEN], *s;
+  char buff[BUFFLEN];
   struct {
     char *token;
-    int  id;
+    int  value;
   } tokens[] = {
+    { "CIPHER",   OPT_CIPHER  },
     { "CWAIT",    OPT_CWAIT   },
+    { "DEBUG",    OPT_DEBUG   },
+    { "DISABLE",  BFALSE      },
+    { "DISABLED", BFALSE      },
     { "DLL",      OPT_DLL     },
     { "DST",      OPT_DST     },
+    { "ENABLE",   BTRUE       },
+    { "ENABLED",  BTRUE       },
     { "FALSE",    BFALSE      },
-    { "FILE",     TYPE_FILE   },
+    { "FILE",     OPT_FILE    },
     { "FLAGS",    OPT_FLAGS   },
     { "LISTEN",   TO_LISTEN   },
     { "MOD",      CMD_MOD     },
@@ -422,7 +462,7 @@ static int yylex(void)
     { "OPEN",     OPT_OPEN    },
     { "PAYLOAD",  OPT_PAYLOAD },
     { "PERIODIC", PERIODIC    },
-    { "RANDOM",   TYPE_RANDOM },
+    { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
     { "RWAIT",    OPT_RWAIT   },
     { "SLOW",     OPT_SLOW    },
@@ -434,6 +474,14 @@ static int yylex(void)
     { "WINDOW",   OPT_WINDOW  },
     { "ZWIN",     OPT_ZWIN    },
     { NULL,       0           }
+  }, bool_tokens[] = {
+    { "TRUE",     -1 },
+    { "ENABLE",   -1 },
+    { "ENABLED",  -1 },
+    { "FALSE",     0 },
+    { "DISABLE",   0 },
+    { "DISABLED",  0 },
+    { NULL,        0 }
   }, *token;
 
   /* Skip white space.  */
@@ -442,7 +490,7 @@ static int yylex(void)
   /* Return end-of-input.  */
   if(c == EOF)
   {
-    DBG("Readed a script of %d lines.", lineno - 1);
+    DBG("Readed a void script.");
     return 0;
   }
 
@@ -586,10 +634,9 @@ DBG("TOKEN[STRING] = '%s' (network address?)", buff);
       }
     if(c == '\n')
       FAT("%d: Non-terminated string.", lineno);
-    s = strdup(buff);
-    if(!s)
+    ;
+    if((yylval.string = strdup(buff)) == NULL)
       FAT("No mem for string '%s'.", buff);
-    yylval.string = s;
     return LITERAL;
   }
 
@@ -612,10 +659,8 @@ DBG("TOKEN[STRING] = '%s' (network address?)", buff);
       }
     if(c == '\n')
       FAT("Non-terminated string.");
-    s = strdup(buff);
-    if(!s)
+    if((yylval.string = strdup(buff)) == NULL)
       FAT("No mem for string \"%s\".", buff);
-    yylval.string = s;
     return STRING;
   }
 
@@ -640,15 +685,20 @@ DBG("TOKEN[STRING] = '%s' (network address?)", buff);
     SADD(c);
   } while(isalnum(c = getchar()) && c != EOF);
   ungetc(c, stdin);
+  /* is a boolean const? */
+  for(token = bool_tokens; token->token; token++)
+    if(!strcasecmp(buff, token->token))
+    {
+      yylval.nbool = token->value;
+      return NBOOL;
+    }
   /* is a language token? */
   for(token = tokens; token->token; token++)
     if(!strcasecmp(buff, token->token))
-      return token->id;
+      return token->value;
   /* return string */
-  s = strdup(buff);
-  if(!s)
+  if((yylval.string = strdup(buff)) == NULL)
     FAT("No mem for string \"%s\".", buff);
-  yylval.string = s;
   return LITERAL;
 
 ha_roto_la_olla:
@@ -664,16 +714,14 @@ static void script_fini(void)
 {
   SNODE *n, *n2;
 
-  DBG("yep");
   for(n = allocated_list; n; )
   {
-    DBG("yep 2");
     n2 = n->next_allocated;
     node_free(n);
 
     n = n2;
   }
-  DBG("yep 4");
+  hash_destroy(defvalues, NULL);
 }
 
 void script_init(void)
@@ -685,24 +733,28 @@ void script_init(void)
 
   /* create config skeleton */
   defvalues = hash_new();
-  hash_entry_add(defvalues, "payload",    NULL);
-  hash_entry_add(defvalues, "ssl",        NULL);
-  hash_entry_add(defvalues, "ssl_cipher", NULL);
-  hash_entry_add(defvalues, "src_addr",   NULL);
-  hash_entry_add(defvalues, "src_port",   NULL);
-  hash_entry_add(defvalues, "dst_addr",   NULL);
-  hash_entry_add(defvalues, "dst_port",   NULL);
-  hash_entry_add(defvalues, "tcp_mss",    NULL);
-  hash_entry_add(defvalues, "tcp_flags",  NULL);
-  hash_entry_add(defvalues, "tcp_cwait",  NULL);
-  hash_entry_add(defvalues, "tcp_rwait",  NULL);
-  hash_entry_add(defvalues, "tcp_win",    NULL);
+  hash_entry_add(defvalues, "payload",        NULL);
+  hash_entry_add(defvalues, "ssl",            NULL);
+  hash_entry_add(defvalues, "ssl_cipher",     NULL);
+  hash_entry_add(defvalues, "src_addr",       NULL);
+  hash_entry_add(defvalues, "src_port",       NULL);
+  hash_entry_add(defvalues, "dst_addr",       NULL);
+  hash_entry_add(defvalues, "dst_port",       NULL);
+  hash_entry_add(defvalues, "tcp_mss",        NULL);
+  hash_entry_add(defvalues, "tcp_flags",      NULL);
+  hash_entry_add(defvalues, "tcp_cwait",      NULL);
+  hash_entry_add(defvalues, "tcp_rwait",      NULL);
+  hash_entry_add(defvalues, "tcp_win",        NULL);
+  hash_entry_add(defvalues, "pattern",        NULL);
+  hash_entry_add(defvalues, "periodic_ratio", NULL);
+  hash_entry_add(defvalues, "periodic_n",     NULL);
 
   /* set default config */
+  hash_entry_add(defvalues, "debug",      node_new_bool(1));
   hash_entry_set(defvalues, "tcp_cwait",  node_new_int(3000000));
   hash_entry_set(defvalues, "tcp_rwait",  node_new_int(10000000));
   hash_entry_set(defvalues, "tcp_win",    node_new_int(31337));
-  hash_entry_set(defvalues, "ssl_cipher", node_new_string("DES-CBC3-SHA", 0));
+  hash_entry_set(defvalues, "ssl_cipher", node_new_string("DES-CBC3-SHA", 0, 1));
 
 }
 
@@ -792,9 +844,59 @@ char *script_get_string(SNODE *n)
 }
 
 
+int script_get_bool(SNODE *n)
+{
+  int r = 0;
+  char *v, *p, *s;
+
+  switch(n->type)
+  {
+    case TYPE_BOOL:
+      r = n->nbool;
+      break;
+    case TYPE_NINT:
+      r = (n->nint != 0);
+      break;
+    case TYPE_VAR:
+      v = script_get_var(n);
+      p = v;
+      while(*p && isspace(*p))
+        p++;
+      s = p;
+      if(*p && *p == '-')
+        p++;
+      while(*p && *p >= '0' && *p <= '9')
+        p++;
+      while(*p && isspace(*p))
+        *p++ = '\0';
+      if(*p)
+      {
+        /* it is not a number... check for constants */
+        if(!strcasecmp(s, "TRUE")
+        || !strcasecmp(s, "ENABLE")
+        || !strcasecmp(s, "ENABLED")) r = (1 != 0);
+        else
+        if(!strcasecmp(s, "FALSE")
+        || !strcasecmp(s, "DISABLE")
+        || !strcasecmp(s, "DISABLED")) r = 0;
+        else
+        FAT("Cannot convert variable '%s' (with value %s) to boolean.", n->varname, s);
+      } else {
+        /* convert integer to bool ... */
+        r = (atoi(v) != 0);
+      }
+      free(v);
+      break;
+    default:
+      FAT("Node of type %d cannot be converted to boolean.", n->type);
+  }
+
+  return r;
+}
+
 int script_get_int(SNODE *n)
 {
-  int r;
+  int r = 0;
   char *v;
 
   switch(n->type)
@@ -816,7 +918,7 @@ int script_get_int(SNODE *n)
 
 double script_get_float(SNODE *n)
 {
-  double r;
+  double r = 0.0;
   char *v;
 
   switch(n->type)

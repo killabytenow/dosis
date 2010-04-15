@@ -63,7 +63,7 @@ enum TYPES {
   TYPE_TO_ZWIN,
   /* options */
   TYPE_OPT_CWAIT = 4000,
-  TYPE_OPT_SSL,
+  /*TYPE_OPT_SSL,
   TYPE_OPT_DLL,
   TYPE_OPT_DST,
   TYPE_OPT_FLAGS,
@@ -76,7 +76,7 @@ enum TYPES {
   TYPE_OPT_PAYLOAD_DLL,
   TYPE_OPT_PAYLOAD_FILE,
   TYPE_OPT_PAYLOAD_NULL,
-  TYPE_OPT_PAYLOAD_STR,
+  TYPE_OPT_PAYLOAD_STR,*/
   /* patterns */
   TYPE_PERIODIC = 5000,
   TYPE_PERIODIC_LIGHT,
@@ -106,17 +106,8 @@ typedef struct SNODE_tag {
     } command;
 
     /* --------------------------------------------------------------------- */
-    /* to snode - It specifies a thread type and its options                 */
-    HASH *options;        /* options snode                     */
-
-    /* --------------------------------------------------------------------- */
-    /* pattern snode - Pattern used by ON command                            */
-    union {
-      struct {
-        struct SNODE_tag *ratio; /* nfloat snode specifying packets/s        */
-        struct SNODE_tag *n;     /* nint snode with packets to send          */
-      } periodic;
-    } pattern;
+    /* options - Specifies thread options                                    */
+    HASH *options;              /* options snode                             */
 
     /* --------------------------------------------------------------------- */
     /* basic types snodes - Float & int numbers, time type and strings       */
@@ -178,6 +169,7 @@ typedef struct SCONFIG_PARAMETER_tag {
 extern void script_init(void);
 extern SNODE *script_parse(void);
 
+int      script_get_bool(SNODE *n);
 char    *script_get_data(SNODE *n, unsigned int *size);
 double   script_get_float(SNODE *n);
 int      script_get_int(SNODE *n);
