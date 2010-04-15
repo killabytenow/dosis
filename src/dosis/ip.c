@@ -177,7 +177,7 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
 {
   char tmp[INET_ADDR_MAXLEN_STR];
 
-  if(addr->port_defined)
+  if(!addr->port_defined)
   {
     ip_addr_snprintf(addr, INET_ADDR_MAXLEN, tmp);
     WRN("Port not defined for address '%s'.", tmp);
