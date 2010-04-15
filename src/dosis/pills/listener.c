@@ -24,14 +24,17 @@
  *****************************************************************************/
 
 #include <config.h>
+#include "log.h"
 #include "dosconfig.h"
 #include "ipqex.h"
 #include "listener.h"
-#include "log.h"
+#include "lnet.h"
 #include "tea.h"
 
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
+
+#define IPV4_GETP(p,x)  ((unsigned) ((ntohl((x)) >> ((p) << 3)) & 0x000000ffl))
 
 static char              iptables_tmp[255];
 static char              ip_forward_status;
@@ -40,6 +43,10 @@ static ipqex_info_t      ipq;
 static pthreadex_mutex_t ipq_mutex;
 
 typedef struct _tag_TCPRAW_CFG {
+  /* options */
+  TEA_TYPE_BOOL      debug;
+
+  /* other things */
   ipqex_msg_t imsg;
 } LISTENER_CFG;
 
@@ -170,6 +177,7 @@ static void listener__global_init(void)
 
   /* init mutex */
   pthreadex_mutex_init(&ipq_mutex);
+  pthreadex_mutex_name(&ipq_mutex, "listener-ipq-mutex");
 
   /* read/change ipforward */
   GDBG2("Enable ip_forward flag.");
@@ -244,19 +252,20 @@ static void listener__global_init(void)
 static void listener__thread(THREAD_WORK *tw)
 {
   LISTENER_CFG *lcfg = (LISTENER_CFG *) tw->data;
-  TEA_MSG *tmsg;
   int id = 0;
   int r;
 
   /* get packets and classify */
-  while(1)
+  while(!cfg.finalize)
   {
     pthreadex_mutex_begin(&ipq_mutex);
     if(ipq_on)
     {
+      TDBG("Going to read...");
       r = ipqex_msg_read(&lcfg->imsg, 500000);
       if(r < 0)
         TERR("Error reading from IPQ: %s", lcfg->imsg.err.str);
+      TDBG("  ipqex_msg_read finished.");
     } else
       r = -1;
     pthreadex_mutex_end();
@@ -271,20 +280,84 @@ repeat_search:
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
       /* copy this msg and send to the thread */
-      tmsg = msg_get();
-      msg_fill(tmsg, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
-      r = tea_thread_msg_push(id, tmsg);
+      r = tea_thread_msg_push(id, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
 
-      /* if the msg cannot be pushed... repeat this until it is pushed */
+      /* if the msg cannot be pushed... repeat this until it is pushed       */
+      /* NOTE: rarely result (r) will be a negative number, because it would */
+      /* mean that thread 'id' has been killed between 'search_listener' and */
+      /* 'msg_push' calls. So it is not so inneficient as it seems...        */
       if(r < 0)
       {
-        msg_release(tmsg);
         pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
         pthread_testcancel();
         goto repeat_search;
       }
+      if(lcfg->debug)
+      {
+        if(lcfg->imsg.m->data_len >= sizeof(struct iphdr)
+        && IP_HEADER(lcfg->imsg.m->payload)->version == 4)
+        {
+          if(IP_PROTOCOL(lcfg->imsg.m->payload) == 17
+          && lcfg->imsg.m->data_len >= IP_HEADER_SIZE(lcfg->imsg.m->payload) + sizeof(struct udphdr))
+          {
+            TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
+                   lcfg->imsg.m->data_len,
+                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                   ntohs(UDP_HEADER(lcfg->imsg.m->payload)->source),
+                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                   ntohs(UDP_HEADER(lcfg->imsg.m->payload)->dest));
+          } else
+          if(IP_PROTOCOL(lcfg->imsg.m->payload) == 6
+          && lcfg->imsg.m->data_len >= IP_HEADER_SIZE(lcfg->imsg.m->payload) + sizeof(struct tcphdr))
+          {
+            TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
+                   lcfg->imsg.m->data_len,
+                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   ntohs(TCP_HEADER(lcfg->imsg.m->payload)->source),
+                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   ntohs(TCP_HEADER(lcfg->imsg.m->payload)->dest),
+                   TCP_HEADER(lcfg->imsg.m->payload)->fin ? "F" : "",
+                   TCP_HEADER(lcfg->imsg.m->payload)->syn ? "S" : "",
+                   TCP_HEADER(lcfg->imsg.m->payload)->rst ? "R" : "",
+                   TCP_HEADER(lcfg->imsg.m->payload)->psh ? "P" : "",
+                   TCP_HEADER(lcfg->imsg.m->payload)->ack ? "A" : "",
+                   TCP_HEADER(lcfg->imsg.m->payload)->urg ? "U" : "");
+          } else {
+            TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
+                   IP_PROTOCOL(lcfg->imsg.m->payload),
+                   lcfg->imsg.m->data_len,
+                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr));
+          }
+        } else {
+          TLOG("Unknown packet received (%d bytes):", lcfg->imsg.m->data_len);
+        }
+        TDUMP(LOG_LEVEL_LOG, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+      }
+
       /* ok... msg pushed (accepted) so drop package */
       pthreadex_mutex_begin(&ipq_mutex);
+      if(cfg.finalize)
+        break;
+
       if(ipq_on)
       {
         if(ipqex_set_verdict(&lcfg->imsg, NF_DROP) <= 0)
@@ -297,6 +370,9 @@ repeat_search:
       pthread_testcancel();
     } else {
       pthreadex_mutex_begin(&ipq_mutex);
+      if(cfg.finalize)
+        break;
+
       if(ipq_on)
       {
         if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
@@ -314,25 +390,21 @@ static void listener__cleanup(THREAD_WORK *tw)
   pthreadex_mutex_begin(&ipq_mutex);
   ipqex_msg_destroy(&lcfg->imsg);
   pthreadex_mutex_end();
-
-  free(tw->data);
-  tw->data = NULL;
 }
 
-static int listener__configure(THREAD_WORK *tw, SNODE *command)
+static int listener__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 {
   LISTENER_CFG *lcfg = (LISTENER_CFG *) tw->data;
 
-  if(lcfg == NULL)
+  if(first_time)
   {
-    if((lcfg = calloc(1, sizeof(LISTENER_CFG))) == NULL)
-      TFAT("No memory for LISTENER_CFG.");
-    tw->data = (void *) lcfg;
-
     pthreadex_mutex_begin(&ipq_mutex);
     ipqex_msg_init(&lcfg->imsg, &ipq);
     pthreadex_mutex_end();
   }
+
+  if(lcfg->debug)
+    TLOG("LISTENER debug mode enabled. Packets will be printed.");
 
   return 0;
 }
@@ -341,11 +413,17 @@ static int listener__configure(THREAD_WORK *tw, SNODE *command)
  * LISTENER TEA OBJECT
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+TOC_BEGIN(listener_cfg_def)
+  TOC("debug", TEA_TYPE_BOOL, 0, LISTENER_CFG, debug, NULL)
+TOC_END
+
 TEA_OBJECT teaLISTENER = {
   .name        = "LISTENER",
+  .datasize    = sizeof(LISTENER_CFG),
   .global_init = listener__global_init,
   .configure   = listener__configure,
   .cleanup     = listener__cleanup,
   .thread      = listener__thread,
+  .cparams     = listener_cfg_def,
 };
 

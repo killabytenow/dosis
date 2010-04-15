@@ -36,17 +36,16 @@
 
 typedef struct _tag_TCP_CFG {
   /* options */
+  TEA_TYPE_BOOL      debug;
   TEA_TYPE_ADDR      dhost;
   TEA_TYPE_DATA      payload;
   TEA_TYPE_BOOL      ssl;
-  TEA_TYPE_STRING   *sslcipher;
-  TEA_TYPE_INT       cwait;
-  TEA_TYPE_INT       rwait;
+  TEA_TYPE_STRING    sslcipher;
+  TEA_TYPE_INT       tcp_cwait;
+  TEA_TYPE_INT       tcp_rwait;
   TEA_TYPE_INT       pattern;
   TEA_TYPE_INT       n;
   TEA_TYPE_FLOAT     hitratio;
-
-  /* parameters */
 
   /* other things */
   int                sock;
@@ -57,9 +56,9 @@ typedef struct _tag_TCP_CFG {
 
   /* ssl things */
 #ifdef HAVE_SSL
-  SSL                *ssl;
-  SSL_CTX            *ctx;
-  BIO                *bio;
+  SSL                *ssl_conn;
+  SSL_CTX            *ssl_ctx;
+  BIO                *ssl_bio;
 #endif
 } TCP_CFG;
 
@@ -88,16 +87,16 @@ static void SSL_finalize(THREAD_WORK *tw)
 
   if(tt)
   {
-    if(tt->ssl)
+    if(tt->ssl_conn)
     {
-      SSL_shutdown(tt->ssl);
-      SSL_free(tt->ssl);
+      SSL_shutdown(tt->ssl_conn);
+      SSL_free(tt->ssl_conn);
     }
-    if(tt->ctx)
-      SSL_CTX_free(tt->ctx);
-    tt->ssl = NULL;
-    tt->bio = NULL;
-    tt->ctx = NULL;
+    if(tt->ssl_ctx)
+      SSL_CTX_free(tt->ssl_ctx);
+    tt->ssl_conn = NULL;
+    tt->ssl_bio = NULL;
+    tt->ssl_ctx = NULL;
   }
 }
 
@@ -106,41 +105,45 @@ int SSL_initialize(THREAD_WORK *tw)
   TCP_CFG *tt = (TCP_CFG *) tw->data;
   int  serr;
 
-  tt->ssl    = NULL;
-  tt->ctx    = NULL;
-  tt->bio    = NULL;
+  tt->ssl_conn    = NULL;
+  tt->ssl_ctx    = NULL;
+  tt->ssl_bio    = NULL;
 
   SSL_load_error_strings();
   SSL_library_init();
 
-  if((tt->ctx = SSL_CTX_new(SSLv23_client_method())) == NULL)
+  if((tt->ssl_ctx = SSL_CTX_new(SSLv23_client_method())) == NULL)
   {
     SSL_error_stack();
     TERR("Error creating new ctx.");
     return 1;
   }
 
-  SSL_CTX_set_mode(tt->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-  SSL_CTX_set_session_cache_mode(tt->ctx, SSL_SESS_CACHE_BOTH);
-  SSL_CTX_set_timeout(tt->ctx, 500000);
-  if(!SSL_CTX_set_cipher_list(tt->ctx, tt->sslcipher))
+  DBG("New SSL context");
+  DBG("  - Session cache = SSL_SESS_CACHE_BOTH");
+  SSL_CTX_set_mode(tt->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+  SSL_CTX_set_session_cache_mode(tt->ssl_ctx, SSL_SESS_CACHE_BOTH);
+  DBG("  - SSL timeout = 500000 (constant)");
+  SSL_CTX_set_timeout(tt->ssl_ctx, 500000);
+  DBG("  - cipher list = %s", tt->sslcipher);
+  if(!SSL_CTX_set_cipher_list(tt->ssl_ctx, tt->sslcipher))
   {
     TERR("SSL_CTX_set_cipher_list");
     return 1;
   }
 
-  if((tt->ssl = SSL_new(tt->ctx)) == NULL)
+  if((tt->ssl_conn = SSL_new(tt->ssl_ctx)) == NULL)
   {
     SSL_error_stack();
     TERR("Error creating new ssl.");
     return 1;
   }
-  SSL_set_fd(tt->ssl, tt->sock);
+  SSL_set_fd(tt->ssl_conn, tt->sock);
 
-  tt->bio = BIO_new_socket(tt->sock, BIO_NOCLOSE);
-  SSL_set_bio(tt->ssl, tt->bio, tt->bio);
+  tt->ssl_bio = BIO_new_socket(tt->sock, BIO_NOCLOSE);
+  SSL_set_bio(tt->ssl_conn, tt->ssl_bio, tt->ssl_bio);
 
-  serr = SSL_connect(tt->ssl);
+  serr = SSL_connect(tt->ssl_conn);
   return 0;
 }
 #endif
@@ -167,7 +170,7 @@ static void tcp__thread(THREAD_WORK *tw)
         TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
 
     /*** CONNECTION **********************************************************/
-    TDBG("  Connecting...");
+    TDBG2("  Connecting...");
 
     /* Set timeout for select */
     memcpy(&sockwait, &tt->sockwait_cwait, sizeof(struct timeval));
@@ -218,7 +221,7 @@ static void tcp__thread(THREAD_WORK *tw)
     if(tt->ssl)
     {
 #ifdef HAVE_SSL
-    TDBG2("  ssl data...");
+      TDBG2("  ssl data...");
       /* close any opened ssl conn */
       SSL_finalize(tw);
 
@@ -230,9 +233,9 @@ static void tcp__thread(THREAD_WORK *tw)
       }
 
       /* Send request */
-    TDBG2("  going to write...");
-      r = SSL_write(tt->ssl, tt->payload, tt->payload_size);
-      if(r < tt->payload_size)
+      TDBG2("  going to write...");
+      r = SSL_write(tt->ssl_conn, tt->payload.data, tt->payload.size);
+      if(r < tt->payload.size)
       {
         TERR("SSL_write error.");
         continue;
@@ -263,8 +266,19 @@ static void tcp__thread(THREAD_WORK *tw)
     fcntl(tt->sock,F_SETFL,sopts);
 
     /* Rediret to /dev/null :) */
-    while((r = read(tt->sock, nullbuff, sizeof(nullbuff))) > 0)
-      TDBG2("  read %d bytes...", r);
+    if(tt->debug)
+    {
+      while((r = SSL_read(tt->ssl_conn, nullbuff, sizeof(nullbuff))) > 0)
+      {
+        TLOG("  data readed:");
+        TDUMP(LOG_LEVEL_LOG, nullbuff, r);
+      }
+      if(r < 0)
+        TERR("  SSL error %d (see SSL_get_error(3SSL).", SSL_get_error(tt->ssl_conn, r));
+    } else {
+      while((r = read(tt->sock, nullbuff, sizeof(nullbuff))) > 0)
+        TDBG2("  read %d bytes...", r);
+    }
 
     /* Hemos terminado */
     TDBG("  Closing connection.");
@@ -280,37 +294,42 @@ static void tcp__thread(THREAD_WORK *tw)
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int tcp__configure(THREAD_WORK *tw, SNODE *command)
+static int tcp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 {
   TCP_CFG *tt = (TCP_CFG *) tw->data;
 
   /* first initialization (specialized work thread data) */
-  if(tt == NULL)
+  if(first_time)
   {
-    if((tt = calloc(1, sizeof(TCP_CFG))) == NULL)
-      TFAT("No memory for TCP_CFG.");
-    tw->data = (void *) tt;
-
-
     /* init timer */
     pthreadex_timer_init(&(tt->timer), 0.0);
+    pthreadex_timer_name(&(tt->timer), "tcp-timer");
   }
 
   /* check params sanity */
   if(tt->pattern != TYPE_PERIODIC)
-    TFAT("Uknown pattern %d.", tt->pattern);
+  {
+    TERR("Uknown pattern %d.", tt->pattern);
+    return -1;
+  }
   if(tt->n)
     TWRN("Talking about number of packets here has non sense (ignoring periodic.n value %d).", tt->n);
   if(tt->hitratio < 0)
-    TFAT("Bad hit ratio '%f'.", tt->hitratio);
+  {
+    TERR("Bad hit ratio '%f'.", tt->hitratio);
+    return -1;
+  }
 
   /* update calculated params */
-  tt->sockwait_cwait.tv_sec  = tt->cwait / 1000000;
-  tt->sockwait_cwait.tv_usec = tt->cwait % 1000000;
-  tt->sockwait_rwait.tv_sec  = tt->rwait / 1000000;
-  tt->sockwait_rwait.tv_usec = tt->rwait % 1000000;
+  tt->sockwait_cwait.tv_sec  = tt->tcp_cwait / 1000000;
+  tt->sockwait_cwait.tv_usec = tt->tcp_cwait % 1000000;
+  tt->sockwait_rwait.tv_sec  = tt->tcp_rwait / 1000000;
+  tt->sockwait_rwait.tv_usec = tt->tcp_rwait % 1000000;
 
   pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
+
+  /* convert dhost to sockaddr */
+  ip_addr_to_socket(&tt->dhost, &tt->dsockaddr);
 
   return 0;
 }
@@ -323,20 +342,11 @@ static void tcp__cleanup(THREAD_WORK *tw)
   pthreadex_timer_destroy(&tt->timer);
 
 #ifdef HAVE_SSL
-  if(tt->sslenabled)
+  if(tt->ssl)
     SSL_finalize(tw);
 #endif
   if(tt->sslcipher)
     free(tt->sslcipher);
-
-  /* XXX FREE payload XXX */
-  //if(tt->payload)
-  //{
-  //  free(tt->payload);
-  //  tt->payload = NULL;
-  //}
-  free(tt);
-  tw->data = NULL;
 
   TDBG("Finalized.");
 }
@@ -346,7 +356,7 @@ static void tcp__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(tcp_cfg_def)
-  TOC("cwait",          TEA_TYPE_INT,    1, TCP_CFG, cwait,      NULL)
+  TOC("debug",          TEA_TYPE_BOOL,   0, TCP_CFG, debug,      NULL)
   TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCP_CFG, dhost,      NULL)
   TOC("dst_port",       TEA_TYPE_PORT,   0, TCP_CFG, dhost,      NULL)
   TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
@@ -356,11 +366,13 @@ TOC_BEGIN(tcp_cfg_def)
   TOC("payload",        TEA_TYPE_DATA,   1, TCP_CFG, payload,    NULL)
   TOC("ssl",            TEA_TYPE_BOOL,   0, TCP_CFG, ssl,        NULL)
   TOC("ssl_cipher",     TEA_TYPE_STRING, 0, TCP_CFG, sslcipher,  NULL)
-  TOC("rwait",          TEA_TYPE_INT,    1, TCP_CFG, rwait,      NULL)
+  TOC("tcp_cwait",      TEA_TYPE_INT,    1, TCP_CFG, tcp_cwait,  NULL)
+  TOC("tcp_rwait",      TEA_TYPE_INT,    1, TCP_CFG, tcp_rwait,  NULL)
 TOC_END
 
 TEA_OBJECT teaTCP = {
   .name         = "TCP",
+  .datasize     = sizeof(TCP_CFG),
   .configure    = tcp__configure,
   .cleanup      = tcp__cleanup,
   .thread       = tcp__thread,

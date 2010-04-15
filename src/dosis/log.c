@@ -161,7 +161,7 @@ void d_fat(char *file, char *function, char *format, ...)
  *   A nice hex-dumper!
  */
 
-void d_dump(int level, char *file, char *func, char *prefix, char *buff, int size)
+void d_dump(int level, char *file, char *func, char *prefix, void *buff, int size)
 {
   char dump[255], *s;
   unsigned char c;
