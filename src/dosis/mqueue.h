@@ -26,6 +26,7 @@
 #ifndef __MQUEUE_H__
 #define __MQUEUE_H__
 
+#include "log.h"
 #include "pthreadex.h"
 
 typedef struct _tag_TEA_MSG {

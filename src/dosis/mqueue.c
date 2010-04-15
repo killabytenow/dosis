@@ -45,6 +45,7 @@ TEA_MSG_QUEUE *mqueue_create(void)
   if((mq = calloc(1, sizeof(TEA_MSG_QUEUE))) == NULL)
     FAT("No memory for a tea message queue.");
   pthreadex_mutex_init(&(mq->mutex));
+  pthreadex_mutex_name(&(mq->mutex), "mqueue-mutex");
 
   return mq;
 }
