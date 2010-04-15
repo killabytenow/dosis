@@ -25,6 +25,7 @@
 
 #include <config.h>
 
+#include "log.h"
 #include "dosis.h"
 #include "dosconfig.h"
 #include "tea.h"
@@ -32,7 +33,6 @@
 #include "lnet.h"
 #include "payload.h"
 #include "pthreadex.h"
-#include "log.h"
 #include "ip.h"
 
 #define BUFSIZE    2048
@@ -143,26 +143,28 @@ static void tcpopen__thread(THREAD_WORK *tw)
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int tcpopen__configure(THREAD_WORK *tw, SNODE *command)
+static int tcpopen__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
   /* initialize specialized work thread data */
-  if(tc == NULL)
+  if(first_time)
   {
-    if((tc = calloc(1, sizeof(TCPOPEN_CFG))) == NULL)
-      TFAT("No memory for TCPOPEN_CFG.");
-    tw->data = (void *) tc;
-
     /* initialize libnet */
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      TFAT("No memory for LN_CONTEXT.");
+    {
+      TERR("No memory for LN_CONTEXT.");
+      return -1;
+    }
     ln_init_context(tc->lnc);
   }
 
   /* configure src address (if not defined) */
   if(tc->dhost.type == INET_FAMILY_NONE)
-    TFAT("I need a target address.");
+  {
+    TERR("I need a target address.");
+    return -1;
+  }
   if(tc->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -209,8 +211,6 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
       free(tc->payload.data);
       tc->payload.data = NULL;
     }
-    free(tc);
-    tw->data = NULL;
   }
   TDBG("Finalized.");
 }
@@ -230,6 +230,7 @@ TOC_END
 
 TEA_OBJECT teaTCPOPEN = {
   .name         = "TCPOPEN",
+  .datasize     = sizeof(TCPOPEN_CFG),
   .configure    = tcpopen__configure,
   .cleanup      = tcpopen__cleanup,
   .thread       = tcpopen__thread,
