@@ -81,6 +81,7 @@ unsigned ln_get_next_random_port_number(unsigned *n);
 
 #define IP_PROTOCOL(x)      (((struct iphdr *) (x))->protocol)
 #define IP_HEADER(x)        ((struct iphdr *)  (x))
+#define IP_HEADER_SIZE(x)   (IP_HEADER(x)->ihl << 2)
 #define TCP_HEADER(x)       ((struct tcphdr *) ((x) \
                             + (((struct iphdr *) (x))->ihl << 2)))
 #define UDP_HEADER(x)       ((struct udphdr *) ((x) \
