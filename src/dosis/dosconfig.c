@@ -99,9 +99,7 @@ static void dos_config_parse_command(int argc, char **argv)
       case 'h':
           cfg.verbosity = 3;
           dos_help_program_header();
-  DBG("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
           print_help();
-  DBG("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
           exit(0);
 
       case 'o':
@@ -141,7 +139,6 @@ static void dos_config_parse_command(int argc, char **argv)
           break;
       case 'Z':
           cfg.verbosity = LOG_LEVEL_ALL;
-  DBG("YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");
           break;
       case -1:
           fin = -1;
@@ -464,6 +461,8 @@ static void dos_config_fini(void)
   DOSIS_ATEXIT *atx;
   DOS_ADDR_INFO *addr;
   int i;
+
+  cfg.finalize = -1;
 
   if(dosis_forked)
   {
