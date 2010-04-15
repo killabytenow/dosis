@@ -53,7 +53,7 @@ enum {
   TEA_TYPE_INT_ID,
   TEA_TYPE_PORT_ID,
   TEA_TYPE_STRING_ID,
-} TEA_TYPE_ID_LSIT;
+} TEA_TYPE_ID_LIST;
 
 struct __TEA_DATA {
   void     *data;
@@ -79,12 +79,13 @@ typedef struct _tag_TEA_OBJCFG {
 #define TOC_END          { NULL, 0, 0, 0 } };
 
 typedef struct _tag_TEA_OBJECT {
-  char *name;
-  int   initialized;
+  char       *name;
+  int         initialized;
+  unsigned    datasize;
   TEA_OBJCFG *cparams;
 
   void (*global_init)(void);
-  int  (*configure)(THREAD_WORK *tw, SNODE *command);
+  int  (*configure)(THREAD_WORK *tw, SNODE *command, int first_time);
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
   void (*listen)(THREAD_WORK *tw);
@@ -94,7 +95,7 @@ typedef struct _tag_TEA_OBJECT {
 /*- THREAD MANAGAMENT -------------------------------------------------------*/
 TEA_MSG *tea_thread_msg_get(THREAD_WORK *tw);
 TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw);
-int      tea_thread_msg_push(int tid, TEA_MSG *m);
+int      tea_thread_msg_push(int tid, void *msg, int msg_size);
 int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
 
 /*- THREAD LOG UTILITIES ----------------------------------------------------*/
@@ -111,6 +112,12 @@ int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
 #define TLOG(msg, ...)   LOG("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
 #define TDBG(msg, ...)   DBG("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
 #define TDBG2(msg, ...)  DBG2("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
+#define TDUMP(l,b,s)     {                                                  \
+                           char __dump_prefix[256];                         \
+                           snprintf(__dump_prefix, sizeof(__dump_prefix),   \
+                                    "[%d/%s] ", tw->id, tw->methods->name); \
+                           DUMP(l, __dump_prefix, b, s);                    \
+                         }
 
 /*- CORE --------------------------------------------------------------------*/
 void tea_init(void);

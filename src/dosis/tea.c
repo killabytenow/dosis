@@ -51,17 +51,23 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
-  DBG2("Cleanup of thread %d.", tw->id);
+  TDBG2("Thread cleanup.");
 
   /* do thread cleanup */
   if(tw->methods->cleanup)
     tw->methods->cleanup(tw);
 
+  if(tw->data != NULL)
+  {
+    free(tw->data);
+    tw->data = NULL;
+  }
+
   /* disassociate mqueue of tw and destroy it */
   if(tw->methods->listen)
   {
     pthreadex_mutex_begin(&(tw->mqueue->mutex));
-    DBG2("  [cleanup %d] listen cleanup", tw->id);
+    TDBG2("  [cleanup] listen cleanup");
     if(tw->mqueue)
       mq = tw->mqueue;
     else
@@ -71,16 +77,17 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 
     if(mq)
     {
-      DBG2("  [cleanup %d] mqueue cleanup", tw->id);
+      TDBG2("  [cleanup] mqueue cleanup");
       mqueue_destroy(mq);
     }
   }
 
-  DBG2("  [cleanup %d] destroy mwaiting flag", tw->id);
+  TDBG2("  [cleanup] destroy mwaiting flag");
   pthreadex_flag_destroy(&(tw->mwaiting));
 
+  TDBG("Thread finished.");
+
   /* free mem */
-  DBG("Thread %d finished.", tw->id);
   free(tw);
 }
 
@@ -95,7 +102,9 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
+  TDBG("Starting thread.");
   tw->methods->thread(tw);
+  TDBG("Thread finished.");
 
   /*
    *# set timeout/wait condition
@@ -120,7 +129,7 @@ static void *tea_thread(void *data)
 }
 
 /* XXX */
-static void tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
+static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
 {
   char *s;
 
@@ -129,10 +138,16 @@ static void tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v
   {
     case TEA_TYPE_ADDR_ID:
       {
-        TEA_TYPE_ADDR *a = tw->data + oc->offset;
+        TEA_TYPE_ADDR *a = (tw->data + oc->offset);
         s = script_get_string(v);
         if(ip_addr_parse(s, a))
           TFAT("%d: Cannot parse address '%s'.", v->line, s);
+{
+char pipi[256];
+ip_addr_snprintf(a, 255, pipi);
+TDBG("readed [%s]", s);
+TDBG("parsed [%s] [at %08x]", pipi, a);
+}
         free(s);
       }
       break;
@@ -145,19 +160,17 @@ static void tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v
       break;
 
     case TEA_TYPE_BOOL_ID:
-    case TEA_TYPE_INT_ID:
-      *((int *) (tw->data + oc->offset)) = script_get_int(v);
+      *((TEA_TYPE_INT *) (tw->data + oc->offset)) = script_get_bool(v);
       break;
-    /*
-    TYPE_FILE = 1000,
-    TYPE_BOOL,
-    TYPE_NINT,
-    TYPE_NFLOAT,
-    TYPE_NTIME,
-    TYPE_RANDOM,
-    TYPE_STRING,
-    TYPE_VAR,
-    */
+
+    case TEA_TYPE_INT_ID:
+      *((TEA_TYPE_INT *) (tw->data + oc->offset)) = script_get_int(v);
+      break;
+
+    case TEA_TYPE_FLOAT_ID:
+      *((TEA_TYPE_FLOAT *) (tw->data + oc->offset)) = script_get_float(v);
+      break;
+
     case TEA_TYPE_DATA_ID:
       {
         TEA_TYPE_DATA *d = tw->data + oc->offset;
@@ -165,13 +178,16 @@ static void tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v
       }
       break;
 
+    case TEA_TYPE_STRING_ID:
+      *((TEA_TYPE_STRING *) (tw->data + oc->offset)) = script_get_string(v);
+      break;
+
     default:
-      FAT("Unknown type %d.", oc->type);
+      ERR("Unknown type %d.", oc->type);
+      return -1;
   }
 
-  /* get from local config if defined */
-  /* TODO: use handler */
-  //*defval = 0;
+  return 0;
 }
 
 static SNODE *tea_thread_param_value_get(HASH *opts, char *name)
@@ -187,18 +203,17 @@ static SNODE *tea_thread_param_value_get(HASH *opts, char *name)
 
 static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 {
-  THREAD_WORK *tw;
+  THREAD_WORK *tw = NULL;
   TEA_OBJCFG *ocline;
+  HASH_ITER hi;
+  HASH_NODE *hn;
 
-  pthreadex_lock_get_exclusive(&ttable_lock);
-
-  /* build threads */
-  DBG("Alloc'ing thread %d.", tid);
-  if(ttable[tid])
-    FAT("Cannot alloc thread %d because it is already used.", tid);
-
+  DBG("Going to create thread %d.", tid);
   if((tw = calloc(1, sizeof(THREAD_WORK))) == NULL)
-    FAT("Cannot alloc THREAD_WORK struct for thread %d.", tid);
+  {
+    ERR("Cannot alloc THREAD_WORK struct for thread %d.", tid);
+    goto fatal;
+  }
 
   tw->id         = tid;
   tw->pthread_id = 0;
@@ -209,6 +224,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
                  ? mqueue_create()
                  : NULL;
   pthreadex_flag_init(&(tw->mwaiting), 0);
+  pthreadex_flag_name(&(tw->mwaiting), "flag-mwaiting");
 
   /* global thread initialization here */
   if(tw->methods->global_init && !tw->methods->initialized)
@@ -217,41 +233,114 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
     tw->methods->global_init();
   }
 
-  /* set params (apply configuration) */
-  for(ocline = to->cparams; ocline && ocline->name; ocline++)
+  /* make space for thread data */
+  if((tw->data = calloc(1, to->datasize)) == NULL)
   {
-    SNODE *val;
+    ERR("%d:%s: No memory for thread data.", command->line, to->name);
+    goto fatal;
+  }
 
-    /* get configured value (or set default value if not specified) */
-    val = tea_thread_param_value_get(command->options, ocline->name);
-    val = script_get_default(ocline->name);
-    if(hash_key_exists(command->options, ocline->name))
-      val = hash_entry_get(command->options, ocline->name);
-
-    /* check if parameter is optional */
-    if(!val)
+  /* check config params */
+  if(to->cparams)
+  {
+    DBG("Checking parameters for object %s", to->name);
+    /* check only allowed params are defined */
+    for(hn = hash_iter_first(&hi, command->command.thc.to->options);
+        !hash_iter_finished(&hi);
+        hn = hash_iter_next(&hi))
     {
-      if(ocline->needed)
-        FAT("%d:%s: Parameter %s is mandatory.", command->line, to->name, ocline->name);
-      continue;
+      DBG("  - checking [%s]", hn->key);
+      for(ocline = to->cparams;
+          ocline->name && strcasecmp(hn->key, ocline->name);
+          ocline++)
+        ;
+      if(!ocline->name)
+      {
+        ERR("%d:%s: Parameter %s not allowed here.", command->line, to->name, hn->key);
+        goto fatal;
+      }
     }
 
-    /* set value */
-    tea_thread_param_value_set(tw, ocline, val);
+    /* set params (apply configuration) */
+    DBG("Reading parameters...");
+    for(ocline = to->cparams; ocline->name; ocline++)
+    {
+      SNODE *val;
+
+      /* get configured value (or set default value if not specified) */
+      val = tea_thread_param_value_get(command->command.thc.to->options, ocline->name);
+      val = script_get_default(ocline->name);
+      if(hash_key_exists(command->command.thc.to->options, ocline->name))
+        val = hash_entry_get(command->command.thc.to->options, ocline->name);
+
+      /* check if parameter is optional */
+      if(!val)
+      {
+        if(ocline->needed)
+        {
+          ERR("%d:%s: Parameter %s is mandatory.", command->line, to->name, ocline->name);
+          goto fatal;
+        }
+        continue;
+      }
+
+      /* set value */
+      if(tea_thread_param_value_set(tw, ocline, val))
+        goto fatal;
+    }
+  } else {
+    if(command->command.thc.to->options
+    || command->command.thc.to->options->nentries > 0)
+    {
+      ERR("%d:%s: Parameters not allowed for this type of thread.", command->line, to->name);
+      goto fatal;
+    }
   }
 
   /* once configuration applied, launch thread configuration routine */
   if(tw->methods->configure)
-    tw->methods->configure(tw, command);
+    if(tw->methods->configure(tw, command, 1))
+    {
+      ERR("%d:%s: Thread configuration failed.", command->line, to->name);
+      goto fatal;
+    }
 
   /* add thread to the list */
+  pthreadex_lock_get_exclusive(&ttable_lock);
+  DBG("Installing thread %d.", tid);
+
+  /* build threads */
+  if(ttable[tid])
+  {
+    ERR("Cannot alloc thread %d because it is already used.", tid);
+    goto fatal;
+  }
+
   ttable[tid] = tw;
 
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
-    FAT("Error creating thread %d: %s", tid, strerror(errno));
+  {
+    ERR("Error creating thread %d: %s", tid, strerror(errno));
+    goto fatal;
+  }
 
   pthreadex_lock_release();
+  return;
+
+fatal:
+  ERR("Fatal error happened. Going to abort...");
+  if(tw)
+  {
+    if(ttable[tid] == tw)
+      ttable[tid] = NULL;
+    if(tw->mqueue)
+      mqueue_destroy(tw->mqueue);
+    pthreadex_flag_destroy(&(tw->mwaiting));
+    free(tw);
+  }
+  pthreadex_lock_release_raw(&ttable_lock);
+  FAT("Aborting.");
 }
 
 static void tea_thread_stop(int tid)
@@ -261,8 +350,11 @@ static void tea_thread_stop(int tid)
 
   DBG("Thread %d kill scheduled.", tid);
   pthreadex_lock_get_exclusive(&ttable_lock);
+  DBG("  going to kill %d.", tid);
+  tw = ttable[tid];
+  pthreadex_lock_release();
 
-  if((tw = ttable[tid]) != NULL)
+  if(tw != NULL)
   {
     DBG2("[kill %d] detaching thread", tid);
 
@@ -289,8 +381,6 @@ static void tea_thread_stop(int tid)
   } else {
     ERR("Thread %u does not exist.", tid);
   }
-
-  pthreadex_lock_release();
 }
 
 int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
@@ -303,7 +393,9 @@ int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
   if(pivot_id < 0 || pivot_id >= cfg.maxthreads)
     pivot_id = 0;
 
+  DBG("Going to look for a listener.");
   pthreadex_lock_get_shared(&ttable_lock);
+  DBG("  looking for a listener.");
 
   tid = pivot_id;
   do {
@@ -350,8 +442,9 @@ TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw)
   return m;
 }
 
-int tea_thread_msg_push(int tid, TEA_MSG *m)
+int tea_thread_msg_push(int tid, void *msg, int msg_size)
 {
+  TEA_MSG *tmsg;
   int r = 0;
 
   pthreadex_lock_get_shared(&ttable_lock);
@@ -360,10 +453,13 @@ int tea_thread_msg_push(int tid, TEA_MSG *m)
   {
     if(ttable[tid]->mqueue)
     {
-      mqueue_push(ttable[tid]->mqueue, m);
+      tmsg = msg_get();
+      msg_fill(tmsg, msg, msg_size);
+      mqueue_push(ttable[tid]->mqueue, tmsg);
+      DBG("  message pushed to %d.", tid);
       pthreadex_flag_up(&(ttable[tid]->mwaiting));
     } else
-      msg_release(m);
+      DBG("  message ignored by %d", tid);
   } else
     r = -1;
 
@@ -408,6 +504,7 @@ static void tea_fini(void)
     free(ttable);
   }
 
+  DBG("Finalizing ttable_lock.");
   pthreadex_lock_fini(&ttable_lock);
 
   mqueue_fini();
@@ -420,6 +517,7 @@ void tea_init(void)
   dosis_atexit("TEA", tea_fini);
 
   pthreadex_lock_init(&ttable_lock);
+  pthreadex_lock_name(&ttable_lock, "ttable-lock");
   if((ttable = calloc(cfg.maxthreads, sizeof(THREAD_WORK *))) == NULL)
     FAT("Cannot allocate memory for managing %d threads.", cfg.maxthreads);
 
@@ -438,6 +536,7 @@ void tea_timer(SNODE *program)
   /* get time 0 */
   ltime = stime = tea_time_get();
   pthreadex_timer_init(&teatimer, 0.0);
+  pthreadex_timer_name(&teatimer, "teatimer");
 
   for(cmd = program; !cfg.finalize && cmd; cmd = cmd->command.next)
   {
