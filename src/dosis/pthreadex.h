@@ -56,14 +56,14 @@ extern "C" {
   +  but you can redefine them to whatever you want.
   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+/* #define PTHREADEX_DEBUG 1 */
+
 #ifndef FAT
 #define PTHREADEX_LOG(l, ...) { fputs("pthreadex:" l ":", stderr); \
                                 fprintf(stderr, __VA_ARGS__); }
 #define FAT(...) { PTHREADEX_LOG("fatal", __VA_ARGS__); exit(1); }
 #define DBG(...) { PTHREADEX_LOG("debug", __VA_ARGS__); }
 #endif
-
-#define PTHREADEX_DEBUG 1
 
 #if PTHREADEX_DEBUG
 #define __X_FAT(m, f, ...)   FAT("%s: " f, (m)->n,  __VA_ARGS__)
