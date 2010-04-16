@@ -39,14 +39,15 @@ typedef struct _tag_TCPRAW_CFG {
   /* options */
   TEA_TYPE_ADDR      shost;
   TEA_TYPE_ADDR      dhost;
-  TEA_TYPE_STRING    sflags;
   TEA_TYPE_INT       pattern;
   TEA_TYPE_INT       npackets;
   TEA_TYPE_FLOAT     hitratio;
   TEA_TYPE_DATA      payload;
+  TEA_TYPE_STRING    tcp_flags;
+  TEA_TYPE_INT       tcp_win;
 
   /* other things */
-  int                flags;
+  int                tcp_flags_bitmap;
   pthreadex_timer_t  timer;
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
@@ -99,12 +100,11 @@ static void tcpraw__thread(THREAD_WORK *tw)
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
-/* XXX TODO: "Set flags" */
-/* XXX TODO: "Set window" */
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr.in.inaddr, sport,
                          &tc->dhost.addr.in.inaddr, dport,
-                         TH_SYN, 13337,
+                         tc->tcp_flags_bitmap,
+                         tc->tcp_win,
                          seq, 0,
                          (char *) tc->payload.data, tc->payload.size,
                          NULL, 0);
@@ -140,22 +140,9 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  if(tc->dhost.type == INET_FAMILY_NONE)
-  {
-    TERR("I need a target address.");
+  if(tc->shost.type == INET_FAMILY_NONE
+  && dos_get_source_address(&tc->shost, &tc->dhost))
     return -1;
-  }
-  if(tc->shost.type == INET_FAMILY_NONE)
-  {
-    DOS_ADDR_INFO *ai;
-    if((ai = dos_get_interface(&tc->dhost)) == NULL)
-    {
-      char buff[255];
-      ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
-      TWRN("Cannot find a suitable source address for '%s'.", buff);
-    } else
-      ip_addr_copy(&tc->shost, &ai->addr);
-  }
 
   /* check params sanity */
   if(tc->pattern != TYPE_PERIODIC)
@@ -186,7 +173,8 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command, int first_time)
     TDBG2("config.options.shost     = %s", buff);
     ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost     = %s", buff);
-    TDBG2("config.options.flags     = %x (%s)", tc->flags, tc->sflags);
+    TDBG2("config.options.tcp_flags = %x (%s)", tc->tcp_flags_bitmap, tc->tcp_flags);
+    TDBG2("config.options.tcp_win   = %x", tc->tcp_win);
   }
 
   return 0;
@@ -218,18 +206,18 @@ static int cfg_cb_update_flags(TEA_OBJCFG *oc, THREAD_WORK *tw)
   int i;
 
   /* precalculate flags */
-  tc->flags = 0;
-  for(i = 0; tc->sflags[i]; i++)
-    switch(toupper(tc->sflags[i]))
+  tc->tcp_flags_bitmap = 0;
+  for(i = 0; tc->tcp_flags[i]; i++)
+    switch(toupper(tc->tcp_flags[i]))
     {
-      case 'U': tc->flags |= 0x20; break; /* urgent */
-      case 'A': tc->flags |= 0x10; break; /* ack    */
-      case 'P': tc->flags |= 0x08; break; /* push   */
-      case 'R': tc->flags |= 0x04; break; /* reset  */
-      case 'S': tc->flags |= 0x02; break; /* syn    */
-      case 'F': tc->flags |= 0x01; break; /* fin    */
+      case 'U': tc->tcp_flags_bitmap |= 0x20; break; /* urgent */
+      case 'A': tc->tcp_flags_bitmap |= 0x10; break; /* ack    */
+      case 'P': tc->tcp_flags_bitmap |= 0x08; break; /* push   */
+      case 'R': tc->tcp_flags_bitmap |= 0x04; break; /* reset  */
+      case 'S': tc->tcp_flags_bitmap |= 0x02; break; /* syn    */
+      case 'F': tc->tcp_flags_bitmap |= 0x01; break; /* fin    */
       default:
-        ERR("Unknown TCP flag '%c'.", tc->sflags[i]);
+        ERR("Unknown TCP flag '%c'.", tc->tcp_flags[i]);
         return -1;
     }
 
@@ -239,13 +227,14 @@ static int cfg_cb_update_flags(TEA_OBJCFG *oc, THREAD_WORK *tw)
 TOC_BEGIN(tcpraw_cfg_def)
   TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,      NULL)
   TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,      NULL)
-  TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, flags,      cfg_cb_update_flags)
   TOC("pattern",        TEA_TYPE_INT,    1, TCPRAW_CFG, pattern,    NULL)
   TOC("payload",        TEA_TYPE_DATA,   0, TCPRAW_CFG, payload,    NULL)
   TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCPRAW_CFG, hitratio,   NULL)
   TOC("periodic_n",     TEA_TYPE_INT,    1, TCPRAW_CFG, npackets,   NULL)
   TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,      NULL)
   TOC("src_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, shost,      NULL)
+  TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, tcp_flags,  cfg_cb_update_flags)
+  TOC("tcp_win",        TEA_TYPE_INT,    1, TCPRAW_CFG, tcp_win,    NULL)
 TOC_END
 
 TEA_OBJECT teaTCPRAW = {

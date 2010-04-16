@@ -77,6 +77,7 @@ int dosis_fork(void);
 void dosis_atexit(char *name, void (*func)(void));
 
 DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta);
+int dos_get_source_address(INET_ADDR *s, INET_ADDR *t);
 void dosis_add_include_dir(char *p, int dirname);
 char *dosis_search_file(char *file);
 

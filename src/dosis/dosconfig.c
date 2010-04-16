@@ -80,8 +80,7 @@ DOS_CMD_OPTION cmd_options[] = {
 
 static void dos_config_parse_command(int argc, char **argv)
 {
-  int c, i, fin,
-      option_index = 0;
+  int c, fin, option_index = 0;
   char *s;
 
   /* configure and reset getopt */
@@ -111,16 +110,6 @@ static void dos_config_parse_command(int argc, char **argv)
           break;
       case 'q':
           cfg.verbosity = 0;
-          break;
-      case 'i':
-          if(!optarg || strlen(optarg) == 0)
-            FAT("Required interface.");
-          for(i = 0; i < MAX_INTERFACES && cfg.interfaces[i]; i++)
-            ;
-          if(i >= MAX_INTERFACES)
-            FAT("No space for more interfaces.");
-          if((cfg.interfaces[i] = strdup(optarg)) == NULL)
-            FAT("No mem for interface.");
           break;
       case 'I':
           if(!optarg || strlen(optarg) == 0)
@@ -324,13 +313,13 @@ void dos_get_addresses(void)
       memcpy(a->hwaddr, &ifr->ifr_addr.sa_data, sizeof(a->hwaddr));
 
     DBG("Interface:  %s", a->name);
-    DBG("HW Address: %02x:%02x:%02x:%02x:%02x:%02x",
+    DBG("  - HW Address: %02x:%02x:%02x:%02x:%02x:%02x",
         a->hwaddr[0], a->hwaddr[1], a->hwaddr[2],
         a->hwaddr[3], a->hwaddr[4], a->hwaddr[5]);
     ip_addr_snprintf(&a->addr, 255, buff);
-    DBG("IP Address: %s", buff);
+    DBG("  - IP Address: %s", buff);
     ip_addr_snprintf(&a->mask, 255, buff);
-    DBG("IP Mask:    %s", buff);
+    DBG("  - IP Mask:    %s", buff);
   }
 
   free(ifc.ifc_req);
@@ -362,6 +351,32 @@ DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta)
   /* if routing table does not provide a better option, return the */
   /* first interface attached to a network that meets target       */
   return r;
+}
+
+int dos_get_source_address(INET_ADDR *s, INET_ADDR *t)
+{
+  DOS_ADDR_INFO *ai;
+  char buff[255];
+
+  /* check target address */
+  if(t->type == INET_FAMILY_NONE)
+  {
+    ERR("I need a valid target address.");
+    return -1;
+  }
+
+  /* select most suitable interface for such target address */
+  if((ai = dos_get_interface(t)) == NULL)
+  {
+    ip_addr_snprintf(t, sizeof(buff), buff);
+    WRN("Cannot find a suitable source address/interface for '%s'.", buff);
+    return -1;
+  }
+
+  /* copy interface address */
+  ip_addr_copy(s, &ai->addr);
+  
+  return 0;
 }
 
 int dosis_fork(void)
@@ -497,13 +512,6 @@ static void dos_config_fini(void)
       cfg.includedir[i] = NULL;
     }
 
-  for(i = 0; i < MAX_INTERFACES; i++)
-    if(cfg.interfaces[i])
-    {
-      free(cfg.interfaces[i]);
-      cfg.interfaces[i] = NULL;
-    }
-
   if(short_options)
     free(short_options);
   if(long_options)
@@ -523,7 +531,6 @@ void dos_config_init(int argc, char **argv)
 
   /* zero include dirs and interfaces array */
   memset(cfg.includedir, 0, sizeof(cfg.includedir));
-  memset(cfg.interfaces, 0, sizeof(cfg.interfaces));
 
   /* initialize getopt tables */
   if(!(short_options = calloc((CMD_OPTIONS_N * 2) + 1, sizeof(char)))
@@ -571,20 +578,6 @@ void dos_config_init(int argc, char **argv)
 
   /* get routing table */
   dos_get_routes();
-
-  /* check selected interfaces */
-  for(i = 0; i < MAX_INTERFACES; i++)
-  {
-    if(cfg.interfaces[i])
-    {
-      DOS_ADDR_INFO *a;
-      for(a = cfg.addr; a; a = a->next)
-        if(!strcmp(cfg.interfaces[i], a->name))
-          break;
-      if(!a)
-        FAT("Interface '%s' not found.", cfg.interfaces[i]);
-    }
-  }
 
   /* print program header and config (if debug verbosity enabled) */
   dos_help_program_header();

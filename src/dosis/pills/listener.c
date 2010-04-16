@@ -262,7 +262,7 @@ static void listener__thread(THREAD_WORK *tw)
     if(ipq_on)
     {
       TDBG("Going to read...");
-      r = ipqex_msg_read(&lcfg->imsg, 500000);
+      r = ipqex_msg_read(&lcfg->imsg, 1000000);
       if(r < 0)
         TERR("Error reading from IPQ: %s", lcfg->imsg.err.str);
       TDBG("  ipqex_msg_read finished.");

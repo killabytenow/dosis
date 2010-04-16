@@ -54,8 +54,8 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
   TDBG2("Thread cleanup.");
 
   /* do thread cleanup */
-  if(tw->methods->cleanup)
-    tw->methods->cleanup(tw);
+  if(tw->to->cleanup)
+    tw->to->cleanup(tw);
 
   if(tw->data != NULL)
   {
@@ -64,7 +64,7 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
   }
 
   /* disassociate mqueue of tw and destroy it */
-  if(tw->methods->listen)
+  if(tw->to->listen)
   {
     pthreadex_mutex_begin(&(tw->mqueue->mutex));
     TDBG2("  [cleanup] listen cleanup");
@@ -103,20 +103,20 @@ static void *tea_thread(void *data)
 
   /* launch thread */
   TDBG("Starting thread.");
-  tw->methods->thread(tw);
+  tw->to->thread(tw);
   TDBG("Thread finished.");
 
   /*
    *# set timeout/wait condition
    *XXX
    *# do actions
-   *if(tw->methods->listen)
+   *if(tw->to->listen)
    *{
    *  while(1)
    *  {
    *    # XXX TIMEOUT HERE?? XXX
    *    pthreadex_flag_wait(&(tw->mwaiting));
-   *    tw->methods->listen(tw);
+   *    tw->to->listen(tw);
    *  }
    *} else
    */
@@ -142,12 +142,6 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
         s = script_get_string(v);
         if(ip_addr_parse(s, a))
           TFAT("%d: Cannot parse address '%s'.", v->line, s);
-{
-char pipi[256];
-ip_addr_snprintf(a, 255, pipi);
-TDBG("readed [%s]", s);
-TDBG("parsed [%s] [at %08x]", pipi, a);
-}
         free(s);
       }
       break;
@@ -187,6 +181,10 @@ TDBG("parsed [%s] [at %08x]", pipi, a);
       return -1;
   }
 
+  /* call handler (if it is available) */
+  if(oc->handler)
+    return oc->handler(oc, tw);
+
   return 0;
 }
 
@@ -217,20 +215,20 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 
   tw->id         = tid;
   tw->pthread_id = 0;
-  tw->methods    = to;
+  tw->to         = to;
 
   /* check methods */
-  tw->mqueue = tw->methods->listen
+  tw->mqueue = tw->to->listen
                  ? mqueue_create()
                  : NULL;
   pthreadex_flag_init(&(tw->mwaiting), 0);
   pthreadex_flag_name(&(tw->mwaiting), "flag-mwaiting");
 
   /* global thread initialization here */
-  if(tw->methods->global_init && !tw->methods->initialized)
+  if(tw->to->global_init && !tw->to->initialized)
   {
-    tw->methods->initialized = -1;
-    tw->methods->global_init();
+    tw->to->initialized = -1;
+    tw->to->global_init();
   }
 
   /* make space for thread data */
@@ -298,8 +296,8 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   }
 
   /* once configuration applied, launch thread configuration routine */
-  if(tw->methods->configure)
-    if(tw->methods->configure(tw, command, 1))
+  if(tw->to->configure)
+    if(tw->to->configure(tw, command, 1))
     {
       ERR("%d:%s: Thread configuration failed.", command->line, to->name);
       goto fatal;
@@ -400,8 +398,8 @@ int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
   tid = pivot_id;
   do {
     if(ttable[tid]
-    && ttable[tid]->methods->listen_check
-    && (prio = ttable[tid]->methods->listen_check(ttable[tid], b, l)) != 0)
+    && ttable[tid]->to->listen_check
+    && (prio = ttable[tid]->to->listen_check(ttable[tid], b, l)) != 0)
     {
       if(prio > 0)
         FAT("Positive priority? Not in my world. Die motherfucker.");

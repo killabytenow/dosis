@@ -60,6 +60,11 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
     return 0;
 
+  TDBG("Checking packet:");
+  TDBG("  - IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr  = %d",
+       IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr);
+  TDBG("  - ntohs(TCP_HEADER(msg)->source) == tc->dhost.port = %d",
+       ntohs(TCP_HEADER(msg)->source) == tc->dhost.port);
   /* check msg */
   return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
       && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
@@ -160,22 +165,9 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  if(tc->dhost.type == INET_FAMILY_NONE)
-  {
-    TERR("I need a target address.");
+  if(tc->shost.type == INET_FAMILY_NONE
+  && dos_get_source_address(&tc->shost, &tc->dhost))
     return -1;
-  }
-  if(tc->shost.type == INET_FAMILY_NONE)
-  {
-    DOS_ADDR_INFO *ai;
-    if((ai = dos_get_interface(&tc->dhost)) == NULL)
-    {
-      char buff[255];
-      ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
-      TWRN("Cannot find a suitable source address for '%s'.", buff);
-    } else
-      ip_addr_copy(&tc->shost, &ai->addr);
-  }
 
   /* (debug) print configuration */
   {
@@ -234,6 +226,7 @@ TEA_OBJECT teaTCPOPEN = {
   .configure    = tcpopen__configure,
   .cleanup      = tcpopen__cleanup,
   .thread       = tcpopen__thread,
+  .listen       = 1,
   .listen_check = tcpopen__listen_check,
   .cparams      = teaTCPOPEN_cfg
 };

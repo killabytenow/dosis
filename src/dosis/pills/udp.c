@@ -137,22 +137,9 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  if(tu->dhost.type == INET_FAMILY_NONE)
-  {
-    TERR("I need a target address.");
+  if(tu->shost.type == INET_FAMILY_NONE
+  && dos_get_source_address(&tu->shost, &tu->dhost))
     return -1;
-  }
-  if(tu->shost.type == INET_FAMILY_NONE)
-  {
-    DOS_ADDR_INFO *ai;
-    if((ai = dos_get_interface(&tu->dhost)) == NULL)
-    {
-      char buff[255];
-      ip_addr_snprintf(&tu->shost, sizeof(buff), buff);
-      TWRN("Cannot find a suitable source address for '%s'.", buff);
-    } else
-      ip_addr_copy(&tu->shost, &ai->addr);
-  }
 
   /* check params sanity */
   if(tu->pattern != TYPE_PERIODIC)

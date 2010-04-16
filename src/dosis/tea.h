@@ -34,7 +34,7 @@ typedef struct _tag_THREAD_WORK {
   /* generic info */
   int                      id;
   pthread_t                pthread_id;
-  struct _tag_TEA_OBJECT  *methods;
+  struct _tag_TEA_OBJECT  *to;
   void                    *data;
 
   /* listener info */
@@ -83,12 +83,12 @@ typedef struct _tag_TEA_OBJECT {
   int         initialized;
   unsigned    datasize;
   TEA_OBJCFG *cparams;
+  int         listen;
 
   void (*global_init)(void);
   int  (*configure)(THREAD_WORK *tw, SNODE *command, int first_time);
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
-  void (*listen)(THREAD_WORK *tw);
   int  (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
 } TEA_OBJECT;
 
@@ -106,17 +106,17 @@ int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
 #define GDBG(msg, ...)   DBG("[%s] " msg, MODNAME, ## __VA_ARGS__)
 #define GDBG2(msg, ...)  DBG2("[%s] " msg, MODNAME, ## __VA_ARGS__)
 
-#define TFAT(msg, ...)   FAT("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
-#define TERR(msg, ...)   ERR("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
-#define TWRN(msg, ...)   WRN("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
-#define TLOG(msg, ...)   LOG("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
-#define TDBG(msg, ...)   DBG("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
-#define TDBG2(msg, ...)  DBG2("[%d/%s] " msg, tw->id, tw->methods->name, ## __VA_ARGS__)
-#define TDUMP(l,b,s)     {                                                  \
-                           char __dump_prefix[256];                         \
-                           snprintf(__dump_prefix, sizeof(__dump_prefix),   \
-                                    "[%d/%s] ", tw->id, tw->methods->name); \
-                           DUMP(l, __dump_prefix, b, s);                    \
+#define TFAT(msg, ...)   FAT("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TERR(msg, ...)   ERR("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TWRN(msg, ...)   WRN("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TLOG(msg, ...)   LOG("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TDBG(msg, ...)   DBG("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TDBG2(msg, ...)  DBG2("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TDUMP(l,b,s)     {                                                \
+                           char __dump_prefix[256];                       \
+                           snprintf(__dump_prefix, sizeof(__dump_prefix), \
+                                    "[%d/%s] ", tw->id, tw->to->name);    \
+                           DUMP(l, __dump_prefix, b, s);                  \
                          }
 
 /*- CORE --------------------------------------------------------------------*/
