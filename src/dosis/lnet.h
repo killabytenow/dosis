@@ -32,6 +32,34 @@
 extern "C" {
 #endif
 
+/* protocol headers */
+typedef	u_int32_t tcp_seq;
+typedef struct __tag_LN_TCP_HEADER
+  {
+    u_int16_t th_sport;		/* source port */
+    u_int16_t th_dport;		/* destination port */
+    tcp_seq th_seq;		/* sequence number */
+    tcp_seq th_ack;		/* acknowledgement number */
+#ifdef WORDS_BIGENDIAN
+    u_int8_t th_off:4;		/* data offset */
+    u_int8_t th_x2:4;		/* (unused) */
+#else
+    u_int8_t th_x2:4;		/* (unused) */
+    u_int8_t th_off:4;		/* data offset */
+#  endif
+    u_int8_t th_flags;
+    u_int16_t th_win;		/* window */
+    u_int16_t th_sum;		/* checksum */
+    u_int16_t th_urp;		/* urgent pointer */
+} LN_TCP_HEADER;
+
+#define LN_TH_FIN	0x01
+#define LN_TH_SYN	0x02
+#define LN_TH_RST	0x04
+#define LN_TH_PUSH	0x08
+#define LN_TH_ACK	0x10
+#define LN_TH_URG	0x20
+
 /*****************************************************************************
  * libnet mngmnt and packet forgering
  *****************************************************************************/
@@ -42,22 +70,33 @@ typedef struct _tag_LN_CONTEXT {
   int           udp_p;
   int           tcp_p;
   int           ip_id;
+  
+  /* raw sockets */
+  int           rs;
 } LN_CONTEXT;
 
 void ln_init_context(LN_CONTEXT *ln);
 void ln_destroy_context(LN_CONTEXT *lnc);
-void ln_send_tcp_packet(LN_CONTEXT *lnc,
-                        struct in_addr *shost, int sport,
-                        struct in_addr *dhost, int dport,
-                        int flags, int window,
-                        int seq, int ack,
-                        char *data, int data_sz,
-                        char *opts, int opts_sz);
+int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz);
+int ln_send_tcp_packet(LN_CONTEXT *lnc,
+                       INET_ADDR *shost, int sport,
+                       INET_ADDR *dhost, int dport,
+                       int flags, int window,
+                       int seq, int ack,
+                       char *data, int data_sz,
+                       char *opts, int opts_sz);
 void ln_send_udp_packet(LN_CONTEXT *lnc,
-                        struct in_addr *shost, int sport,
-                        struct in_addr *dhost, int dport,
+                        INET_ADDR *shost, int sport,
+                        INET_ADDR *dhost, int dport,
                         char *data, int data_sz);
-
+int ln_build_ip_tcp_packet(void *buff,
+                           INET_ADDR *shost, int sport,
+                           INET_ADDR *dhost, int dport,
+                           int flags, int window,
+                           int seq, int ack,
+                           char *data, int data_sz,
+                           char *opts, int opts_sz);
+                    
 /*****************************************************************************
  * seq number generators
  *

@@ -7,23 +7,21 @@ TODO LIST
           - send
           - receive
           - wtf is a listener?
-      - send loops manage their own timer
       - receive loops depend on a flag mutex, so they are blocked indefinetely
         until a message arrives.
     desired situation:
-      - easier to understand
       - only one type of thread? or three? four? five?
       - timer management easier for threads
       - thread config more homogeneus.
           - perhaps config hashtable?
 - allow to choose seq generation algorithm for tcpraw thread.
 - tcpopen:
-    - integrste send function.
+    - integrate send function.
+    - delay packets (to exploit better timeout)
 - tcpraw:
     - set window to 0, and persisting.
     - acknowledge before receive.
     - zero window after syn+ack (test demostrated more than 350sec FIN1_WAIT)
-- make gram more restrictive
 - stress tests
 - implement include statement
 - ack acked:
@@ -34,5 +32,20 @@ TODO LIST
     5) ack again A bytes
 - monkey in the middle
 - slow loris
-- make a free-list in snode (a list for freeing memory at program
-  finalizatoin).
+- delayed send
+    - possible solutions
+        - sender thread with queue and signaling
+            - pros:
+              - easy to implement
+            - contras:
+              - memory bandwith
+              - another queue and another thread
+              - throughtput?
+
+        - internal thread implementation
+            - pro:
+              - difficult to mix 'mqueue' with 'delayed send'
+              - fast (if possible to implement)
+            - contras:
+              - how to wake thread when time comes up?
+              - for each thread another "specialized" implementation?

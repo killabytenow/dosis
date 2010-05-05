@@ -153,7 +153,7 @@ static int slowy__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
     return 0;
 
   /* check msg */
-  return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
+  return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
       && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
          ? -1 : 0;
 }
@@ -181,8 +181,8 @@ static void slowy__listen(THREAD_WORK *tw)
         {
           /* send request in one TCP packet */
           ln_send_tcp_packet(tc->lnc,
-                             &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                             &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                             &tc->shost.addr, ntohs(TCP_HEADER(m->b)->dest),
+                             &tc->dhost.addr, tc->dhost.port,
                              TH_ACK | TH_PUSH,
                              ntohs(c->window),
                              ntohl(c->seq),
@@ -206,7 +206,7 @@ static void slowy__listen(THREAD_WORK *tw)
               (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
               TCP_HEADER(m->b)->dest, tc->dhost.port,
               TCP_HEADER(m->b)->rst,
-              IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
+              IP_HEADER(m->b)->saddr, tc->shost.addr.addr.in.addr);
 
       c = conn_get(tw, TCP_HEADER(m->b)->dest);
       if(c)
@@ -236,8 +236,8 @@ static void slowy__listen(THREAD_WORK *tw)
         TDBG2("  # (%d) sending handshake", c->sport);
         TERR("  # (%d) window %d", c->sport, c->window);
         ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                           &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                           &tc->shost.addr, ntohs(TCP_HEADER(m->b)->dest),
+                           &tc->dhost.addr, tc->dhost.port,
                            c->flags,
                            c->window,
                            c->seq,
@@ -292,8 +292,8 @@ static void slowy__listen(THREAD_WORK *tw)
         /*   - (fin) schedule fin/ack packet */
         if(!TCP_HEADER(m->b)->rst)
           ln_send_tcp_packet(tc->lnc,
-                             &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                             &tc->dhost.addr.in.inaddr, tc->dhost.port,
+                             &tc->shost.addr, ntohs(TCP_HEADER(m->b)->dest),
+                             &tc->dhost.addr, tc->dhost.port,
                              TH_FIN | TH_ACK,
                              ntohs(TCP_HEADER(m->b)->window),
                              ntohl(TCP_HEADER(m->b)->ack_seq),
@@ -345,31 +345,25 @@ static int slowy__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  /* TODO: check dest address is INET */
-  if(tc->dhost.type == INET_FAMILY_NONE)
-  {
-    TERR("I need a target address.");
-    return -1;
-  }
-  if(tc->shost.type == INET_FAMILY_NONE)
+  if(tc->shost.addr.type == INET_FAMILY_NONE)
   {
     DOS_ADDR_INFO *ai;
-    if((ai = dos_get_interface(&tc->dhost)) == NULL)
+    if((ai = dos_get_interface(&tc->dhost.addr)) == NULL)
     {
       char buff[255];
-      ip_addr_snprintf(&tc->shost, sizeof(buff), buff);
+      ip_addr_snprintf(&tc->shost.addr, tc->shost.port, sizeof(buff), buff);
       TWRN("Cannot find a suitable source address for '%s'.", buff);
     } else
-      ip_addr_copy(&tc->shost, &ai->addr);
+      ip_addr_copy(&tc->shost.addr, &ai->addr);
   }
 
   /* (debug) print configuration */
   {
     char buff[255];
 
-    ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tc->shost.addr, tc->shost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
-    ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tc->dhost.addr, tc->dhost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost   = %s", buff);
     TDBG2("config.options.payload = %d bytes", tc->payload.size);
     TDBG2("config.options.winow   = %d bytes", tc->window);

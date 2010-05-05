@@ -329,7 +329,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
 
   /* convert dhost to sockaddr */
-  ip_addr_to_socket(&tt->dhost, &tt->dsockaddr);
+  ip_addr_to_socket(&tt->dhost.addr, tt->dhost.port, &tt->dsockaddr);
 
   return 0;
 }

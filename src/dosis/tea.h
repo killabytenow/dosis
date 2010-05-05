@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
+ *   (C) 2008-2010 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -29,6 +29,7 @@
 #include "pthreadex.h"
 #include "mqueue.h"
 #include "script.h"
+#include "teatype.h"
 
 typedef struct _tag_THREAD_WORK {
   /* generic info */
@@ -44,28 +45,6 @@ typedef struct _tag_THREAD_WORK {
   /*struct _tag_THREAD_WORK *prev_listener;*/
   /*struct _tag_THREAD_WORK *next_listener;*/
 } THREAD_WORK;
-
-enum {
-  TEA_TYPE_ADDR_ID = 1,
-  TEA_TYPE_BOOL_ID,
-  TEA_TYPE_DATA_ID,
-  TEA_TYPE_FLOAT_ID,
-  TEA_TYPE_INT_ID,
-  TEA_TYPE_PORT_ID,
-  TEA_TYPE_STRING_ID,
-} TEA_TYPE_ID_LIST;
-
-struct __TEA_DATA {
-  void     *data;
-  unsigned  size;
-};
-
-typedef INET_ADDR         TEA_TYPE_ADDR;
-typedef int               TEA_TYPE_BOOL;
-typedef struct __TEA_DATA TEA_TYPE_DATA;
-typedef double            TEA_TYPE_FLOAT;
-typedef int               TEA_TYPE_INT;
-typedef char *            TEA_TYPE_STRING;
 
 typedef struct _tag_TEA_OBJCFG {
   char     *name;
@@ -97,6 +76,7 @@ TEA_MSG *tea_thread_msg_get(THREAD_WORK *tw);
 TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw);
 int      tea_thread_msg_push(int tid, void *msg, int msg_size);
 int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
+int      tea_thread_msg_send(TEA_MSG *m, int delay);
 
 /*- THREAD LOG UTILITIES ----------------------------------------------------*/
 #define GFAT(msg, ...)   FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)

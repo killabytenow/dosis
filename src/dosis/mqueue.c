@@ -29,6 +29,8 @@
 
 static TEA_MSG_QUEUE    *msg_free;
 
+static void msg_destroy(TEA_MSG *m);
+
 /*---------------------------------------------------------------------------*
  * MQUEUE MANAGAMENT
  *
@@ -121,22 +123,7 @@ void mqueue_init(void)
  *   Following functions create, get, release and destroy messages.
  *---------------------------------------------------------------------------*/
 
-TEA_MSG *msg_allocate(void)
-{
-  TEA_MSG *m;
-
-  if((m = mqueue_shift(msg_free)) == NULL)
-    if((m = calloc(1, sizeof(TEA_MSG))) == NULL)
-      FAT("No memory for msg.");
-
-  m->b  = NULL;
-  m->s  = 0;
-  m->bs = 0;
-
-  return m;
-}
-
-void msg_destroy(TEA_MSG *m)
+static void msg_destroy(TEA_MSG *m)
 {
   free(m->b);
   m->b  = NULL;
@@ -149,7 +136,14 @@ TEA_MSG *msg_get(void)
   TEA_MSG *m;
 
   if((m = mqueue_shift(msg_free)) == NULL)
-    m = msg_allocate();
+  {
+    if((m = calloc(1, sizeof(TEA_MSG))) == NULL)
+      FAT("No memory for msg.");
+
+    m->b  = NULL;
+    m->s  = 0;
+    m->bs = 0;
+  }
 
   return m;
 }
@@ -159,18 +153,30 @@ void msg_release(TEA_MSG *m)
   mqueue_push(msg_free, m);
 }
 
+void *msg_buffer(TEA_MSG *m, unsigned int s)
+{
+  unsigned char *p;
+
+  if(s > m->bs)
+  {
+    if((p = realloc(m->b, s)) == NULL)
+      return NULL;
+    m->b  = p;
+    m->bs = s;
+  } else
+    p = m->b;
+  m->s = s;
+
+  return p;
+}
+
 void msg_fill(TEA_MSG *m, char *b, unsigned int s)
 {
   /* get moar mem, if necessary */
-  if(s > m->bs)
-  {
-    if((m->b = realloc(m->b, s)) == NULL)
-      FAT("No memory for msg of size %d.", s);
-    m->bs = s;
-  }
+  if(msg_buffer(m, s) == NULL)
+    FAT("No memory for msg of size %d.", s);
 
   /* copy msg */
-  m->s  = s;
   if(s > 0)
     memcpy(m->b, b, s);
 }

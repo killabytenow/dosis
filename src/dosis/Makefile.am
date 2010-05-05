@@ -38,7 +38,9 @@ dosis_SOURCES = dosis.c           dosis.h           \
                 pthreadex.c       pthreadex.h       \
                 script.y          script.h          \
                 tea.c             tea.h             \
+                                  teatype.h         \
                 pills/listener.c  pills/listener.h  \
+                pills/sender.c    pills/sender.h    \
                 pills/slowy.c     pills/slowy.h     \
                 pills/tcp.c       pills/tcp.h       \
                 pills/tcpopen.c   pills/tcpopen.h   \

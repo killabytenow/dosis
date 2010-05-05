@@ -42,7 +42,7 @@ static int               ipq_on;
 static ipqex_info_t      ipq;
 static pthreadex_mutex_t ipq_mutex;
 
-typedef struct _tag_TCPRAW_CFG {
+typedef struct _tag_LISTENER_CFG {
   /* options */
   TEA_TYPE_BOOL      debug;
 

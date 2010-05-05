@@ -38,11 +38,14 @@
 #define BUFSIZE    2048
 
 typedef struct _tag_TCPOPEN_CFG {
-  INET_ADDR      shost;
-  INET_ADDR      dhost;
-  TEA_TYPE_INT   mss;
+  TEA_TYPE_ADDR  shost;
+  TEA_TYPE_ADDR  dhost;
   TEA_TYPE_INT   npackets;
   TEA_TYPE_DATA  payload;
+  TEA_TYPE_INT   tcp_mss;
+  TEA_TYPE_INT   tcp_win;
+  TEA_TYPE_INT   delay;
+
   LN_CONTEXT    *lnc;
 } TCPOPEN_CFG;
 
@@ -60,15 +63,39 @@ static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
   || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
     return 0;
 
-  TDBG("Checking packet:");
-  TDBG("  - IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr  = %d",
-       IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr);
-  TDBG("  - ntohs(TCP_HEADER(msg)->source) == tc->dhost.port = %d",
-       ntohs(TCP_HEADER(msg)->source) == tc->dhost.port);
   /* check msg */
-  return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
+  return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
       && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
          ? -1 : 0;
+}
+
+static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
+{
+  TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
+  TEA_MSG *t;
+
+  /* send handshake and data TCP packet */
+  if((t = msg_build_ip_tcp_packet(&tc->shost,
+                                  &tc->dhost,
+                                  TH_ACK,
+                                  tc->tcp_win,
+                                  ntohl(TCP_HEADER(m->b)->ack_seq),
+                                  ntohl(TCP_HEADER(m->b)->seq) + 1,
+                                  NULL, 0,
+                                  NULL, 0)) == NULL)
+    TFAT("Cannot build syn packet.");
+  tea_thread_msg_send(m, tc->delay);
+
+  if((t = msg_build_ip_tcp_packet(&tc->shost,
+                                  &tc->dhost,
+                                  TH_ACK | TH_PUSH,
+                                  tc->tcp_win,
+                                  ntohl(TCP_HEADER(m->b)->ack_seq),
+                                  ntohl(TCP_HEADER(m->b)->seq) + 1,
+                                  (char *) tc->payload.data, tc->payload.size,
+                                  NULL, 0)) == NULL)
+    TFAT("Cannot build ack packet.");
+  tea_thread_msg_send(m, tc->delay);
 }
 
 static void tcpopen__thread(THREAD_WORK *tw)
@@ -92,49 +119,12 @@ static void tcpopen__thread(THREAD_WORK *tw)
             TCP_HEADER(m->b)->rst,
             TCP_HEADER(m->b)->syn,
             TCP_HEADER(m->b)->ack,
-            IP_HEADER(m->b)->saddr, tc->shost.addr.in.addr);
+            IP_HEADER(m->b)->saddr, tc->shost.addr.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
     if(TCP_HEADER(m->b)->syn != 0
     && TCP_HEADER(m->b)->ack != 0)
-    {
-      /* send handshake and data TCP packet */
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK,
-                         13337, //5840, //ntohs(tcp_header(m->b)->window),
-                         ntohl(TCP_HEADER(m->b)->ack_seq),
-                         ntohl(TCP_HEADER(m->b)->seq) + 1,
-                         NULL, 0,
-                         NULL, 0);
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(TCP_HEADER(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK | TH_PUSH,
-                         13337, //5840, //ntohs(tcp_header(m->b)->window),
-                         ntohl(TCP_HEADER(m->b)->ack_seq),
-                         ntohl(TCP_HEADER(m->b)->seq) + 1,
-                         (char *) tc->payload.data, tc->payload.size,
-                         NULL, 0);
-    }
-
-/* XXX WTF XXX */
-#if 0
-    if(tcp_header(m->b)->syn == 0
-    && tcp_header(m->b)->ack == 0)
-    {
-      TDBG2("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX SUZUKI DE SESION");
-      ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, ntohs(tcp_header(m->b)->dest),
-                         &tc->dhost.addr.in.inaddr, tc->dhost.port,
-                         TH_ACK,
-                         ntohs(tcp_header(m->b)->window),
-                         ntohl(tcp_header(m->b)->ack_seq),
-                         ntohl(tcp_header(m->b)->seq) + 1,
-                         NULL, 0);
-    }
-#endif
+      tcpopen__send_kakita(m, tw);
 
     /* release msg buffer */
     msg_release(m);
@@ -165,8 +155,8 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  if(tc->shost.type == INET_FAMILY_NONE
-  && dos_get_source_address(&tc->shost, &tc->dhost))
+  if(tc->shost.addr.type == INET_FAMILY_NONE
+  && dos_get_source_address(&tc->shost.addr, &tc->dhost.addr))
     return -1;
 
   /* (debug) print configuration */
@@ -175,9 +165,9 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command, int first_time)
 
     TDBG2("config.periodic.bytes  = %d", tc->payload.size);
 
-    ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tc->shost.addr, tc->shost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
-    ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tc->dhost.addr, tc->dhost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost   = %s", buff);
     TDBG2("config.options.payload = %d bytes", tc->payload.size);
   }
@@ -216,8 +206,9 @@ TOC_BEGIN(teaTCPOPEN_cfg)
   TOC("src_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, shost,   NULL)
   TOC("dst_addr", TEA_TYPE_ADDR, 1, TCPOPEN_CFG, dhost,   NULL)
   TOC("dst_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, dhost,   NULL)
-  TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, mss,     NULL)
   TOC("payload",  TEA_TYPE_DATA, 1, TCPOPEN_CFG, payload, NULL)
+  TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, tcp_mss, NULL)
+  TOC("tcp_win",  TEA_TYPE_INT,  1, TCPOPEN_CFG, tcp_win, NULL)
 TOC_END
 
 TEA_OBJECT teaTCPOPEN = {

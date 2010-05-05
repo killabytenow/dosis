@@ -140,7 +140,7 @@ int ip_read_range(char *network, INET_IPV4_RANGE *range)
   return ret;
 }
 
-void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr)
+void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr, int *port)
 {
   switch(saddr->sa_family)
   {
@@ -149,8 +149,8 @@ void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr)
         struct sockaddr_in *sin = (struct sockaddr_in *) saddr;
         addr->addr.in.addr = sin->sin_addr.s_addr;
         addr->type = INET_FAMILY_IPV4;
-        addr->port = sin->sin_port;
-        addr->port_defined = -1;
+        if(port)
+          *port = sin->sin_port;
       }
       break;
 
@@ -160,8 +160,8 @@ void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr)
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) saddr;
         memcpy(addr->addr.in6.addr, &sin6->sin6_addr, sizeof(addr->addr.in6));
         addr->type = INET_FAMILY_IPV6;
-        addr->port = sin6->sin6_port;
-        addr->port_defined = -1;
+        if(port)
+          *port = sin6->sin6_port;
       }
 #else
       FAT("This platform does not support IPv6.");
@@ -173,15 +173,8 @@ void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr)
   }
 }
 
-void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
+void ip_addr_to_socket(INET_ADDR *addr, int port, struct sockaddr *saddr)
 {
-  char tmp[INET_ADDR_MAXLEN_STR];
-
-  if(!addr->port_defined)
-  {
-    ip_addr_snprintf(addr, INET_ADDR_MAXLEN, tmp);
-    WRN("Port not defined for address '%s'.", tmp);
-  }
   switch(addr->type)
   {
     case INET_FAMILY_IPV4:
@@ -191,7 +184,7 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
         sin = (struct sockaddr_in *) saddr;
         sin->sin_addr.s_addr = addr->addr.in.addr;
         sin->sin_family = AF_INET;
-        sin->sin_port = htons(addr->port);
+        sin->sin_port = htons(port);
         memset(&(sin->sin_zero), 0, 8);
       }
       break;
@@ -207,7 +200,7 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
 #endif
         sin6->sin6_family = AF_INET6;
         sin6->sin6_flowinfo = 0;
-        sin6->sin6_port = addr->port;
+        sin6->sin6_port = htons(port);
         memcpy(&sin6->sin6_addr, addr->addr.in6.addr, sizeof(addr->addr.in6));
       }
 #else
@@ -220,7 +213,7 @@ void ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr)
   }
 }
 
-struct sockaddr *ip_addr_get_socket(INET_ADDR *addr)
+struct sockaddr *ip_addr_get_socket(INET_ADDR *addr, int port)
 {
   struct sockaddr *saddr = NULL;
   int bytes = 0;
@@ -247,7 +240,7 @@ struct sockaddr *ip_addr_get_socket(INET_ADDR *addr)
     FAT("No memory for a sockaddr_in structure.");
 
   /* fill sockaddr structure */
-  ip_addr_to_socket(addr, saddr);
+  ip_addr_to_socket(addr, port, saddr);
 
   return saddr;
 }
@@ -269,43 +262,31 @@ void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in6)
   memcpy(&addr->addr.in6, in6, sizeof(INET_IPV6_ADDR));
 }
 
-void ip_addr_set_port(INET_ADDR *addr, int port)
-{
-  addr->port = port;
-  addr->port_defined = 1;
-}
-
-void ip_addr_unset_port(INET_ADDR *addr)
-{
-  addr->port = 0;
-  addr->port_defined = 0;
-}
-
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from)
 {
   memcpy(to, from, sizeof(INET_ADDR));
 }
 
-int ip_addr_snprintf_ipv4(INET_ADDR *addr, int l, char *str)
+int ip_addr_snprintf_ipv4(INET_ADDR *addr, int port, int l, char *str)
 {
   int r;
   char buff[INET_ADDR_MAXLEN+1];
 
   if(addr->type != INET_FAMILY_IPV4)
   {
-    ip_addr_snprintf(addr, sizeof(buff), buff);
+    ip_addr_snprintf(addr, port, sizeof(buff), buff);
     ERR("Address '%s' is not an IPv4 address.", buff);
     return -1;
   }
 
-  if(addr->port_defined)
+  if(port >= 0)
   {
     r = snprintf(str, l, "%d.%d.%d.%d:%d",
                     IPV4_GETP(3, &addr->addr.in),
                     IPV4_GETP(2, &addr->addr.in),
                     IPV4_GETP(1, &addr->addr.in),
                     IPV4_GETP(0, &addr->addr.in),
-                    addr->port);
+                    port);
   } else {
     r = snprintf(str, l, "%d.%d.%d.%d",
                     IPV4_GETP(3, &addr->addr.in),
@@ -317,13 +298,13 @@ int ip_addr_snprintf_ipv4(INET_ADDR *addr, int l, char *str)
   return r;
 }
 
-int ip_addr_snprintf_ipv6(INET_ADDR *addr, int l, char *str)
+int ip_addr_snprintf_ipv6(INET_ADDR *addr, int port, int l, char *str)
 {
   char buff[INET_ADDR_MAXLEN+1];
 
   if(addr->type != INET_FAMILY_IPV6)
   {
-    ip_addr_snprintf(addr, sizeof(buff), buff);
+    ip_addr_snprintf(addr, port, sizeof(buff), buff);
     ERR("Address '%s' is not an IPv6 address.", buff);
     return -1;
   }
@@ -348,14 +329,14 @@ int ip_addr_snprintf_ipv6(INET_ADDR *addr, int l, char *str)
                   IPV6_GETB(15, &addr->addr.in6));
 }
 
-int ip_addr_snprintf(INET_ADDR *addr, int l, char *str)
+int ip_addr_snprintf(INET_ADDR *addr, int port, int l, char *str)
 {
   int r;
 
   switch(addr->type)
   {
-    case INET_FAMILY_IPV4: r = ip_addr_snprintf_ipv4(addr,  l, str); break;
-    case INET_FAMILY_IPV6: r = ip_addr_snprintf_ipv6(addr, l, str); break;
+    case INET_FAMILY_IPV4: r = ip_addr_snprintf_ipv4(addr, port, l, str); break;
+    case INET_FAMILY_IPV6: r = ip_addr_snprintf_ipv6(addr, port, l, str); break;
     default:
       r = snprintf(str, l, "<NO-ADDRESS>");
   }
@@ -363,7 +344,7 @@ int ip_addr_snprintf(INET_ADDR *addr, int l, char *str)
   return r;
 }
 
-int ip_snprintf_ipv4(INET_IPV4_ADDR *in, int l, char *str)
+int ip_snprintf_ipv4(INET_IPV4_ADDR *in, int port, int l, char *str)
 {
   return snprintf(str, l, "%d.%d.%d.%d",
                   IPV4_GETP(3, in),
@@ -372,7 +353,7 @@ int ip_snprintf_ipv4(INET_IPV4_ADDR *in, int l, char *str)
                   IPV4_GETP(0, in));
 }
 
-int ip_snprintf_ipv6(INET_IPV6_ADDR *in6, int l, char *str)
+int ip_snprintf_ipv6(INET_IPV6_ADDR *in6, int port, int l, char *str)
 {
   return snprintf(str, l, "%02x%02x:%02x%02x:%02x%02x:%02x%02x:"
                           "%02x%02x:%02x%02x:%02x%02x:%02x%02x",
@@ -394,7 +375,7 @@ int ip_snprintf_ipv6(INET_IPV6_ADDR *in6, int l, char *str)
                   IPV6_GETB(15, in6));
 }
 
-int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr)
+int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr, int *port)
 {
   int a, b, c, d, p, r, x, port_defined;
 
@@ -425,23 +406,24 @@ int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr)
            | ((c & 0x000000ffl) <<  8)
            | ((b & 0x000000ffl) << 16)
            | ((a & 0x000000ffl) << 24));
-  addr->port_defined = port_defined;
-  addr->port = port_defined ? p : 0;
+
+  if(port)
+    *port = port_defined ?  p : -1;
   
   return 0;
 }
 
-int ip_addr_parse_ipv6(char *saddr, INET_ADDR *addr)
+int ip_addr_parse_ipv6(char *saddr, INET_ADDR *addr, int *port)
 {
 #warning "IPv6 address parser not implemented."
   return -1;
 }
 
-int ip_addr_parse(char *saddr, INET_ADDR *addr)
+int ip_addr_parse(char *saddr, INET_ADDR *addr, int *port)
 {
-  if(!ip_addr_parse_ipv4(saddr, addr))
+  if(!ip_addr_parse_ipv4(saddr, addr, port))
     return 0;
-  if(!ip_addr_parse_ipv6(saddr, addr))
+  if(!ip_addr_parse_ipv6(saddr, addr, port))
     return 0;
 
   memset(addr, 0, sizeof(INET_ADDR));
@@ -454,7 +436,7 @@ unsigned int ip_addr_get_part_ipv4(INET_ADDR *addr, int part)
 
   if(addr->type != INET_FAMILY_IPV4 || part < 1 || part > 4)
   {
-    ip_addr_snprintf(addr, sizeof(buff), buff);
+    ip_addr_snprintf(addr, -1, sizeof(buff), buff);
     FAT("Bad IPv4 address '%s' or invalid part number (%d).", buff, part);
   }
 
@@ -468,7 +450,7 @@ unsigned int ip_addr_get_part_ipv6_nibble(INET_ADDR *addr, int part)
 
   if(addr->type != INET_FAMILY_IPV6 || part < 1 || part > 32)
   {
-    ip_addr_snprintf(addr, sizeof(buff), buff);
+    ip_addr_snprintf(addr, -1, sizeof(buff), buff);
     FAT("Bad IPv6 address '%s' or invalid nibble-part number (%d).", buff, part);
   }
 
@@ -484,7 +466,7 @@ unsigned int ip_addr_get_part_ipv6_byte(INET_ADDR *addr, int part)
 
   if(addr->type != INET_FAMILY_IPV6 || part < 1 || part > 16)
   {
-    ip_addr_snprintf(addr, sizeof(buff), buff);
+    ip_addr_snprintf(addr, -1, sizeof(buff), buff);
     FAT("Bad IPv6 address '%s' or invalid byte-part number (%d).", buff, part);
   }
 
@@ -497,7 +479,7 @@ unsigned int ip_addr_get_part_ipv6_word(INET_ADDR *addr, int part)
 
   if(addr->type != INET_FAMILY_IPV6 || part < 1 || part > 8)
   {
-    ip_addr_snprintf(addr, sizeof(buff), buff);
+    ip_addr_snprintf(addr, -1, sizeof(buff), buff);
     FAT("Bad IPv6 address '%s' or invalid word-part number (%d).", buff, part);
   }
 

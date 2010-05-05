@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
+ *   (C) 2008-2010 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -26,13 +26,21 @@
 #ifndef __MQUEUE_H__
 #define __MQUEUE_H__
 
+#include "ip.h"
 #include "log.h"
+#include "mqueue.h"
 #include "pthreadex.h"
+#include "teatype.h"
 
 typedef struct _tag_TEA_MSG {
   unsigned int         s;    /* msg size                               */
   unsigned char       *b;    /* msg bytes                              */
   unsigned int         bs;   /* real buffer size (bs always >= than s) */
+  union {
+    unsigned int       ui;
+    void              *vp;
+    struct timespec    ts;
+  } x;
   struct _tag_TEA_MSG *prev; /* (double linked list) previous message  */
   struct _tag_TEA_MSG *next; /* (double linked list) next message      */
 } TEA_MSG;
@@ -52,10 +60,20 @@ void           mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
 TEA_MSG       *mqueue_shift(TEA_MSG_QUEUE *mq);
 
 /*- MESSAGE MANAGAMENT ------------------------------------------------------*/
-TEA_MSG *msg_allocate(void);
-void     msg_destroy(TEA_MSG *m);
-void     msg_fill(TEA_MSG *m, char *b, unsigned int s);
 TEA_MSG *msg_get(void);
+void     msg_fill(TEA_MSG *m, char *b, unsigned int s);
+void    *msg_buffer(TEA_MSG *m, unsigned int s);
 void     msg_release(TEA_MSG *msg);
+
+/*- MESSAGE PACKET BUILDING -------------------------------------------------*/
+TEA_MSG *msg_build_ip_udp_packet(TEA_TYPE_ADDR *shost,
+                                 TEA_TYPE_ADDR *dhost,
+                                 char *data, int data_sz);
+TEA_MSG *msg_build_ip_tcp_packet(TEA_TYPE_ADDR *shost, 
+                                 TEA_TYPE_ADDR *dhost,
+                                 int flags, int window,
+                                 int seq, int ack,
+                                 char *data, int data_sz,
+                                 char *opts, int opts_sz);
 
 #endif

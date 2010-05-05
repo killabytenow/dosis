@@ -32,9 +32,10 @@
 extern "C" {
 #endif
 
+/* XXX TODO Validar cambio 30 a AF_INET6 */
 #define INET_FAMILY_NONE   0           /* invalid protocol (not set)   */
-#define INET_FAMILY_IPV4   2           /* internetwork: UDP, TCP, etc. */
-#define INET_FAMILY_IPV6  30           /* IPv6                         */
+#define INET_FAMILY_IPV4   AF_INET     /* internetwork: UDP, TCP, etc. */
+#define INET_FAMILY_IPV6   AF_INET6    /* IPv6                         */
 
 typedef UINT32_T INET_IPV4_ADDR_T;
 typedef union _tag_INET_IPV4_ADDR {
@@ -71,8 +72,6 @@ typedef struct _tag_INET_ADDR {
     INET_IPV4_ADDR  in;       /* IPv4 address                            */
     INET_IPV6_ADDR  in6;      /* IPv6 address                            */
   } addr;
-  int               port;     /* connection port (TCP/UDP)               */
-  int               port_defined;
 } INET_ADDR;
 
 typedef struct _tag_INET_IPV4_RANGE {
@@ -82,24 +81,22 @@ typedef struct _tag_INET_IPV4_RANGE {
 
 int ip_read_range(char *network, INET_IPV4_RANGE *range);
 
-int ip_addr_parse(char *saddr, INET_ADDR *addr);
-int ip_addr_snprintf_ipv4(INET_ADDR *addr, int l, char *str);
-int ip_addr_snprintf_ipv6(INET_ADDR *addr, int l, char *str);
-int ip_addr_snprintf(INET_ADDR *addr, int l, char *str);
+int ip_addr_parse(char *saddr, INET_ADDR *addr, int *port);
+int ip_addr_snprintf_ipv4(INET_ADDR *addr, int port, int l, char *str);
+int ip_addr_snprintf_ipv6(INET_ADDR *addr, int port, int l, char *str);
+int ip_addr_snprintf(INET_ADDR *addr, int port, int l, char *str);
 
 void ip_addr_set_null(INET_ADDR *addr);
 void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in);
 void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in);
-void ip_addr_set_port(INET_ADDR *addr, int port);
-void ip_addr_unset_port(INET_ADDR *addr);
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from);
 
-void             ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr);
-void             ip_addr_to_socket(INET_ADDR *addr, struct sockaddr *saddr);
-struct sockaddr *ip_addr_get_socket(INET_ADDR *addr);
+void             ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr, int *port);
+void             ip_addr_to_socket(INET_ADDR *addr, int port, struct sockaddr *saddr);
+struct sockaddr *ip_addr_get_socket(INET_ADDR *addr, int port);
 
-int ip_snprintf_ipv4(INET_IPV4_ADDR *in, int l, char *str);
-int ip_snprintf_ipv6(INET_IPV6_ADDR *in6, int l, char *str);
+int ip_snprintf_ipv4(INET_IPV4_ADDR *in, int port, int l, char *str);
+int ip_snprintf_ipv6(INET_IPV6_ADDR *in6, int port, int l, char *str);
 
 unsigned int ip_addr_get_part_ipv4(INET_ADDR *addr, int part);
 unsigned int ip_addr_get_part_ipv6_nibble(INET_ADDR *addr, int part);

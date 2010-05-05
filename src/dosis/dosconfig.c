@@ -206,28 +206,28 @@ void dos_get_routes(void)
     if((r->iface = strdup(buff)) == NULL)
       FAT("No memory for iface name (%s).", buff);
     READ_FIELD("destination", '\t'); /* + destination */
-    if(ip_addr_parse(buff, &r->destination))
+    if(ip_addr_parse(buff, &r->destination, NULL))
       FAT("Cannot parse destination address '%s'.", buff);
     READ_FIELD("gateway",     '\t'); /* + gateway     */
-    if(ip_addr_parse(buff, &r->gateway))
+    if(ip_addr_parse(buff, &r->gateway, NULL))
       FAT("Cannot parse gateway address '%s'.", buff);
     READ_FIELD("flags",       '\t'); /* - flags       */
     READ_FIELD("refcnt",      '\t'); /* - refcnt      */
     READ_FIELD("use",         '\t'); /* - use         */
     READ_FIELD("metric",      '\t'); /* - metric      */
     READ_FIELD("mask",        '\t'); /* + mask        */
-    if(ip_addr_parse(buff, &r->mask))
+    if(ip_addr_parse(buff, &r->mask, NULL))
       FAT("Cannot parse mask address '%s'.", buff);
     READ_FIELD("MTU",         '\t'); /* - MTU         */
     READ_FIELD("window",      '\t'); /* - window      */
     READ_FIELD("irtt",        '\n'); /* - IRTT        */
 
     DBG("+ iface %s.", r->iface);
-    ip_addr_snprintf(&r->destination, (int) sizeof(buff), buff);
+    ip_addr_snprintf(&r->destination, -1, (int) sizeof(buff), buff);
     DBG("· destination %s.", buff);
-    ip_addr_snprintf(&r->gateway, (int) sizeof(buff), buff);
+    ip_addr_snprintf(&r->gateway, -1, (int) sizeof(buff), buff);
     DBG("· gateway %s.", buff);
-    ip_addr_snprintf(&r->mask, (int) sizeof(buff), buff);
+    ip_addr_snprintf(&r->mask, -1, (int) sizeof(buff), buff);
     DBG("· mask %s.", buff);
   }
 
@@ -289,18 +289,14 @@ void dos_get_addresses(void)
 
     /* get PA */
     if(!ioctl(sockfd, SIOCGIFADDR, ifr))
-    {
-      ip_socket_to_addr(&ifr->ifr_addr, &a->addr);
-      ip_addr_unset_port(&a->addr);
-    } else
+      ip_socket_to_addr(&ifr->ifr_addr, &a->addr, NULL);
+    else
       WRN("Interface %s has not a primary address.", a->name);
 
     /* get PA netmask */
     if(!ioctl(sockfd, SIOCGIFNETMASK, ifr))
-    {
-      ip_socket_to_addr(&ifr->ifr_addr, &a->mask);
-      ip_addr_unset_port(&a->mask);
-    } else
+      ip_socket_to_addr(&ifr->ifr_addr, &a->mask, NULL);
+    else
       WRN("Interface %s has not a PA network mask.", a->name);
 
     /* get HW address */
@@ -316,9 +312,9 @@ void dos_get_addresses(void)
     DBG("  - HW Address: %02x:%02x:%02x:%02x:%02x:%02x",
         a->hwaddr[0], a->hwaddr[1], a->hwaddr[2],
         a->hwaddr[3], a->hwaddr[4], a->hwaddr[5]);
-    ip_addr_snprintf(&a->addr, 255, buff);
+    ip_addr_snprintf(&a->addr, -1, sizeof(buff), buff);
     DBG("  - IP Address: %s", buff);
-    ip_addr_snprintf(&a->mask, 255, buff);
+    ip_addr_snprintf(&a->mask, -1, sizeof(buff), buff);
     DBG("  - IP Mask:    %s", buff);
   }
 
@@ -368,7 +364,7 @@ int dos_get_source_address(INET_ADDR *s, INET_ADDR *t)
   /* select most suitable interface for such target address */
   if((ai = dos_get_interface(t)) == NULL)
   {
-    ip_addr_snprintf(t, sizeof(buff), buff);
+    ip_addr_snprintf(t, -1, sizeof(buff), buff);
     WRN("Cannot find a suitable source address/interface for '%s'.", buff);
     return -1;
   }

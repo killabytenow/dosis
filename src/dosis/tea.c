@@ -138,10 +138,14 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
   {
     case TEA_TYPE_ADDR_ID:
       {
+        int port;
         TEA_TYPE_ADDR *a = (tw->data + oc->offset);
+
         s = script_get_string(v);
-        if(ip_addr_parse(s, a))
+        if(ip_addr_parse(s, &a->addr, &port))
           TFAT("%d: Cannot parse address '%s'.", v->line, s);
+        if(port >= 0)
+          a->port = port;
         free(s);
       }
       break;
@@ -149,7 +153,7 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
     case TEA_TYPE_PORT_ID:
       {
         TEA_TYPE_ADDR *a = tw->data + oc->offset;
-        ip_addr_set_port(a, script_get_int(v));
+        a->port = script_get_int(v);
       }
       break;
 

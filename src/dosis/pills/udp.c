@@ -95,15 +95,15 @@ static void udp__thread(THREAD_WORK *tw)
     TDBG2("Sending %d packet(s)...", tu->npackets);
     for(i = 0; i < tu->npackets; i++)
     {
-      sport = tu->shost.port_defined
+      sport = tu->shost.port >= 0
                 ? tu->shost.port
                 : NEXT_RAND_PORT(sport);
-      dport = tu->dhost.port_defined
+      dport = tu->dhost.port >= 0
                 ? tu->dhost.port
                 : NEXT_RAND_PORT(dport);
       ln_send_udp_packet(tu->lnc,
-                         &tu->shost.addr.in.inaddr, sport,
-                         &tu->dhost.addr.in.inaddr, dport,
+                         &tu->shost.addr, sport,
+                         &tu->dhost.addr, dport,
                          tu->payload.data, tu->payload.size);
     }
   }
@@ -137,8 +137,8 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  if(tu->shost.type == INET_FAMILY_NONE
-  && dos_get_source_address(&tu->shost, &tu->dhost))
+  if(tu->shost.addr.type == INET_FAMILY_NONE
+  && dos_get_source_address(&tu->shost.addr, &tu->dhost.addr))
     return -1;
 
   /* check params sanity */
@@ -166,9 +166,9 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
     TDBG2("config.periodic.n     = %d", tu->npackets);
     TDBG2("config.periodic.ratio = %f", tu->hitratio);
 
-    ip_addr_snprintf(&tu->shost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tu->shost.addr, tu->shost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.shost  = %s", buff);
-    ip_addr_snprintf(&tu->dhost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tu->dhost.addr, tu->dhost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost  = %s", buff);
   }
 

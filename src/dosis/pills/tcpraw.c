@@ -67,7 +67,7 @@ static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
     return 0;
 
   /* check msg */
-  return IP_HEADER(msg)->saddr == tc->dhost.addr.in.addr
+  return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
       && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
          ? -255 : 0;
 }
@@ -93,16 +93,16 @@ static void tcpraw__thread(THREAD_WORK *tw)
     TDBG2("Sending %d packet(s)...", tc->npackets);
     for(i = 0; i < tc->npackets; i++)
     {
-      sport = tc->shost.port_defined
+      sport = tc->shost.port >= 0
                 ? tc->shost.port
                 : NEXT_RAND_PORT(sport);
-      dport = tc->dhost.port_defined
+      dport = tc->dhost.port >= 0
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
       seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
       ln_send_tcp_packet(tc->lnc,
-                         &tc->shost.addr.in.inaddr, sport,
-                         &tc->dhost.addr.in.inaddr, dport,
+                         &tc->shost.addr, sport,
+                         &tc->dhost.addr, dport,
                          tc->tcp_flags_bitmap,
                          tc->tcp_win,
                          seq, 0,
@@ -140,8 +140,8 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   }
 
   /* configure src address (if not defined) */
-  if(tc->shost.type == INET_FAMILY_NONE
-  && dos_get_source_address(&tc->shost, &tc->dhost))
+  if(tc->shost.addr.type == INET_FAMILY_NONE
+  && dos_get_source_address(&tc->shost.addr, &tc->dhost.addr))
     return -1;
 
   /* check params sanity */
@@ -169,9 +169,9 @@ static int tcpraw__configure(THREAD_WORK *tw, SNODE *command, int first_time)
     TDBG2("config.periodic.npackets = %d", tc->npackets);
     TDBG2("config.periodic.ratio    = %f", tc->hitratio);
 
-    ip_addr_snprintf(&tc->shost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tc->shost.addr, tc->shost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.shost     = %s", buff);
-    ip_addr_snprintf(&tc->dhost, sizeof(buff)-1, buff);
+    ip_addr_snprintf(&tc->dhost.addr, tc->dhost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.dhost     = %s", buff);
     TDBG2("config.options.tcp_flags = %x (%s)", tc->tcp_flags_bitmap, tc->tcp_flags);
     TDBG2("config.options.tcp_win   = %x", tc->tcp_win);
