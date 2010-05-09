@@ -69,33 +69,42 @@ typedef struct _tag_LN_CONTEXT {
   int           ipv4_p;
   int           udp_p;
   int           tcp_p;
-  int           ip_id;
   
+  int           ip_id;
+
   /* raw sockets */
   int           rs;
+  void         *buff;
+  int           buff_size;
 } LN_CONTEXT;
+
+#define LN_DEFAULT_BUFF_SIZE    4096
 
 void ln_init_context(LN_CONTEXT *ln);
 void ln_destroy_context(LN_CONTEXT *lnc);
+
+int ln_build_ip_tcp_packet(void *buff,
+                           INET_ADDR *shost, int sport,
+                           INET_ADDR *dhost, int dport,
+                           int ip_id,
+                           int flags, int window,
+                           int seq, int ack,
+                           char *data, int datasz,
+                           char *opts, int optssz,
+                           char *pdata);
 int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz);
+
 int ln_send_tcp_packet(LN_CONTEXT *lnc,
                        INET_ADDR *shost, int sport,
                        INET_ADDR *dhost, int dport,
                        int flags, int window,
                        int seq, int ack,
-                       char *data, int data_sz,
-                       char *opts, int opts_sz);
+                       char *data, int datasz,
+                       char *opts, int optssz);
 void ln_send_udp_packet(LN_CONTEXT *lnc,
                         INET_ADDR *shost, int sport,
                         INET_ADDR *dhost, int dport,
-                        char *data, int data_sz);
-int ln_build_ip_tcp_packet(void *buff,
-                           INET_ADDR *shost, int sport,
-                           INET_ADDR *dhost, int dport,
-                           int flags, int window,
-                           int seq, int ack,
-                           char *data, int data_sz,
-                           char *opts, int opts_sz);
+                        char *data, int datasz);
                     
 /*****************************************************************************
  * seq number generators
