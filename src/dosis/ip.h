@@ -45,15 +45,26 @@ typedef union _tag_INET_IPV4_ADDR {
 
 typedef union _tag_INET_IPV6_ADDR {
   UINT8_T         addr[16];
+  UINT32_T        addr32[4];
   struct in6_addr in6addr;
 } INET_IPV6_ADDR;
 
 typedef union _tag_BIG_SOCKET {
+  struct sockaddr     sa;
   struct sockaddr_in  in;
 #if HAVE_STRUCT_SOCKADDR_IN6
   struct sockaddr_in6 in6;
 #endif
 } BIG_SOCKET;
+
+typedef union __attribute__ ((__transparent_union__))
+{
+  struct sockaddr     *sa;
+  struct sockaddr_in  *in;
+#if HAVE_STRUCT_SOCKADDR_IN6
+  struct sockaddr_in6 *in6;
+#endif
+} BIG_SOCKET_PTR;
 
 #define BIG_SOCKET_TO_SOCKADDR(x)       ((struct sockaddr *) &(x))
 
@@ -62,9 +73,16 @@ typedef union _tag_BIG_SOCKET {
 #define INET_ADDR_MAXLEN         INET_ADDR_MAXLEN_IPV6
 #define INET_ADDR_MAXLEN_STR     (INET_ADDR_MAXLEN_IPV6 + 1)
 
-#define INET_ADDR_IS_IPV4(x)            ((x).type == INET_FAMILY_IPV4)
-#define INET_ADDR_IS_IPV6(x)            ((x).type == INET_FAMILY_IPV6)
-#define INET_ADDR_IS_VALID(x)           ((x).type != INET_FAMILY_NONE)
+#define INET_ADDR_IS_IPV4(x)     ((x).type == INET_FAMILY_IPV4)
+#define INET_ADDR_IS_IPV6(x)     ((x).type == INET_FAMILY_IPV6)
+#define INET_ADDR_IS_VALID(x)    ((x).type != INET_FAMILY_NONE)
+#define INET_ADDR_IS_ZERO(x)     ((x).type == INET_FAMILY_IPV4) ? !((x).addr.in.addr) :       \
+                                 ((x).type == INET_FAMILY_IPV6) ? !((x).addr.in6.addr32[0]    \
+                                                                  | (x).addr.in6.addr32[1]    \
+                                                                  | (x).addr.in6.addr32[2]    \
+                                                                  | (x).addr.in6.addr32[3]) : \
+                                 0;
+#define INET_ADDR_IPV4_GETP(p,x) ((unsigned) ((ntohl((x)) >> ((p) << 3)) & 0x000000ffl))
 
 typedef struct _tag_INET_ADDR {
   int               type;     /* address type: INET_FAMILY_IPV4, etc...  */
@@ -91,8 +109,8 @@ void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in);
 void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in);
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from);
 
-void             ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr, int *port);
-void             ip_addr_to_socket(INET_ADDR *addr, int port, struct sockaddr *saddr);
+void             ip_socket_to_addr(BIG_SOCKET_PTR saddr, INET_ADDR *addr, int *port);
+void             ip_addr_to_socket(INET_ADDR *addr, int port, BIG_SOCKET_PTR saddr);
 struct sockaddr *ip_addr_get_socket(INET_ADDR *addr, int port);
 
 int ip_snprintf_ipv4(INET_IPV4_ADDR *in, int port, int l, char *str);

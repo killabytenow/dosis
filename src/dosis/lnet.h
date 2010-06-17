@@ -32,9 +32,9 @@
 extern "C" {
 #endif
 
-/* protocol headers */
+/* protocol headers - inherited from BSD flavors */
 typedef	u_int32_t tcp_seq;
-typedef struct __tag_LN_TCP_HEADER
+typedef struct __tag_LN_HDR_TCP
   {
     u_int16_t th_sport;		/* source port */
     u_int16_t th_dport;		/* destination port */
@@ -51,14 +51,21 @@ typedef struct __tag_LN_TCP_HEADER
     u_int16_t th_win;		/* window */
     u_int16_t th_sum;		/* checksum */
     u_int16_t th_urp;		/* urgent pointer */
-} LN_TCP_HEADER;
-
+} LN_HDR_TCP;
 #define LN_TH_FIN	0x01
 #define LN_TH_SYN	0x02
 #define LN_TH_RST	0x04
 #define LN_TH_PUSH	0x08
 #define LN_TH_ACK	0x10
 #define LN_TH_URG	0x20
+typedef struct __tag_LN_HDR_UDP
+{
+  u_int16_t uh_sport;		/* source port */
+  u_int16_t uh_dport;		/* destination port */
+  u_int16_t uh_ulen;		/* udp length */
+  u_int16_t uh_sum;		/* udp checksum */
+} LN_HDR_UDP;
+typedef struct iphdr LN_HDR_IPV4;
 
 /*****************************************************************************
  * libnet mngmnt and packet forgering
@@ -70,8 +77,6 @@ typedef struct _tag_LN_CONTEXT {
   int           udp_p;
   int           tcp_p;
   
-  int           ip_id;
-
   /* raw sockets */
   int           rs;
   void         *buff;
@@ -80,19 +85,23 @@ typedef struct _tag_LN_CONTEXT {
 
 #define LN_DEFAULT_BUFF_SIZE    4096
 
-void ln_init_context(LN_CONTEXT *ln);
+void ln_init_context(LN_CONTEXT *lnc);
 void ln_destroy_context(LN_CONTEXT *lnc);
 
 int ln_build_ip_tcp_packet(void *buff,
                            INET_ADDR *shost, int sport,
                            INET_ADDR *dhost, int dport,
-                           int ip_id,
                            int flags, int window,
                            int seq, int ack,
                            char *data, int datasz,
                            char *opts, int optssz,
                            char *pdata);
-int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz);
+int ln_build_ip_udp_packet(void *buff,
+                           INET_ADDR *shost, int sport,
+                           INET_ADDR *dhost, int dport,
+                           char *data, int datasz,
+                           char *pdata);
+int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *sa);
 
 int ln_send_tcp_packet(LN_CONTEXT *lnc,
                        INET_ADDR *shost, int sport,
@@ -101,10 +110,10 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
                        int seq, int ack,
                        char *data, int datasz,
                        char *opts, int optssz);
-void ln_send_udp_packet(LN_CONTEXT *lnc,
-                        INET_ADDR *shost, int sport,
-                        INET_ADDR *dhost, int dport,
-                        char *data, int datasz);
+int ln_send_udp_packet(LN_CONTEXT *lnc,
+                       INET_ADDR *shost, int sport,
+                       INET_ADDR *dhost, int dport,
+                       char *data, int datasz);
                     
 /*****************************************************************************
  * seq number generators
@@ -127,19 +136,40 @@ unsigned ln_get_next_random_port_number(unsigned *n);
  * IP/TCP/UDP helpers
  *****************************************************************************/
 
-#define IP_PROTOCOL(x)      (((struct iphdr *) (x))->protocol)
-#define IP_HEADER(x)        ((struct iphdr *)  (x))
-#define IP_HEADER_SIZE(x)   (IP_HEADER(x)->ihl << 2)
-#define TCP_HEADER(x)       ((struct tcphdr *) ((x) \
-                            + (((struct iphdr *) (x))->ihl << 2)))
-#define UDP_HEADER(x)       ((struct udphdr *) ((x) \
-                            + (((struct iphdr *) (x))->ihl << 2)))
-#define TCP_DATA(x)         ((void *) (x)                \
-                            + (IP_HEADER(x)->ihl   << 2) \
-                            + (TCP_HEADER(x)->doff << 2))
+/* IP/IPv6 helper macros */
+#define IP_VERSION(x)            (*((unsigned char *) (x)) & 0x0f)
+
+/* IPv4 helper macros */
+#define IPV4_DATA(x)           ((void *) ((x) + IPV4_HDRSZ(x)))
+#define IPV4_HDR(x)            ((LN_HDR_IPV4 *)  (x))
+#define IPV4_HDRCK(b,s)        (s >= sizeof(LN_HDR_IPV4) && IP_VERSION(b) == 4)
+#define IPV4_HDRSZ(x)          (IPV4_HDR(x)->ihl << 2)
+#define IPV4_PROTOCOL(x)       (((LN_HDR_IPV4 *) (x))->protocol)
+
+/* TCPoIPv4 helper macros */
+#define IPV4_TCP_DATA(x)       ((void *) (x)                                  \
+                                       + IPV4_HDRSZ(x)                        \
+                                       + IPV4_TCP_HDRSZ(x))
+#define IPV4_TCP_OPTS(x)       ((void *) (x)                                  \
+                                       + IPV4_HDRSZ(x)                        \
+                                       + sizeof(LN_HDR_TCP))
+#define IPV4_TCP_HDR(x)        ((LN_HDR_TCP *) (IPV4_DATA(x)))
+#define IPV4_TCP_HDRSZ(x)      (IPV4_TCP_HDR(x)->th_off << 2)
+#define IPV4_TCP_HDRCK(b,s)    (IPV4_HDRCK(b,s)                               \
+                               && IPV4_PROTOCOL(b) == 6                         \
+                               && s >= (sizeof(LN_HDR_TCP) + IPV4_HDRSZ(b))   \
+                               && s >= (IPV4_TCP_HDRSZ(b) + IPV4_HDRSZ(b)))
+
+/* UDPoIPv4 helper macros */
+#define IPV4_UDP_HDR(x)        ((LN_HDR_UDP *) (IPV4_DATA(x)))
+#define IPV4_UDP_HDRCK(b,s)    (IPV4_HDRCK(b,s)                               \
+                               && IPV4_PROTOCOL(b) == 17                        \
+                               && s >= (sizeof(LN_HDR_UDP) + IPV4_HDRSZ(b)))
 
 void *ln_tcp_get_opt(void *msg, int sz, int sopt);
 int ln_tcp_get_mss(void *msg, int sz);
+
+int ln_dump_msg(int loglevel, int protocol, void *msg, int sz);
 
 #ifdef __cplusplus
 }

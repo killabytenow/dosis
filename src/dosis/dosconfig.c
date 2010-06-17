@@ -222,6 +222,10 @@ void dos_get_routes(void)
     READ_FIELD("window",      '\t'); /* - window      */
     READ_FIELD("irtt",        '\n'); /* - IRTT        */
 
+    /* check default gw */
+    r->defaultgw = INET_ADDR_IS_ZERO(r->mask);
+
+    /* debug info */
     DBG("+ iface %s.", r->iface);
     ip_addr_snprintf(&r->destination, -1, (int) sizeof(buff), buff);
     DBG("· destination %s.", buff);
@@ -326,23 +330,35 @@ DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta)
 {
   DOS_ADDR_INFO *r, *sa;
   DOS_ROUTE_INFO *ri;
+char buff[255];
 
   r = NULL;
 
   /* check local networks (interfaces) */
   for(sa = cfg.addr; !r && sa; sa = sa->next)
     if(ip_addr_check_mask(ta, &sa->addr, &sa->mask))
+    {
+ip_addr_snprintf(ta, -1, sizeof(buff), buff);
+DBG("  - Local iface %s (%s) is ok.", sa->name, buff);
       r = sa;
+    }
 
   /* check now routing table (for special cases) */
   for(ri = cfg.routes; ri; ri = ri->next)
-    if(ip_addr_check_mask(ta, &ri->destination, &ri->mask))
+  {
+ip_addr_snprintf(&ri->destination, -1, sizeof(buff), buff);
+ip_addr_snprintf(&ri->mask, -1, sizeof(buff) - strlen(buff) - 1, buff + strlen(buff) + 1);
+DBG("  - route %s/%s (defaultgw = %s)", buff, buff + strlen(buff) + 1, ri->defaultgw ? "yes" : "no");
+    if(ip_addr_check_mask(ta, &ri->destination, &ri->mask) && (!ri->defaultgw || !r))
       for(sa = cfg.addr; sa; sa = sa->next)
         if(!strcmp(sa->name, ri->iface))
+        {
+          DBG("    + USING ROUTE");
           return sa;
-        else
+        } else
           WRN("Route table references an interface that not exists or is down (%s).",
               ri->iface);
+  }
 
   /* if routing table does not provide a better option, return the */
   /* first interface attached to a network that meets target       */
@@ -353,6 +369,9 @@ int dos_get_source_address(INET_ADDR *s, INET_ADDR *t)
 {
   DOS_ADDR_INFO *ai;
   char buff[255];
+
+ip_addr_snprintf(t, -1, sizeof(buff), buff);
+DBG("Searching source address/interface for '%s'...", buff);
 
   /* check target address */
   if(t->type == INET_FAMILY_NONE)

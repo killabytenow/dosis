@@ -1,6 +1,20 @@
 TODO LIST
 =========
 
+- message spool list
+    - Data structure:
+        1) hash(sec) -> list(nanosec)
+             - insert:
+                 1) search second O(1)
+                 2) 
+        2) megalist(sec,nanosec)
+            - insert
+        3) 2-3-4 tree
+           http://en.wikipedia.org/wiki/2-3-4_tree
+        4) B-TREE
+           http://en.wikipedia.org/wiki/B-tree
+
+- for log use mechanisms such __builtin_va_arg_pack()
 - implement main loop in another way:
     current situation:
       - two types of loops

@@ -46,27 +46,38 @@ typedef struct _tag_TCPOPEN_CFG {
   TEA_TYPE_INT   tcp_win;
   TEA_TYPE_INT   delay;
 
-  LN_CONTEXT    *lnc;
+  LN_CONTEXT     lnc;
 } TCPOPEN_CFG;
 
 /*****************************************************************************
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-static int tcpopen__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+static int tcpopen__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned int size)
 {
   TCPOPEN_CFG *tc = (TCPOPEN_CFG *) tw->data;
 
-  /* check msg size and headers */
-  if(size < sizeof(struct iphdr)
-  || IP_PROTOCOL(msg) != 6
-  || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
-    return 0;
+  switch(proto)
+  {
+    case INET_FAMILY_IPV4:
+DBG("---------------- IP VER %d ------------------", IP_PROTOCOL(msg));
+      /* check msg size and headers */
+      if(size < sizeof(struct iphdr)
+      || IP_PROTOCOL(msg) != 4
+      || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
+        return 0;
 
-  /* check msg */
-  return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
-      && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
-         ? -1 : 0;
+      /* check msg */
+      return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
+          && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
+             ? -1 : 0;
+
+    case INET_FAMILY_IPV6:
+#warning "IPv6 not implemented."
+      return 0;
+  }
+
+  return 0;
 }
 
 static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
@@ -75,8 +86,9 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
   TEA_MSG *t;
 
   /* send handshake and data TCP packet */
-  if((t = msg_build_ip_tcp_packet(&tc->shost,
-                                  &tc->dhost,
+DBG("Building TCP-ACK packet...");
+  if((t = msg_build_ip_tcp_packet(&tc->shost.addr, ntohs(TCP_HEADER(m->b)->th_dport),
+                                  &tc->dhost.addr, ntohs(TCP_HEADER(m->b)->th_sport),
                                   TH_ACK,
                                   tc->tcp_win,
                                   ntohl(TCP_HEADER(m->b)->ack_seq),
@@ -84,10 +96,12 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
                                   NULL, 0,
                                   NULL, 0)) == NULL)
     TFAT("Cannot build syn packet.");
-  tea_thread_msg_send(m, tc->delay);
+DBG("Enqueuing TCP-ACK packet...");
+  tea_thread_msg_send(&tc->lnc, t, tc->delay);
 
-  if((t = msg_build_ip_tcp_packet(&tc->shost,
-                                  &tc->dhost,
+DBG("Building TCP-ACK-DATA-PUSH packet...");
+  if((t = msg_build_ip_tcp_packet(&tc->shost.addr, ntohs(TCP_HEADER(m->b)->th_dport),
+                                  &tc->dhost.addr, ntohs(TCP_HEADER(m->b)->th_sport),
                                   TH_ACK | TH_PUSH,
                                   tc->tcp_win,
                                   ntohl(TCP_HEADER(m->b)->ack_seq),
@@ -95,7 +109,9 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
                                   (char *) tc->payload.data, tc->payload.size,
                                   NULL, 0)) == NULL)
     TFAT("Cannot build ack packet.");
-  tea_thread_msg_send(m, tc->delay);
+DBG("Enqueuing TCP-ACK-DATA-PUSH packet...");
+  tea_thread_msg_send(&tc->lnc, t, tc->delay);
+DBG("Send_kakita() finished.");
 }
 
 static void tcpopen__thread(THREAD_WORK *tw)
@@ -146,12 +162,7 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   if(first_time)
   {
     /* initialize libnet */
-    if((tc->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-    {
-      TERR("No memory for LN_CONTEXT.");
-      return -1;
-    }
-    ln_init_context(tc->lnc);
+    ln_init_context(&tc->lnc);
   }
 
   /* configure src address (if not defined) */
@@ -182,12 +193,7 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
   if(tc)
   {
     /* collect libnet data */
-    if(tc->lnc)
-    {
-      ln_destroy_context(tc->lnc);
-      free(tc->lnc);
-      tc->lnc = NULL;
-    }
+    ln_destroy_context(&tc->lnc);
     if(tc->payload.data)
     {
       free(tc->payload.data);
@@ -217,7 +223,7 @@ TEA_OBJECT teaTCPOPEN = {
   .configure    = tcpopen__configure,
   .cleanup      = tcpopen__cleanup,
   .thread       = tcpopen__thread,
-  .listen       = 1,
+  .listener     = 1,
   .listen_check = tcpopen__listen_check,
   .cparams      = teaTCPOPEN_cfg
 };

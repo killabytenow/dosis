@@ -100,7 +100,8 @@ int pthreadex_timer_wait(pthreadex_timer_t *t)
         && pthreadex_signal_callback())
           return 0;
         c = &r;
-      }
+      } else
+        break;
   }
   return ret;
 }
@@ -109,6 +110,7 @@ double pthreadex_time_get(void)
 {
   struct timespec t;
 
+  /* XXX TODO: we should use gettimeofday(2) if clock_gettime(3) is not available */
   if(clock_gettime(CLOCK_REALTIME, &t) < 0)
     FAT("Cannot read CLOCK_REALTIME.");
 
@@ -279,8 +281,10 @@ void pthreadex_flag_init(pthreadex_flag_t *flag, int initial_state)
   flag->waiters_count = 0;
 }
 
-void pthreadex_flag_wait(pthreadex_flag_t *flag)
+int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
 {
+  int e = 0;
+
   /* lock semaphore data */
   pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(flag->lock));
   pthread_mutex_lock(&(flag->lock));
@@ -291,7 +295,39 @@ void pthreadex_flag_wait(pthreadex_flag_t *flag)
   /* (probably) one more thread waiting nnutil flag count >0 */
   flag->waiters_count++;
   while(flag->state == 0)
-    pthread_cond_wait(&flag->flag_up, &(flag->lock));
+    if(tout > 0)
+    {
+      struct timespec t;
+
+      /* get current time */
+      /* XXX TODO: we should use gettimeofday(2) if clock_gettime(3) is not available */
+      if(clock_gettime(CLOCK_REALTIME, &t) < 0)
+        FAT("Cannot read CLOCK_REALTIME.");
+      /* add timeout */
+      t.tv_nsec = ((tout % 1000) * 1000) + t.tv_nsec;
+      t.tv_sec  = (tout / 1000) + (t.tv_nsec / 1000000000);
+      t.tv_nsec = t.tv_nsec / 1000000000;
+      /* wait until somebody flags or time run out */
+      while((e = pthread_cond_timedwait(&flag->flag_up, &flag->lock, &t)) == EINTR)
+      {
+        if(pthreadex_signal_callback
+        && pthreadex_signal_callback())
+          return 0;
+      }
+      switch(e)
+      {
+        case 0:         /* everything ok ... somebody set up the bomb */
+        case ETIMEDOUT: /* do nothing really ... */
+          break;
+        default:
+          {
+            char buff[512];
+            strerror_r(e, buff, sizeof(buff));
+            ERR("Error at pthread_cond_timedwait(): %s", buff);
+          }
+      }
+    } else
+      e = pthread_cond_wait(&flag->flag_up, &flag->lock);
   flag->waiters_count--;
 
   /* decrement one flag resource */
@@ -302,6 +338,13 @@ void pthreadex_flag_wait(pthreadex_flag_t *flag)
 #endif
   /* unlock */
   pthread_cleanup_pop_restore_np(1);
+
+  return e;
+}
+
+int pthreadex_flag_wait(pthreadex_flag_t *flag)
+{
+  return pthreadex_flag_wait_timeout(flag, 0);
 }
 
 int pthreadex_flag_up(pthreadex_flag_t *flag)

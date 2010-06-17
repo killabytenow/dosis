@@ -69,6 +69,7 @@ extern "C" {
 #include <libnet.h>
 #include <libipq.h>
 #include <linux/netfilter.h>
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
 #include <arpa/inet.h>

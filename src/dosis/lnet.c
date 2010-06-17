@@ -28,7 +28,10 @@
 #include "lnet.h"
 #include "log.h"
 
-#define _LIBNET_ENABLED_ 1
+#define C1_SUM(s, n) { unsigned long __c1_ts;                    \
+                       __c1_ts = ((s) + ((unsigned) (n)));       \
+                       s = (__c1_ts + (__c1_ts >> 16)) & 0xffff; \
+                     }
 
 /*****************************************************************************
  * SEQUENCE NUMBER GENERATORS
@@ -50,25 +53,26 @@ unsigned ln_get_next_random_port_number(unsigned *n)
 
 void ln_init_context(LN_CONTEXT *lnc)
 {
-  char lnet_errbuf[LIBNET_ERRBUF_SIZE];
+  char err[1024];
+  const int one = 1;
 
-  if((lnc->ln = libnet_init(LIBNET_RAW4, NULL, lnet_errbuf)) == NULL)
-    FAT("Cannot initialize libnet: %s", lnet_errbuf);
-  lnc->udp_p = LIBNET_PTAG_INITIALIZER;
-  lnc->tcp_p = LIBNET_PTAG_INITIALIZER;
-  lnc->ipv4_p = LIBNET_PTAG_INITIALIZER;
-  lnc->ip_id = libnet_get_prand(LIBNET_PRu32);
-
-  if(libnet_seed_prand(lnc->ln) < 0)
-    FAT("Faild to initialize libnet pseudorandom number generator.");
-
-  if((lnc->rs = socket(PF_INET, SOCK_RAW, IPPROTO_IP)) < 0)
+  if((lnc->rs = socket(PF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
   {
-    char err[1024];
     strerror_r(errno, err, sizeof(err));
+    if(errno == EPERM)
+    {
+      ERR("-------------------------------------------------------------------------");
+      ERR("This user doesn't have permission to open raw sockets. Only users with an");
+      ERR("effective user ID of 0 (root) or the CAP_NET_RAW attribute may do that.");
+      ERR("-------------------------------------------------------------------------");
+    }
     FAT("Cannot open a raw socket: %s", err);
   }
-
+  if(setsockopt(lnc->rs, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0)
+  {
+    strerror_r(errno, err, sizeof(err));
+    FAT("Cannot set HDRINCL: %s", err);
+  }
   if((lnc->buff = malloc(LN_DEFAULT_BUFF_SIZE)) == NULL)
     FAT("Cannot make space for local buffer.");
   lnc->buff_size = LN_DEFAULT_BUFF_SIZE;
@@ -92,15 +96,11 @@ void *ln_tcp_get_opt(void *msg, int sz, int sopt)
   unsigned opt, len;
 
   /* check msg size, protocol and headers */
-  if(sz < sizeof(struct iphdr)
-  || IP_PROTOCOL(msg) != 6
-  || sz < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2)
-  || sz < (TCP_HEADER(msg)->doff << 2) + (IP_HEADER(msg)->ihl << 2))
+  if(IPV4_TCP_HDRCK(msg, sz))
     return NULL;
 
   /* go to options section and process them */
-  for(p = msg + (IP_HEADER(msg)->ihl << 2) + sizeof(struct tcphdr);
-      p < msg + (IP_HEADER(msg)->ihl << 2) + (TCP_HEADER(msg)->doff << 2); )
+  for(p = IPV4_TCP_OPTS(msg); p < IPV4_TCP_DATA(msg); )
   {
     opt = *((unsigned char *) p);
     switch(opt)
@@ -140,66 +140,40 @@ unsigned short ln_ip_checksum(unsigned short *buf, int nwords)
 {
   unsigned long sum;
   for(sum = 0; nwords > 0; nwords--)
-    sum += *buf++;
-  sum = (sum >> 16) + (sum & 0xffff);
-  sum += (sum >> 16);
+    C1_SUM(sum, *buf++);
   return ~sum;
 }
-
 
 /*****************************************************************************
  * SENDING AND FORGING FUNCTIONS
  *****************************************************************************/
 
-void ln_send_udp_packet(LN_CONTEXT *lnc,
-                        INET_ADDR *shost, int sport,
-                        INET_ADDR *dhost, int dport,
-                        char *data, int datasz)
-{
-  int ip_size, udp_size;
-
-  if(!datasz)
-    data = NULL;
-  udp_size = LIBNET_UDP_H + datasz;
-  ip_size  = LIBNET_IPV4_H + udp_size;
-
-  /* build UDP packet with payload (if requested) */
-  lnc->udp_p =
-    libnet_build_udp(
-      sport,                    /* source port                               */
-      dport,                    /* destination port                          */
-      udp_size,                 /* len total length of the UDP packet        */
-      0,                        /* sum checksum (0 for libnet to autofill)   */
-      (unsigned char *) data,   /* payload                                   */
-      datasz,                   /* payload size                              */
-      lnc->ln,                  /* libnet context                            */
-      lnc->udp_p);              /* protocol tag to modify an existing header */
-  if(lnc->udp_p == -1)
-    FAT("Can't build UDP header: %s", libnet_geterror(lnc->ln));
-
-  /* build container IP packet */
-  lnc->ipv4_p =
-      libnet_build_ipv4(
-        ip_size,             /* total length of packet (including data) */
-        0x00,                /* type of service bits                    */
-        lnc->ip_id++,        /* IP identification number                */
-        0x4000,              /* fragmentation bits and offset           */
-        64,                  /* time to live in the network             */
-        IPPROTO_UDP,         /* upper layer protocol                    */
-        0,                   /* checksum (0 for libnet to autofill)     */
-        shost->addr.in.inaddr.s_addr, /* source IPv4 address (little endian)     */
-        dhost->addr.in.inaddr.s_addr, /* destination IPv4 address (little endian)*/
-        NULL,                /* payload                                 */
-        0,                   /* payload length                          */
-        lnc->ln,             /* libnet context                          */
-        lnc->ipv4_p);        /* tag to modify an existing header        */
-  if(lnc->ipv4_p == -1)
-    FAT("Can't build IP header: %s", libnet_geterror(lnc->ln));
-
-  /* send! */
-  if(libnet_write(lnc->ln) == -1)
-    FAT("Error sending packet: %s", libnet_geterror(lnc->ln));
-}
+/*****************************************************************************
+ * int ln_build_ip_packet(void *buff,
+ *                        INET_ADDR *shost,
+ *                        INET_ADDR *dhost,
+ *                        int proto, int ip_id,
+ *                        char *data, int datasz,
+ *                        int *pdata)
+ *
+ * Description:
+ *   Build an IP packet in buffer 'buff'. Returns packet size as return value,
+ *   and in-packet data offset in parameter 'pdata'.
+ *
+ * Arguments:
+ *   buff   - Pointer to output buffer. If NULL, nothing is written but packet
+ *            size and pdata offset are returned.
+ *   shost  - Source address (if it is zero, it will be filled with the correct
+ *            address by kernel (see raw(7)))
+ *   dhost  - Target address.
+ *   proto  - Protocol encapsulated in IP packet.
+ *   ip_id  - IP packet id (if zero, filled by kernel (see raw(7)).
+ *   data   - Pointer to payload (if NULL function leave space, but nothing is
+ *            copied)
+ *   datasz - Size of payload
+ *   pdata  - (output) It returns offset where payload starts. If NULL, nothing
+ *            is returned.
+ *****************************************************************************/
 
 int ln_build_ip_packet(void *buff,
                        INET_ADDR *shost,
@@ -241,19 +215,26 @@ int ln_build_ip_packet(void *buff,
   switch(shost->type)
   {
     case INET_FAMILY_IPV4:
+      /* fill IPv4 header */
       ip.v4 = (struct ip *) buff;
       ip.v4->ip_hl  = 5;
       ip.v4->ip_v   = 4;
       ip.v4->ip_tos = 0;
-      ip.v4->ip_len = psize;
+      ip.v4->ip_len = htons(psize);
       ip.v4->ip_id  = htonl(ip_id); /* IP identification number                */
       ip.v4->ip_off = 0;
       ip.v4->ip_ttl = 255;
       ip.v4->ip_p   = proto;
       ip.v4->ip_src.s_addr = shost->addr.in.inaddr.s_addr;
       ip.v4->ip_dst.s_addr = dhost->addr.in.inaddr.s_addr;
+      ip.v4->ip_sum = 0;
 
-      ip.v4->ip_sum = ln_ip_checksum((unsigned short *) buff, ip.v4->ip_len >> 1);
+      /* copy data */
+      if(data && datasz > 0)
+        memcpy(buff + poffset, data, datasz);
+
+      /* do checksum */
+      ip.v4->ip_sum = ln_ip_checksum((unsigned short *) buff, 5 << 1);
       break;
       
     case INET_FAMILY_IPV6:
@@ -268,15 +249,17 @@ int ln_build_ip_packet(void *buff,
 }
 
 int ln_build_tcp_packet(void *buff,
-                        int sport, int dport,
+                        INET_ADDR *shost, int sport,
+                        INET_ADDR *dhost, int dport,
                         int flags, int window,
                         int seq, int ack,
                         char *data, int datasz,
                         char *opts, int optssz,
                         int *pdata)
 {
-  LN_TCP_HEADER *tcph;
-  int psize, poffset;
+  LN_HDR_TCP *tcph;
+  int psize, poffset, i;
+  unsigned long sum;
 
   /* calculate packet size and payload offset */
   poffset = ((5 + ((optssz + 3) >> 2)) << 2);
@@ -286,7 +269,8 @@ int ln_build_tcp_packet(void *buff,
   if(!buff)
     return psize;
 
-  tcph = (LN_TCP_HEADER *) buff;
+  /* fill TCP header */
+  tcph = (LN_HDR_TCP *) buff;
   tcph->th_sport = htons(sport);
   tcph->th_dport = htons(dport);
   tcph->th_seq   = seq;
@@ -294,21 +278,59 @@ int ln_build_tcp_packet(void *buff,
   tcph->th_x2    = 0;
   tcph->th_off   = 5 + ((optssz + 3) >> 2);
   tcph->th_flags = flags;
-  tcph->th_win   = htonl(window);
+  tcph->th_win   = htons(window);
   tcph->th_sum   = 0;
   tcph->th_urp   = 0;
+
+  /* copy flags and data */
   if(opts && optssz > 0)
     memcpy(buff + 20, opts, optssz);
   if(data && datasz > 0)
     memcpy(buff + poffset, data, datasz);
 
+  /* [calculate cheksum] PSEUDO-HEADER */
+  sum = 0;
+  C1_SUM(sum, shost->addr.in.addr);
+  C1_SUM(sum, dhost->addr.in.addr);
+  C1_SUM(sum, 0x0600);
+  C1_SUM(sum, htons(psize));
+  /* [calculate cheksum] header+segment */
+  if(psize & 0x1)
+    C1_SUM(sum, ((char *) buff)[psize-1]);
+  for(i = 0; i < psize; i += 2)
+    C1_SUM(sum, *((unsigned short *) (buff + i)));
+  /* [calculate cheksum] complement */
+  tcph->th_sum = ~sum;
+
   return psize;
+}
+
+int ln_build_udp_packet(void *buff,
+                        int sport, int dport,
+                        char *data, int datasz,
+                        int *pdata)
+{
+  LN_HDR_UDP *udph;
+
+  if(pdata)
+    *pdata = sizeof(LN_HDR_UDP);
+  if(buff)
+  {
+    udph = (LN_HDR_UDP *) buff;
+    udph->uh_sport = htons(sport);
+    udph->uh_dport = htons(dport);
+    udph->uh_ulen  = htons(sizeof(LN_HDR_UDP) + datasz);
+    udph->uh_sum   = 0;
+    if(data && datasz > 0)
+      memcpy(buff + sizeof(LN_HDR_UDP), data, datasz);
+  }
+
+  return sizeof(LN_HDR_UDP) + datasz;
 }
 
 int ln_build_ip_tcp_packet(void *buff,
                            INET_ADDR *shost, int sport,
                            INET_ADDR *dhost, int dport,
-                           int ip_id,
                            int flags, int window,
                            int seq, int ack,
                            char *data, int datasz,
@@ -316,32 +338,71 @@ int ln_build_ip_tcp_packet(void *buff,
                            char *pdata)
 {
   int ip_size, tcp_size,
-      tcp_offset, data_offset,
-      psize;
+      tcp_offset, data_offset;
 
   /* calculate size */
-  if((tcp_size = ln_build_tcp_packet(NULL, sport, dport, flags, window, seq, ack,
+  DBG("Calculate size...");
+  if((tcp_size = ln_build_tcp_packet(NULL,
+                                     shost, sport, dhost, dport,
+                                     flags, window, seq, ack,
                                      NULL, datasz, opts, optssz,
                                      &data_offset)) < 0
-  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 6, ip_id,
+  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 6, 0,
                                    NULL, tcp_size, &tcp_offset)) < 0)
     return -1;
 
   /* check space */
+  DBG("Check space...");
   if(pdata)
     *pdata = tcp_offset + data_offset;
   if(!buff)
-    return psize;
+    return ip_size;
 
   /* buid packet */
+  DBG("Build packet...");
   if(ln_build_tcp_packet(buff + tcp_offset,
-                         sport, dport, flags, window, seq, ack,
+                         shost, sport, dhost, dport,
+                         flags, window, seq, ack,
                          data, datasz, opts, optssz,
                          NULL) < 0
-  || ln_build_ip_packet(buff, shost, dhost, 6, ip_id, NULL, psize, NULL) < 0)
+  || ln_build_ip_packet(buff, shost, dhost, 6, 0, NULL, tcp_size, NULL) < 0)
     return -1;
 
-  return psize;
+  return ip_size;
+}
+
+int ln_build_ip_udp_packet(void *buff,
+                           INET_ADDR *shost, int sport,
+                           INET_ADDR *dhost, int dport,
+                           char *data, int datasz,
+                           char *pdata)
+{
+  int ip_size, udp_size,
+      udp_offset, data_offset;
+
+  /* calculate size */
+  DBG("Calculate size...");
+  if((udp_size = ln_build_udp_packet(NULL, sport, dport,
+                                     NULL, datasz, &data_offset)) < 0
+  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 17, 0,
+                                   NULL, udp_size, &udp_offset)) < 0)
+    return -1;
+
+  /* check space */
+  DBG("Check space...");
+  if(pdata)
+    *pdata = udp_offset + data_offset;
+  if(!buff)
+    return ip_size;
+
+  /* buid packet */
+  DBG("Build packet...");
+  if(ln_build_udp_packet(buff + udp_offset, sport, dport,
+                         data, datasz, NULL) < 0
+  || ln_build_ip_packet(buff, shost, dhost, 17, 0, NULL, udp_size, NULL) < 0)
+    return -1;
+
+  return ip_size;
 }
 
 int ln_send_tcp_packet(LN_CONTEXT *lnc,
@@ -354,64 +415,62 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
 {
   int size;
 
-  if(ln_build_ip_tcp_packet(lnc->buff,
-                            shost, sport, dhost, dport,
-                            lnc->ip_id++,
-                            flags, window, seq, ack,
-                            data, datasz, opts, optssz,
-                            NULL))
+  DBG("Building TCP...");
+  if((size = ln_build_ip_tcp_packet(lnc->buff,
+                                    shost, sport, dhost, dport,
+                                    flags, window, seq, ack,
+                                    data, datasz, opts, optssz,
+                                    NULL)) < 0)
   {
     ERR("Cannot build TCP/IP package.");
     return -1;
   }
-  ln_send_packet(lnc, lnc->buff, size);
 
-#if 0
-  tcp_size = LIBNET_TCP_H + datasz + opts_sz;
-  ip_size  = LIBNET_IPV4_H + tcp_size;
+  DBG("%d bytes (0x%04x):", size, size);
+  DUMP(LOG_LEVEL_DEBUG2,NULL, lnc->buff, size);
 
-  /* build container IP packet */
-  lnc->ipv4_p =
-      libnet_build_ipv4(
-        ip_size,             /* total length of packet (including data) */
-        0x00,                /* type of service bits                    */
-        0x4000,              /* fragmentation bits and offset           */
-        64,                  /* time to live in the network             */
-        IPPROTO_TCP,         /* upper layer protocol                    */
-        0,                   /* checksum (0 for libnet to autofill)     */
-        shost->addr.in.inaddr.s_addr,       /* source IPv4 address (little endian)     */
-        dhost->addr.in.inaddr.s_addr,       /* destination IPv4 address (little endian)*/
-        NULL,                /* payload                                 */
-        0,                   /* payload length                          */
-        lnc->ln,             /* libnet context                          */
-        lnc->ipv4_p);        /* tag to modify an existing header        */
-  if(lnc->ipv4_p == -1)
-    FAT("Can't build IP header: %s", libnet_geterror(lnc->ln));
+  DBG("Sending TCP...");
+  return ln_send_packet(lnc, lnc->buff, size, dhost);
+}
 
-  /* send! */
-  if(libnet_write(lnc->ln) == -1)
-    FAT("Error sending packet: %s", libnet_geterror(lnc->ln));
-#else
+int ln_send_udp_packet(LN_CONTEXT *lnc,
+                       INET_ADDR *shost, int sport,
+                       INET_ADDR *dhost, int dport,
+                       char *data, int datasz)
+{
+  int size;
 
-  {                             /* lets do it the ugly way.. */
-    int one = 1;
-    const int *val = &one;
-    if (setsockopt (s, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
-      printf ("Warning: Cannot set HDRINCL!\n");
-  }
-
-  while(1)
+  DBG("Building UDP...");
+  if((size = ln_build_ip_udp_packet(lnc->buff,
+                                    shost, sport, dhost, dport,
+                                    data, datasz, NULL)) < 0)
   {
-    if(sendto(s,                        /* our socket                             */
-              datagram,                 /* the buffer containing headers and data */
-              iph->ip_len,              /* total length of our datagram           */
-              0,                        /* routing flags, normally always 0       */
-              (struct sockaddr *) &sin, /* socket addr, just like in              */
-              sizeof (sin)) < 0)        /* a normal send()                        */
-      printf ("error\n");
-    else
-      printf (".");
+    ERR("Cannot build UDP/IP package.");
+    return -1;
   }
-#endif
+  DBG("%d bytes (0x%04x):", size, size);
+  DUMP(LOG_LEVEL_DEBUG2,NULL, lnc->buff, size);
+
+  DBG("Sending UDP...");
+  return ln_send_packet(lnc, lnc->buff, size, dhost);
+}
+
+int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *a)
+{
+  BIG_SOCKET bs;
+
+  ip_addr_to_socket(a, 0, &bs.sa);
+
+  if(sendto(lnc->rs, buff, sz,
+            0, &bs.sa, sizeof(struct sockaddr)) < 0)
+  {
+    char err[1024];
+    strerror_r(errno, err, sizeof(err));
+    ERR("Cannot send packet: %s", err);
+FAT("XXX");
+    return -1;
+  }
+
+  return 0;
 }
 

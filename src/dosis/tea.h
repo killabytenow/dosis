@@ -27,6 +27,7 @@
 #define __TEA_H__
 
 #include "pthreadex.h"
+#include "lnet.h"
 #include "mqueue.h"
 #include "script.h"
 #include "teatype.h"
@@ -38,7 +39,7 @@ typedef struct _tag_THREAD_WORK {
   struct _tag_TEA_OBJECT  *to;
   void                    *data;
 
-  /* listener info */
+  /* listener/sender info */
   TEA_MSG_QUEUE           *mqueue;
   pthreadex_flag_t         mwaiting;
   /* XXX optimization not implemented XXX */
@@ -62,21 +63,22 @@ typedef struct _tag_TEA_OBJECT {
   int         initialized;
   unsigned    datasize;
   TEA_OBJCFG *cparams;
-  int         listen;
+  int         listener;
+  int         sender;
 
   void (*global_init)(void);
   int  (*configure)(THREAD_WORK *tw, SNODE *command, int first_time);
   void (*cleanup)(THREAD_WORK *tw);
   void (*thread)(THREAD_WORK *tw);
-  int  (*listen_check)(THREAD_WORK *tw, char *msg, unsigned size);
+  int  (*listen_check)(THREAD_WORK *tw, int proto, char *msg, unsigned size);
 } TEA_OBJECT;
 
 /*- THREAD MANAGAMENT -------------------------------------------------------*/
 TEA_MSG *tea_thread_msg_get(THREAD_WORK *tw);
 TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw);
-int      tea_thread_msg_push(int tid, void *msg, int msg_size);
-int      tea_thread_search_listener(char *b, unsigned int l, int pivot_id);
-int      tea_thread_msg_send(TEA_MSG *m, int delay);
+int      tea_thread_msg_push(int tid, INET_ADDR *addr, void *msg, int msg_size);
+int      tea_thread_listener_search(int proto, char *b, unsigned int l, int pivot_id);
+int      tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay);
 
 /*- THREAD LOG UTILITIES ----------------------------------------------------*/
 #define GFAT(msg, ...)   FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)

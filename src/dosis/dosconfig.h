@@ -51,6 +51,7 @@ typedef struct _tag_DOS_ROUTE_INFO {
   INET_ADDR      destination;
   INET_ADDR      gateway;
   INET_ADDR      mask;
+  int            defaultgw;
 
   struct _tag_DOS_ROUTE_INFO *next;
 } DOS_ROUTE_INFO;

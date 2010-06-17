@@ -71,12 +71,12 @@
 %type  <snode>    o_ntime command
 %type  <snode>    to to_pattern to_no_patt
 %token            BFALSE BTRUE
-%token            PERIODIC OPT_FILE OPT_RANDOM
+%token            PERIODIC OPT_FILE OPT_RANDOM OPT_BYTE OPT_ZERO
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
 %token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_CIPHER OPT_ZWIN
 %token            OPT_WINDOW OPT_DEBUG
-%token            TO_LISTEN TO_TCP TO_UDP
+%token            TO_LISTEN TO_SEND TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
 /*---------------------------------------------------------------------------
@@ -120,10 +120,16 @@ string: STRING                  { $$ = node_new_string($1, 1, 0); }
       | var
       ;
 data:   string
-      | OPT_RANDOM '(' nint ')' { $$ = node_new(TYPE_RANDOM);
-                                  $$->random.len = $3; }
-      | OPT_FILE '(' string ')' { $$ = node_new(TYPE_FILE);
-                                  $$->file.path = $3; }
+      | OPT_RANDOM '(' nint ')'        { $$ = node_new(TYPE_RANDOM);
+                                         $$->random.len = $3; }
+      | OPT_ZERO '(' nint ')'          { $$ = node_new(TYPE_BYTEREP);
+                                         $$->byterep.len = $3;
+                                         $$->byterep.val = '\0'; }
+      | OPT_BYTE '(' nint ',' nint ')' { $$ = node_new(TYPE_BYTEREP);
+                                         $$->byterep.len = $3;
+                                         $$->byterep.val = $5; }
+      | OPT_FILE '(' string ')'        { $$ = node_new(TYPE_FILE);
+                                         $$->file.path = $3; }
       ;
 list_num_enum: nint                   { $$ = node_new(TYPE_LIST_NUM);
                                         $$->list_num.val  = $1;
@@ -213,6 +219,7 @@ to_no_patt: TO_TCP OPT_OPEN { $$ = node_new(TYPE_TO_TCPOPEN); }
           | TO_TCP OPT_ZWIN { $$ = node_new(TYPE_TO_ZWIN);    }
           | TO_TCP OPT_SLOW { $$ = node_new(TYPE_TO_SLOW);    }
           | TO_LISTEN       { $$ = node_new(TYPE_TO_LISTEN);  }
+          | TO_SEND         { $$ = node_new(TYPE_TO_SEND);  }
           ;
 to: to_pattern opts pattern { $$ = $1;
                               $1->options = hash_merge($2, $3, NULL);
@@ -335,6 +342,7 @@ static void node_free(SNODE *n)
   switch(n->type)
   {
     case TYPE_BOOL:
+    case TYPE_BYTEREP:
     case TYPE_CMD_MOD:
     case TYPE_CMD_OFF:
     case TYPE_CMD_ON:
@@ -346,6 +354,7 @@ static void node_free(SNODE *n)
     case TYPE_RANDOM:
     case TYPE_SELECTOR:
     case TYPE_TO_LISTEN:
+    case TYPE_TO_SEND:
       /* do nothing */
       break;
 
@@ -441,6 +450,7 @@ static int yylex(void)
     char *token;
     int  value;
   } tokens[] = {
+    { "BYTE",     OPT_BYTE    },
     { "CIPHER",   OPT_CIPHER  },
     { "CWAIT",    OPT_CWAIT   },
     { "DEBUG",    OPT_DEBUG   },
@@ -465,6 +475,7 @@ static int yylex(void)
     { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
     { "RWAIT",    OPT_RWAIT   },
+    { "SEND",     TO_SEND     },
     { "SLOW",     OPT_SLOW    },
     { "SRC",      OPT_SRC     },
     { "SSL",      OPT_SSL     },
@@ -472,6 +483,7 @@ static int yylex(void)
     { "TRUE",     BTRUE       },
     { "UDP",      TO_UDP      },
     { "WINDOW",   OPT_WINDOW  },
+    { "ZERO",     OPT_ZERO    },
     { "ZWIN",     OPT_ZWIN    },
     { NULL,       0           }
   }, bool_tokens[] = {
@@ -755,6 +767,8 @@ void script_init(void)
   hash_entry_set(defvalues, "tcp_rwait",  node_new_int(10000000));
   hash_entry_set(defvalues, "tcp_win",    node_new_int(31337));
   hash_entry_set(defvalues, "ssl_cipher", node_new_string("DES-CBC3-SHA", 0, 1));
+  hash_entry_set(defvalues, "src_port",   node_new_int(-1));
+  hash_entry_set(defvalues, "dst_port",   node_new_int(-1));
 
 }
 
@@ -809,6 +823,18 @@ char *script_get_data(SNODE *n, unsigned int *size)
         FAT("%d: Cannot read the payload file: %s", n->line, strerror(errno));
       close(f);
       free(s);
+      break;
+
+    case TYPE_BYTEREP:
+      *size = script_get_int(n->byterep.len);
+      i     = script_get_int(n->byterep.val);
+      if(*size > 0)
+      {
+        if((buffer = malloc(*size + 1)) == NULL)
+          FAT("%d: Cannot alloc %d bytes for payload.", n->line, *size);
+        memset(buffer, i, *size);
+        buffer[*size] = '\0';
+      }
       break;
 
     case TYPE_RANDOM:

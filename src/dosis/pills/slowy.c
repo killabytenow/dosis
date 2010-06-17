@@ -142,20 +142,30 @@ static void conn_release(THREAD_WORK *tw, TCP_CON *c)
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-static int slowy__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+static int slowy__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned int size)
 {
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
 
-  /* check msg size and headers */
-  if(size < sizeof(struct iphdr)
-  || IP_PROTOCOL(msg) != 6
-  || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
-    return 0;
+  switch(proto)
+  {
+    case INET_FAMILY_IPV4:
+      /* check msg size and headers */
+      if(size < sizeof(struct iphdr)
+      || IP_PROTOCOL(msg) != 6
+      || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
+        return 0;
 
-  /* check msg */
-  return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
-      && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
-         ? -1 : 0;
+      /* check msg */
+      return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
+          && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
+             ? -1 : 0;
+
+    case INET_FAMILY_IPV6:
+#warning "IPv6 not implemented."
+      return 0;
+  }
+
+  return 0;
 }
 
 static void slowy__listen(THREAD_WORK *tw)
@@ -416,7 +426,7 @@ TEA_OBJECT teaSlowy = {
   .datasize     = sizeof(SLOWY_CFG),
   .configure    = slowy__configure,
   .cleanup      = slowy__cleanup,
-  .listen       = slowy__listen,
+  .listener     = 1,
   .listen_check = slowy__listen_check,
   .cparams      = teaSlowy_cfg,
 };

@@ -140,36 +140,30 @@ int ip_read_range(char *network, INET_IPV4_RANGE *range)
   return ret;
 }
 
-void ip_socket_to_addr(struct sockaddr *saddr, INET_ADDR *addr, int *port)
+void ip_socket_to_addr(BIG_SOCKET_PTR saddr, INET_ADDR *addr, int *port)
 {
-  switch(saddr->sa_family)
+  switch(saddr.sa->sa_family)
   {
     case AF_INET:
-      {
-        struct sockaddr_in *sin = (struct sockaddr_in *) saddr;
-        addr->addr.in.addr = sin->sin_addr.s_addr;
-        addr->type = INET_FAMILY_IPV4;
-        if(port)
-          *port = sin->sin_port;
-      }
+      addr->addr.in.addr = saddr.in->sin_addr.s_addr;
+      addr->type = INET_FAMILY_IPV4;
+      if(port)
+        *port = saddr.in->sin_port;
       break;
 
     case AF_INET6:
 #if HAVE_STRUCT_SOCKADDR_IN6
-      {
-        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) saddr;
-        memcpy(addr->addr.in6.addr, &sin6->sin6_addr, sizeof(addr->addr.in6));
-        addr->type = INET_FAMILY_IPV6;
-        if(port)
-          *port = sin6->sin6_port;
-      }
+      memcpy(addr->addr.in6.addr, &saddr.in6->sin6_addr, sizeof(addr->addr.in6));
+      addr->type = INET_FAMILY_IPV6;
+      if(port)
+        *port = saddr.in6->sin6_port;
 #else
       FAT("This platform does not support IPv6.");
 #endif
       break;
 
     default:
-      FAT("Unknown internet protocol %d.", saddr->sa_family);
+      FAT("Unknown internet protocol %d.", saddr.sa->sa_family);
   }
 }
 
@@ -215,7 +209,7 @@ void ip_addr_to_socket(INET_ADDR *addr, int port, struct sockaddr *saddr)
 
 struct sockaddr *ip_addr_get_socket(INET_ADDR *addr, int port)
 {
-  struct sockaddr *saddr = NULL;
+  void *saddr = NULL;
   int bytes = 0;
 
   /* calc how many bytes uses this structure */

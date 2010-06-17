@@ -34,7 +34,7 @@
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
 
-#define IPV4_GETP(p,x)  ((unsigned) ((ntohl((x)) >> ((p) << 3)) & 0x000000ffl))
+#define IPV4_GETP(p,x)  INET_ADDR_IPV4_GETP(p,x)
 
 static char              iptables_tmp[255];
 static char              ip_forward_status;
@@ -253,7 +253,7 @@ static void listener__thread(THREAD_WORK *tw)
 {
   LISTENER_CFG *lcfg = (LISTENER_CFG *) tw->data;
   int id = 0;
-  int r;
+  int r, proto;
 
   /* get packets and classify */
   while(!cfg.finalize)
@@ -272,15 +272,40 @@ static void listener__thread(THREAD_WORK *tw)
     if(r <= 0)
       continue;
 
+    /* fix protocol (if packet comes from ethernet)*/
+    proto = 0;
+    if(lcfg->imsg.m->hw_type == ARPHRD_ETHER
+    || lcfg->imsg.m->hw_type == ARPHRD_LOOPBACK)
+    {
+DBG("Analizing packet hw_type = %d (%x)", lcfg->imsg.m->hw_type, lcfg->imsg.m->hw_type);
+      switch(ntohs(lcfg->imsg.m->hw_protocol))
+      {
+        case ETHERTYPE_IP:   proto = INET_FAMILY_IPV4; break;
+        case ETHERTYPE_IPV6: proto = INET_FAMILY_IPV6; break;
+        default:
+          TDBG("Unknown ethernet protocol %d.", ntohs(lcfg->imsg.m->hw_protocol));
+      }
+DBG("Analizing packet proto = %d", proto);
+    } else {
+      TWRN("Unknown hardware type (hw_type) %d (0x%04x). Ignoring data package.",
+             lcfg->imsg.m->hw_type,
+             lcfg->imsg.m->hw_type);
+    }
+
 repeat_search:
-    id = tea_thread_search_listener((char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len, id+1);
+    id = proto != 0
+           ? tea_thread_listener_search(proto, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len, id+1)
+           : -1;
     if(id >= 0)
     {
       /* defer cancelation as much as possible */
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
+      /* copy destination address */
+#warning "TODO: copy destination address"
+
       /* copy this msg and send to the thread */
-      r = tea_thread_msg_push(id, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+      r = tea_thread_msg_push(id, NULL, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
 
       /* if the msg cannot be pushed... repeat this until it is pushed       */
       /* NOTE: rarely result (r) will be a negative number, because it would */
@@ -294,61 +319,67 @@ repeat_search:
       }
       if(lcfg->debug)
       {
-        if(lcfg->imsg.m->data_len >= sizeof(struct iphdr)
-        && IP_HEADER(lcfg->imsg.m->payload)->version == 4)
+        switch(proto)
         {
-          if(IP_PROTOCOL(lcfg->imsg.m->payload) == 17
-          && lcfg->imsg.m->data_len >= IP_HEADER_SIZE(lcfg->imsg.m->payload) + sizeof(struct udphdr))
-          {
-            TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
-                   lcfg->imsg.m->data_len,
-                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                   IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                   ntohs(UDP_HEADER(lcfg->imsg.m->payload)->source),
-                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                   IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                   ntohs(UDP_HEADER(lcfg->imsg.m->payload)->dest));
-          } else
-          if(IP_PROTOCOL(lcfg->imsg.m->payload) == 6
-          && lcfg->imsg.m->data_len >= IP_HEADER_SIZE(lcfg->imsg.m->payload) + sizeof(struct tcphdr))
-          {
-            TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
-                   lcfg->imsg.m->data_len,
-                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   ntohs(TCP_HEADER(lcfg->imsg.m->payload)->source),
-                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   ntohs(TCP_HEADER(lcfg->imsg.m->payload)->dest),
-                   TCP_HEADER(lcfg->imsg.m->payload)->fin ? "F" : "",
-                   TCP_HEADER(lcfg->imsg.m->payload)->syn ? "S" : "",
-                   TCP_HEADER(lcfg->imsg.m->payload)->rst ? "R" : "",
-                   TCP_HEADER(lcfg->imsg.m->payload)->psh ? "P" : "",
-                   TCP_HEADER(lcfg->imsg.m->payload)->ack ? "A" : "",
-                   TCP_HEADER(lcfg->imsg.m->payload)->urg ? "U" : "");
-          } else {
-            TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
-                   IP_PROTOCOL(lcfg->imsg.m->payload),
-                   lcfg->imsg.m->data_len,
-                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                   IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                   IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr));
-          }
-        } else {
-          TLOG("Unknown packet received (%d bytes):", lcfg->imsg.m->data_len);
+          case INET_FAMILY_IPV4:
+            if(IPV4_UDP_HDRCK(lcfg->imsg.m->payload))
+            {
+              TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
+                     lcfg->imsg.m->data_len,
+                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
+                     ntohs(UDP_HEADER(lcfg->imsg.m->payload)->source),
+                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
+                     ntohs(UDP_HEADER(lcfg->imsg.m->payload)->dest));
+            } else
+            if(IPV4_TCP_HDRCK(lcfg->imsg.m->payload))
+            {
+              TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
+                     lcfg->imsg.m->data_len,
+                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     ntohs(TCP_HEADER(lcfg->imsg.m->payload)->source),
+                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     ntohs(TCP_HEADER(lcfg->imsg.m->payload)->dest),
+                     TCP_HEADER(lcfg->imsg.m->payload)->fin ? "F" : "",
+                     TCP_HEADER(lcfg->imsg.m->payload)->syn ? "S" : "",
+                     TCP_HEADER(lcfg->imsg.m->payload)->rst ? "R" : "",
+                     TCP_HEADER(lcfg->imsg.m->payload)->psh ? "P" : "",
+                     TCP_HEADER(lcfg->imsg.m->payload)->ack ? "A" : "",
+                     TCP_HEADER(lcfg->imsg.m->payload)->urg ? "U" : "");
+            } else
+            if(IPV4_HDRCK(lcfg->imsg.m->payload))
+            {
+              TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
+                     IP_PROTOCOL(lcfg->imsg.m->payload),
+                     lcfg->imsg.m->data_len,
+                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
+                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
+                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr));
+            } else {
+              TLOG("Malformed IPV4 packet received (%d bytes):", lcfg->imsg.m->data_len);
+            }
+            break;
+          case INET_FAMILY_IPV6:
+            TLOG("IPv6 packet received (%d bytes):", lcfg->imsg.m->data_len);
+            break;
+          default:
+            TLOG("Unknown protocol %d packet received (%d bytes):", proto, lcfg->imsg.m->data_len);
         }
         TDUMP(LOG_LEVEL_LOG, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
       }

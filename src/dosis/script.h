@@ -40,9 +40,9 @@ enum TYPES {
   TYPE_CMD_OFF,
   TYPE_CMD_ON,
   TYPE_CMD_SETVAR,
-  TYPE_CMD_LISTEN,
   /* basic types */
   TYPE_FILE = 1000,
+  TYPE_BYTEREP,
   TYPE_BOOL,
   TYPE_NINT,
   TYPE_NFLOAT,
@@ -55,6 +55,7 @@ enum TYPES {
   TYPE_SELECTOR,
   /* thread types */
   TYPE_TO_LISTEN = 3000,
+  TYPE_TO_SEND,
   TYPE_TO_SLOW,
   TYPE_TO_TCP,
   TYPE_TO_TCPOPEN,
@@ -132,6 +133,10 @@ typedef struct SNODE_tag {
     struct {                    /* random data                               */
       struct SNODE_tag *len;    /* length of random data                     */
     } random;
+    struct {
+      struct SNODE_tag *len;    /* length of data block                      */
+      struct SNODE_tag *val;    /* value used to fill data block             */
+    } byterep;
 
     /* --------------------------------------------------------------------- */
     /* list_num snode - snode used to specify a list of integers             */

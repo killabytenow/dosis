@@ -32,6 +32,7 @@
 #include "tea.h"
 
 #include "pills/listener.h"
+#include "pills/sender.h"
 #include "pills/slowy.h"
 #include "pills/tcp.h"
 #include "pills/tcpopen.h"
@@ -64,7 +65,7 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
   }
 
   /* disassociate mqueue of tw and destroy it */
-  if(tw->to->listen)
+  if(tw->to->listener)
   {
     pthreadex_mutex_begin(&(tw->mqueue->mutex));
     TDBG2("  [cleanup] listen cleanup");
@@ -222,7 +223,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   tw->to         = to;
 
   /* check methods */
-  tw->mqueue = tw->to->listen
+  tw->mqueue = tw->to->listener
                  ? mqueue_create()
                  : NULL;
   pthreadex_flag_init(&(tw->mwaiting), 0);
@@ -255,7 +256,8 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
       for(ocline = to->cparams;
           ocline->name && strcasecmp(hn->key, ocline->name);
           ocline++)
-        ;
+        {
+    }
       if(!ocline->name)
       {
         ERR("%d:%s: Parameter %s not allowed here.", command->line, to->name, hn->key);
@@ -385,7 +387,7 @@ static void tea_thread_stop(int tid)
   }
 }
 
-int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
+int tea_thread_listener_search(int proto, char *b, unsigned int l, int pivot_id)
 {
   int tid, prio, stid, sprio;
 
@@ -403,7 +405,7 @@ int tea_thread_search_listener(char *b, unsigned int l, int pivot_id)
   do {
     if(ttable[tid]
     && ttable[tid]->to->listen_check
-    && (prio = ttable[tid]->to->listen_check(ttable[tid], b, l)) != 0)
+    && (prio = ttable[tid]->to->listen_check(ttable[tid], proto, b, l)) != 0)
     {
       if(prio > 0)
         FAT("Positive priority? Not in my world. Die motherfucker.");
@@ -444,7 +446,7 @@ TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw)
   return m;
 }
 
-int tea_thread_msg_push(int tid, void *msg, int msg_size)
+int tea_thread_msg_push(int tid, INET_ADDR *addr, void *msg, int msg_size)
 {
   TEA_MSG *tmsg;
   int r = 0;
@@ -456,6 +458,8 @@ int tea_thread_msg_push(int tid, void *msg, int msg_size)
     if(ttable[tid]->mqueue)
     {
       tmsg = msg_get();
+      if(addr)
+         msg_set_addr(tmsg, addr);
       msg_fill(tmsg, msg, msg_size);
       mqueue_push(ttable[tid]->mqueue, tmsg);
       DBG("  message pushed to %d.", tid);
@@ -468,6 +472,64 @@ int tea_thread_msg_push(int tid, void *msg, int msg_size)
   pthreadex_lock_release();
   
   return r;
+}
+
+int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
+{
+  static int pivot_id = 0;
+  int tid = 0;
+
+  if(delay > 0 || !lnc)
+  {
+    if(delay > 0)
+    {
+      /* calculate when */
+      if(clock_gettime(CLOCK_REALTIME, &m->w) < 0)
+      {
+        ERR("Cannot read CLOCK_REALTIME.");
+        return -1;
+      }
+      m->w.tv_nsec += delay % 1000;
+      m->w.tv_sec  += delay / 1000;
+      if(m->w.tv_nsec > 1000000000)
+      {
+        m->w.tv_sec  += m->w.tv_nsec / 1000000000;
+        m->w.tv_nsec %= 1000000000;
+      }
+    } else {
+      /* normal people send directly */
+      m->w.tv_nsec = 0;
+      m->w.tv_sec  = 0;
+    }
+DBG("DELAY %ld.%09ld secs", m->w.tv_sec, m->w.tv_nsec);
+
+    /* search sender and insert msg into its queue */
+    pthreadex_lock_get_shared(&ttable_lock);
+    tid = pivot_id < 0 ? 0 : pivot_id;
+    do {
+      if(++tid >= cfg.maxthreads)
+        tid = 0;
+      if(ttable[tid] && !ttable[tid]->to->sender)
+      {
+        /* insert into queue in correct order */
+        mqueue_insert_delayed(ttable[tid]->mqueue, m);
+        break;
+      }
+    } while(tid != pivot_id);
+    pivot_id = tid;
+    pthreadex_lock_release();
+  }
+
+  /* if msg was not queued, then send it directly */
+  if(m)
+  {
+    if(lnc)
+      ln_send_packet(lnc, m->b, m->s, &m->dest);
+    else
+      WRN("Cannot send message!");
+  }
+
+  return 0;
 }
 
 /*---------------------------------------------------------------------------*
@@ -586,6 +648,7 @@ void tea_timer(SNODE *program)
             case TYPE_TO_UDP:     to = &teaUDP;      break;
             case TYPE_TO_ZWIN:    to = &teaSlowy;    break;
             case TYPE_TO_SLOW:    to = &teaSlowy;    break;
+            case TYPE_TO_SEND:    to = &teaSENDER;   break;
             default:
               FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }

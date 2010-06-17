@@ -311,7 +311,8 @@ typedef struct _tag_pthreadex_flag_t
 
 void pthreadex_flag_init(pthreadex_flag_t *flag, int initial_state);
 void pthreadex_flag_destroy(pthreadex_flag_t *flag);
-void pthreadex_flag_wait(pthreadex_flag_t *flag);
+int  pthreadex_flag_wait(pthreadex_flag_t *flag);
+int  pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout);
 int  pthreadex_flag_up(pthreadex_flag_t *flag);
 
 /* signal callback */

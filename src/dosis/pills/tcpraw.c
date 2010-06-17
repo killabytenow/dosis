@@ -56,20 +56,30 @@ typedef struct _tag_TCPRAW_CFG {
  * THREAD IMPLEMENTATION
  *****************************************************************************/
 
-static int tcpraw__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+static int tcpraw__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned int size)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
-  /* check msg size and headers */
-  if(size < sizeof(struct iphdr)
-  || IP_PROTOCOL(msg) != 6
-  || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
-    return 0;
+  switch(proto)
+  {
+    case INET_FAMILY_IPV4:
+      /* check msg size and headers */
+      if(size < sizeof(struct iphdr)
+      || IP_PROTOCOL(msg) != 6
+      || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
+        return 0;
 
-  /* check msg */
-  return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
-      && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
-         ? -255 : 0;
+      /* check msg */
+      return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
+          && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
+             ? -255 : 0;
+
+    case INET_FAMILY_IPV6:
+#warning "IPv6 not implemented."
+      return 0;
+  }
+
+  return 0;
 }
 
 static void tcpraw__thread(THREAD_WORK *tw)
@@ -84,11 +94,6 @@ static void tcpraw__thread(THREAD_WORK *tw)
   /* ATTACK */
   while(1)
   {
-    /* wait for work */
-    if(tc->hitratio > 0)
-      if(pthreadex_timer_wait(&(tc->timer)) < 0)
-        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
-
     /* build TCP packet with payload (if requested) */
     TDBG2("Sending %d packet(s)...", tc->npackets);
     for(i = 0; i < tc->npackets; i++)
@@ -109,6 +114,12 @@ static void tcpraw__thread(THREAD_WORK *tw)
                          (char *) tc->payload.data, tc->payload.size,
                          NULL, 0);
     }
+
+    /* now wait for more work */
+    if(tc->hitratio > 0)
+      if(pthreadex_timer_wait(&(tc->timer)) < 0)
+        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
+
   }
 }
 

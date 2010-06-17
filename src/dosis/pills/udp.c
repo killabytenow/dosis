@@ -43,7 +43,7 @@ typedef struct _tag_UDP_CFG {
 
   /* other things */
   pthreadex_timer_t  timer;
-  LN_CONTEXT        *lnc;
+  LN_CONTEXT         lnc;
 } UDP_CFG;
 
 /*****************************************************************************
@@ -52,26 +52,36 @@ typedef struct _tag_UDP_CFG {
 
 #if 0
 /* the best from performance view is to do nothing */
-static int udp__listen_check(THREAD_WORK *tw, char *msg, unsigned int size)
+static int udp__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned int size)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
 
-  /* check msg size and headers */
-  if(size < sizeof(struct iphdr)
-  || IP_PROTOCOL(msg) != 17
-  || size < sizeof(struct udphdr) + (IP_HEADER(msg)->ihl << 2))
-    return 0;
+  switch(proto)
+  {
+    case INET_FAMILY_IPV4:
+      /* check msg size and headers */
+      if(size < sizeof(struct iphdr)
+      || IP_PROTOCOL(msg) != 17
+      || size < sizeof(struct udphdr) + (IP_HEADER(msg)->ihl << 2))
+        return 0;
 
-  /* check msg */
+      /* check msg */
 TDBG("[%s]   VEREDICT: %d (%x, %d) [%x, %d]",
-     tw->methods->name,
-     IP_HEADER(msg)->saddr == tu->dhost.addr.in.addr
-     && ntohs(UDP_HEADER(msg)->source) == tu->dhost.port,
-     IP_HEADER(msg)->saddr, ntohs(UDP_HEADER(msg)->source),
-     tu->dhost.addr.in.addr, tu->dhost.port);
-  return IP_HEADER(msg)->saddr == tu->dhost.addr.in.addr
-      && ntohs(UDP_HEADER(msg)->source) == tu->dhost.port
-         ? -255 : 0;
+       tw->methods->name,
+       IP_HEADER(msg)->saddr == tu->dhost.addr.in.addr
+       && ntohs(UDP_HEADER(msg)->source) == tu->dhost.port,
+       IP_HEADER(msg)->saddr, ntohs(UDP_HEADER(msg)->source),
+       tu->dhost.addr.in.addr, tu->dhost.port);
+        return IP_HEADER(msg)->saddr == tu->dhost.addr.in.addr
+            && ntohs(UDP_HEADER(msg)->source) == tu->dhost.port
+               ? -255 : 0;
+
+    case INET_FAMILY_IPV6:
+#warning "IPv6 not implemented."
+      return 0;
+  }
+
+  return 0;
 }
 #endif
 
@@ -101,10 +111,12 @@ static void udp__thread(THREAD_WORK *tw)
       dport = tu->dhost.port >= 0
                 ? tu->dhost.port
                 : NEXT_RAND_PORT(dport);
-      ln_send_udp_packet(tu->lnc,
+TDBG2(" --1- sport[%d] [next=%d]", sport, NEXT_RAND_PORT(sport));
+      ln_send_udp_packet(&tu->lnc,
                          &tu->shost.addr, sport,
                          &tu->dhost.addr, dport,
                          tu->payload.data, tu->payload.size);
+TDBG2(" --2- sport[%d]", sport);
     }
   }
 }
@@ -123,15 +135,8 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   /* first initialization (specialized work thread data) */
   if(first_time)
   {
-    /* initialize libnet */
-    TDBG("Initializing libnet.");
-    if((tu->lnc = calloc(1, sizeof(LN_CONTEXT))) == NULL)
-    {
-      TERR("No memory for LN_CONTEXT.");
-      return -1;
-    }
-    ln_init_context(tu->lnc);
-
+    /* initialize lnet */
+    ln_init_context(&tu->lnc);
     pthreadex_timer_init(&(tu->timer), 0.0);
     pthreadex_timer_name(&(tu->timer), "udp-timer");
   }
@@ -179,9 +184,7 @@ static void udp__cleanup(THREAD_WORK *tw)
 {
   UDP_CFG *tu = (UDP_CFG *) tw->data;
 
-  /* collect libnet data */
-  ln_destroy_context(tu->lnc);
-  free(tu->lnc);
+  ln_destroy_context(&tu->lnc);
   pthreadex_timer_destroy(&tu->timer);
 
   if(tu->payload.data)
