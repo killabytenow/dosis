@@ -33,37 +33,56 @@ extern "C" {
 #endif
 
 /* protocol headers - inherited from BSD flavors */
-typedef	u_int32_t tcp_seq;
+typedef  u_int32_t tcp_seq;
 typedef struct __tag_LN_HDR_TCP
   {
-    u_int16_t th_sport;		/* source port */
-    u_int16_t th_dport;		/* destination port */
-    tcp_seq th_seq;		/* sequence number */
-    tcp_seq th_ack;		/* acknowledgement number */
+    u_int16_t th_sport;    /* source port */
+    u_int16_t th_dport;    /* destination port */
+    tcp_seq   th_seq;    /* sequence number */
+    tcp_seq   th_ack;     /* acknowledgement number */
 #ifdef WORDS_BIGENDIAN
-    u_int8_t th_off:4;		/* data offset */
-    u_int8_t th_x2:4;		/* (unused) */
+    u_int8_t  th_off:4;    /* data offset */
+    u_int8_t  th_x2:4;     /* (unused) */
 #else
-    u_int8_t th_x2:4;		/* (unused) */
-    u_int8_t th_off:4;		/* data offset */
-#  endif
-    u_int8_t th_flags;
-    u_int16_t th_win;		/* window */
-    u_int16_t th_sum;		/* checksum */
-    u_int16_t th_urp;		/* urgent pointer */
+    u_int8_t  th_x2:4;    /* (unused) */
+    u_int8_t  th_off:4;    /* data offset */
+#endif
+    union {
+      u_int8_t  th_flags;
+#ifdef WORDS_BIGENDIAN
+      u_int16_t res2:2;
+      u_int16_t urg:1;
+      u_int16_t ack:1;
+      u_int16_t psh:1;
+      u_int16_t rst:1;
+      u_int16_t syn:1;
+      u_int16_t fin:1;
+#else
+      u_int16_t fin:1;
+      u_int16_t syn:1;
+      u_int16_t rst:1;
+      u_int16_t psh:1;
+      u_int16_t ack:1;
+      u_int16_t urg:1;
+      u_int16_t res2:2;
+#endif
+    };
+    u_int16_t th_win;    /* window */
+    u_int16_t th_sum;    /* checksum */
+    u_int16_t th_urp;    /* urgent pointer */
 } LN_HDR_TCP;
-#define LN_TH_FIN	0x01
-#define LN_TH_SYN	0x02
-#define LN_TH_RST	0x04
-#define LN_TH_PUSH	0x08
-#define LN_TH_ACK	0x10
-#define LN_TH_URG	0x20
+#define LN_TH_FIN  0x01
+#define LN_TH_SYN  0x02
+#define LN_TH_RST  0x04
+#define LN_TH_PUSH  0x08
+#define LN_TH_ACK  0x10
+#define LN_TH_URG  0x20
 typedef struct __tag_LN_HDR_UDP
 {
-  u_int16_t uh_sport;		/* source port */
-  u_int16_t uh_dport;		/* destination port */
-  u_int16_t uh_ulen;		/* udp length */
-  u_int16_t uh_sum;		/* udp checksum */
+  u_int16_t uh_sport;    /* source port */
+  u_int16_t uh_dport;    /* destination port */
+  u_int16_t uh_ulen;    /* udp length */
+  u_int16_t uh_sum;    /* udp checksum */
 } LN_HDR_UDP;
 typedef struct iphdr LN_HDR_IPV4;
 
@@ -145,6 +164,8 @@ unsigned ln_get_next_random_port_number(unsigned *n);
 #define IPV4_HDRCK(b,s)        (s >= sizeof(LN_HDR_IPV4) && IP_VERSION(b) == 4)
 #define IPV4_HDRSZ(x)          (IPV4_HDR(x)->ihl << 2)
 #define IPV4_PROTOCOL(x)       (((LN_HDR_IPV4 *) (x))->protocol)
+#define IPV4_SADDR(x)          (IPV4_HDR(x)->saddr)
+#define IPV4_TADDR(x)          (IPV4_HDR(x)->daddr)
 
 /* TCPoIPv4 helper macros */
 #define IPV4_TCP_DATA(x)       ((void *) (x)                                  \

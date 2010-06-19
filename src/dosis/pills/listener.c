@@ -34,7 +34,8 @@
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
 
-#define IPV4_GETP(p,x)  INET_ADDR_IPV4_GETP(p,x)
+#define IPV4_SADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_SADDR(x))
+#define IPV4_TADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_TADDR(x))
 
 static char              iptables_tmp[255];
 static char              ip_forward_status;
@@ -322,41 +323,41 @@ repeat_search:
         switch(proto)
         {
           case INET_FAMILY_IPV4:
-            if(IPV4_UDP_HDRCK(lcfg->imsg.m->payload))
+            if(IPV4_UDP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
             {
               TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
                      lcfg->imsg.m->data_len,
-                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                     IP_HEADER(lcfg->imsg.m->payload)->saddr,
-                     ntohs(UDP_HEADER(lcfg->imsg.m->payload)->source),
-                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                     IP_HEADER(lcfg->imsg.m->payload)->daddr,
-                     ntohs(UDP_HEADER(lcfg->imsg.m->payload)->dest));
+                     IPV4_SADDR_P(3, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(2, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(1, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(0, lcfg->imsg.m->payload),
+                     ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_sport),
+                     IPV4_TADDR_P(3, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(2, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(1, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(0, lcfg->imsg.m->payload),
+                     ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_dport));
             } else
-            if(IPV4_TCP_HDRCK(lcfg->imsg.m->payload))
+            if(IPV4_TCP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
             {
               TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
                      lcfg->imsg.m->data_len,
-                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     ntohs(TCP_HEADER(lcfg->imsg.m->payload)->source),
-                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     ntohs(TCP_HEADER(lcfg->imsg.m->payload)->dest),
-                     TCP_HEADER(lcfg->imsg.m->payload)->fin ? "F" : "",
-                     TCP_HEADER(lcfg->imsg.m->payload)->syn ? "S" : "",
-                     TCP_HEADER(lcfg->imsg.m->payload)->rst ? "R" : "",
-                     TCP_HEADER(lcfg->imsg.m->payload)->psh ? "P" : "",
-                     TCP_HEADER(lcfg->imsg.m->payload)->ack ? "A" : "",
-                     TCP_HEADER(lcfg->imsg.m->payload)->urg ? "U" : "");
+                     IPV4_SADDR_P(3, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(2, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(1, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(0, lcfg->imsg.m->payload),
+                     ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_sport),
+                     IPV4_TADDR_P(3, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(2, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(1, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(0, lcfg->imsg.m->payload),
+                     ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_dport),
+                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->fin ? "F" : "",
+                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->syn ? "S" : "",
+                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->rst ? "R" : "",
+                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->psh ? "P" : "",
+                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->ack ? "A" : "",
+                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->urg ? "U" : "");
             } else
             if(IPV4_HDRCK(lcfg->imsg.m->payload))
             {
