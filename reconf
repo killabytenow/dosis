@@ -24,6 +24,8 @@
 #
 ###############################################################################
 
+set -e
+
 echo "reconf: Deleting file 'config.cache'..."
 rm -f config.cache
 echo "reconf: aclocal"
@@ -34,4 +36,4 @@ echo "reconf: autoheader"
 autoheader
 echo "reconf: automake -a"
 automake -a
-exit
+exit 0
