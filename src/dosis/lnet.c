@@ -182,7 +182,7 @@ int ln_build_ip_packet(void *buff,
 {
   int poffset = 0, psize;
   union {
-    struct ip *v4;
+    LN_HDR_IPV4   *v4;
     struct ip6_hdr *v6;
   } ip;
 
@@ -214,25 +214,25 @@ int ln_build_ip_packet(void *buff,
   {
     case INET_FAMILY_IPV4:
       /* fill IPv4 header */
-      ip.v4 = (struct ip *) buff;
-      ip.v4->ip_hl  = 5;
-      ip.v4->ip_v   = 4;
-      ip.v4->ip_tos = 0;
-      ip.v4->ip_len = htons(psize);
-      ip.v4->ip_id  = htonl(ip_id); /* IP identification number                */
-      ip.v4->ip_off = 0;
-      ip.v4->ip_ttl = 255;
-      ip.v4->ip_p   = proto;
-      ip.v4->ip_src.s_addr = shost->addr.in.inaddr.s_addr;
-      ip.v4->ip_dst.s_addr = dhost->addr.in.inaddr.s_addr;
-      ip.v4->ip_sum = 0;
+      ip.v4 = (LN_HDR_IPV4 *) buff;
+      ip.v4->version = 4;
+      ip.v4->ihl     = 5;
+      ip.v4->tos = 0;
+      ip.v4->tot_len = htons(psize);
+      ip.v4->id  = htonl(ip_id); /* IP identification number                */
+      ip.v4->frag_off = 0;
+      ip.v4->ttl = 255;
+      ip.v4->protocol   = proto;
+      ip.v4->saddr = shost->addr.in.inaddr.s_addr;
+      ip.v4->daddr = dhost->addr.in.inaddr.s_addr;
+      ip.v4->check = 0;
 
       /* copy data */
       if(data && datasz > 0)
         memcpy(buff + poffset, data, datasz);
 
       /* do checksum */
-      ip.v4->ip_sum = ln_ip_checksum((unsigned short *) buff, 5 << 1);
+      ip.v4->check = ln_ip_checksum((unsigned short *) buff, 5 << 1);
       break;
       
     case INET_FAMILY_IPV6:

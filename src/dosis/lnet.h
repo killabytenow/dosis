@@ -111,7 +111,23 @@ typedef struct __tag_LN_HDR_IPV4
   u_int32_t saddr;
   u_int32_t daddr;
   /*The options start here. */
-} LN_HDR_IPV4;
+} __attribute__((__may_alias__)) LN_HDR_IPV4;
+
+typedef struct __tag_LN_HDR_IPV6
+{
+  union {
+    struct ip6_hdrctl {
+      uint32_t ip6_un1_flow;   /* 4 bits version, 8 bits TC,
+                                  20 bits flow-ID */
+      uint16_t ip6_un1_plen;   /* payload length */
+      uint8_t  ip6_un1_nxt;    /* next header */
+      uint8_t  ip6_un1_hlim;   /* hop limit */
+    } ip6_un1;
+    uint8_t ip6_un2_vfc;       /* 4 bits version, top 4 bits tclass */
+  } ip6_ctlun;
+  struct in6_addr ip6_src;      /* source address */
+  struct in6_addr ip6_dst;      /* destination address */
+} LN_HDR_IPV6;
 
 /*****************************************************************************
  * libnet mngmnt and packet forgering

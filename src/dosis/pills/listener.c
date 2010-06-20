@@ -359,19 +359,19 @@ repeat_search:
                      IPV4_TCP_HDR(lcfg->imsg.m->payload)->ack ? "A" : "",
                      IPV4_TCP_HDR(lcfg->imsg.m->payload)->urg ? "U" : "");
             } else
-            if(IPV4_HDRCK(lcfg->imsg.m->payload))
+            if(IPV4_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
             {
               TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
-                     IP_PROTOCOL(lcfg->imsg.m->payload),
+                     IPV4_PROTOCOL(lcfg->imsg.m->payload),
                      lcfg->imsg.m->data_len,
-                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->saddr),
-                     IPV4_GETP(3, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     IPV4_GETP(2, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     IPV4_GETP(1, IP_HEADER(lcfg->imsg.m->payload)->daddr),
-                     IPV4_GETP(0, IP_HEADER(lcfg->imsg.m->payload)->daddr));
+                     IPV4_SADDR_P(3, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(2, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(1, lcfg->imsg.m->payload),
+                     IPV4_SADDR_P(0, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(3, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(2, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(1, lcfg->imsg.m->payload),
+                     IPV4_TADDR_P(0, lcfg->imsg.m->payload));
             } else {
               TLOG("Malformed IPV4 packet received (%d bytes):", lcfg->imsg.m->data_len);
             }
