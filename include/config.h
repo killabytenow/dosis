@@ -66,13 +66,12 @@ extern "C" {
 #include <sys/uio.h>
 
 /* network hardcore */
-#include <libnet.h>
-#include <libipq.h>
-#include <linux/netfilter.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
 #include <arpa/inet.h>
+#include <linux/netfilter.h>
+#include <libipq.h>
 
 /* Some functions as log functions (d_debug, d_log, d_error ...)     */
 /* have a variable number of parameters so 'stdarg.h' will be needed */
