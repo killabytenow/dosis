@@ -84,18 +84,33 @@ typedef struct __tag_LN_HDR_UDP
   u_int16_t uh_ulen;    /* udp length */
   u_int16_t uh_sum;    /* udp checksum */
 } LN_HDR_UDP;
-typedef struct iphdr LN_HDR_IPV4;
+
+typedef struct __tag_LN_HDR_IPV4
+{
+#ifdef WORDS_BIGENDIAN
+  unsigned int version:4;
+  unsigned int ihl:4;
+#else
+  unsigned int ihl:4;
+  unsigned int version:4;
+#endif
+  u_int8_t tos;
+  u_int16_t tot_len;
+  u_int16_t id;
+  u_int16_t frag_off;
+  u_int8_t ttl;
+  u_int8_t protocol;
+  u_int16_t check;
+  u_int32_t saddr;
+  u_int32_t daddr;
+  /*The options start here. */
+} LN_HDR_IPV4;
 
 /*****************************************************************************
  * libnet mngmnt and packet forgering
  *****************************************************************************/
 
 typedef struct _tag_LN_CONTEXT {
-  libnet_t     *ln;
-  int           ipv4_p;
-  int           udp_p;
-  int           tcp_p;
-  
   /* raw sockets */
   int           rs;
   void         *buff;

@@ -80,9 +80,7 @@ void ln_init_context(LN_CONTEXT *lnc)
 
 void ln_destroy_context(LN_CONTEXT *lnc)
 {
-  if(lnc->ln)
-    libnet_destroy(lnc->ln);
-  if(lnc->rs)
+  if(lnc->rs >= 0)
     close(lnc->rs);
 }
 
@@ -200,8 +198,8 @@ int ln_build_ip_packet(void *buff,
   /* calculate packet size and payload offset */
   if(shost->type != INET_FAMILY_IPV6)
   {
-    psize   = sizeof(struct ip) + datasz;
-    poffset = sizeof(struct ip);
+    psize   = sizeof(LN_HDR_IPV4) + datasz;
+    poffset = sizeof(LN_HDR_IPV4);
   } else {
     /* XXX TODO XXX */
     FAT("ipv6 not implemented.");
