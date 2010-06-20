@@ -133,13 +133,21 @@ dnl ---------------------------------------------------------------------------
 AC_CHECK_HEADERS([getopt.h          \
                   sys/socket.h      \
                   arpa/inet.h       \
-                  libnet.h          \
-                  libipq.h          \
-                  linux/netfilter.h \
-                  pthread.h         \
-                  netinet/in.h],
+                  netinet/in.h      \
+                  pthread.h         ],
                  [],
                  AC_MSG_ERROR([Essential header file not found.]))
+AC_CHECK_HEADERS([linux/netfilter.h \
+                  libipq.h          ],
+                 [],
+                 AC_MSG_ERROR([The netfilter development headers (itpables-dev in debian/ubuntu) are needed.]),
+                 [#ifdef HAVE_ARPA_INET_H
+                  # include <arpa/inet.h>
+                  #endif
+                  #ifdef HAVE_NETINET_IN_H
+                  # include <netinet/in.h>
+                  #endif
+                 ])
 
 AC_CHECK_HEADERS([dlfcn.h], [], [])
 
@@ -158,7 +166,7 @@ AC_CHECK_TYPES([int8_t,   int16_t,   int32_t,   int64_t],   [], [], [#include <s
 AC_CHECK_TYPES([uint8_t,  uint16_t,  uint32_t,  uint64_t],  [], [], [#include <sys/types.h>])
 AC_CHECK_TYPES([u_int8_t, u_int16_t, u_int32_t, u_int64_t], [], [], [#include <sys/types.h>])
 
-AC_CHECK_FUNCS([getopt_long], [], AC_MSG_ERROR([This version of getopt doesn't support long options.]))
+AC_CHECK_FUNCS([getopt_long], [], AC_MSG_ERROR([This version of getopt does not support long options.]))
 
 AC_ARG_WITH([ssl],
             AC_HELP_STRING([--with-ssl], [use ssl (default is YES)]),
@@ -167,7 +175,6 @@ AC_ARG_WITH([ssl],
 
 AC_CHECK_LIB(ipq,        ipq_read,       [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_LIB(m,          floor,          [], AC_MSG_ERROR("Missing math library."))
-AC_CHECK_LIB(net,        libnet_init,    [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_LIB(pthread,    pthread_create, [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_LIB(rt,         clock_gettime,  [], AC_MSG_ERROR("Missing library."))
 AC_CHECK_LIB(dl,         dlopen,         [], [])
