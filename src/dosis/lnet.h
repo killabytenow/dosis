@@ -218,6 +218,8 @@ unsigned ln_get_next_random_port_number(unsigned *n);
                                && IPV4_PROTOCOL(b) == 6                         \
                                && s >= (sizeof(LN_HDR_TCP) + IPV4_HDRSZ(b))   \
                                && s >= (IPV4_TCP_HDRSZ(b) + IPV4_HDRSZ(b)))
+#define IPV4_TCP_DPORT(x)      (IPV4_TCP_HDR(x)->th_dport)
+#define IPV4_TCP_SPORT(x)      (IPV4_TCP_HDR(x)->th_sport)
 
 /* UDPoIPv4 helper macros */
 #define IPV4_UDP_HDR(x)        ((LN_HDR_UDP *) (IPV4_DATA(x)))

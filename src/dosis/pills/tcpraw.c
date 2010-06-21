@@ -64,14 +64,12 @@ static int tcpraw__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned 
   {
     case INET_FAMILY_IPV4:
       /* check msg size and headers */
-      if(size < sizeof(struct iphdr)
-      || IP_PROTOCOL(msg) != 6
-      || size < sizeof(struct tcphdr) + (IP_HEADER(msg)->ihl << 2))
+      if(!IPV4_TCP_HDRCK(msg, size))
         return 0;
 
       /* check msg */
-      return IP_HEADER(msg)->saddr == tc->dhost.addr.addr.in.addr
-          && ntohs(TCP_HEADER(msg)->source) == tc->dhost.port
+      return IPV4_SADDR(msg) == tc->dhost.addr.addr.in.addr
+          && ntohs(IPV4_TCP_SPORT(msg)) == tc->dhost.port
              ? -255 : 0;
 
     case INET_FAMILY_IPV6:
@@ -85,11 +83,12 @@ static int tcpraw__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned 
 static void tcpraw__thread(THREAD_WORK *tw)
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
-  unsigned int seq = libnet_get_prand(LIBNET_PRu32);
+  unsigned int seq;
   unsigned sport, dport;
   int i;
 
   sport = dport = 1337;
+  seq   = NEXT_RAND_PORT(time(NULL));
 
   /* ATTACK */
   while(1)
@@ -104,7 +103,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
       dport = tc->dhost.port >= 0
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
-      seq += libnet_get_prand(LIBNET_PRu16) & 0x00ff;
+      seq += (NEXT_RAND_PORT(seq) & 0x1f);
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr, sport,
                          &tc->dhost.addr, dport,
