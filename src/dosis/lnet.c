@@ -182,8 +182,8 @@ int ln_build_ip_packet(void *buff,
 {
   int poffset = 0, psize;
   union {
-    LN_HDR_IPV4   *v4;
-    struct ip6_hdr *v6;
+    LN_HDR_IPV4 *v4;
+    LN_HDR_IPV6 *v6;
   } ip;
 
   /*
