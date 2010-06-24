@@ -127,7 +127,7 @@ typedef struct __tag_LN_HDR_IPV6
   } ip6_ctlun;
   struct in6_addr ip6_src;      /* source address */
   struct in6_addr ip6_dst;      /* destination address */
-} LN_HDR_IPV6;
+} __attribute__((__may_alias__)) LN_HDR_IPV6;
 
 /*****************************************************************************
  * libnet mngmnt and packet forgering
@@ -194,7 +194,7 @@ unsigned ln_get_next_random_port_number(unsigned *n);
  *****************************************************************************/
 
 /* IP/IPv6 helper macros */
-#define IP_VERSION(x)            (*((unsigned char *) (x)) & 0x0f)
+#define IP_VERSION(x)          (((*((unsigned char *) (x))) >> 4) & 0x0f)
 
 /* IPv4 helper macros */
 #define IPV4_DATA(x)           ((void *) ((x) + IPV4_HDRSZ(x)))
@@ -215,16 +215,18 @@ unsigned ln_get_next_random_port_number(unsigned *n);
 #define IPV4_TCP_HDR(x)        ((LN_HDR_TCP *) (IPV4_DATA(x)))
 #define IPV4_TCP_HDRSZ(x)      (IPV4_TCP_HDR(x)->th_off << 2)
 #define IPV4_TCP_HDRCK(b,s)    (IPV4_HDRCK(b,s)                               \
-                               && IPV4_PROTOCOL(b) == 6                         \
+                               && IPV4_PROTOCOL(b) == 6                       \
                                && s >= (sizeof(LN_HDR_TCP) + IPV4_HDRSZ(b))   \
                                && s >= (IPV4_TCP_HDRSZ(b) + IPV4_HDRSZ(b)))
-#define IPV4_TCP_DPORT(x)      (IPV4_TCP_HDR(x)->th_dport)
-#define IPV4_TCP_SPORT(x)      (IPV4_TCP_HDR(x)->th_sport)
+#define IPV4_TCP_DPORT(x)      ntohs(IPV4_TCP_HDR(x)->th_dport)
+#define IPV4_TCP_SPORT(x)      ntohs(IPV4_TCP_HDR(x)->th_sport)
+#define IPV4_TCP_ACK(x)        ntohl(IPV4_TCP_HDR(x)->th_ack)
+#define IPV4_TCP_SEQ(x)        ntohl(IPV4_TCP_HDR(x)->th_seq)
 
 /* UDPoIPv4 helper macros */
 #define IPV4_UDP_HDR(x)        ((LN_HDR_UDP *) (IPV4_DATA(x)))
 #define IPV4_UDP_HDRCK(b,s)    (IPV4_HDRCK(b,s)                               \
-                               && IPV4_PROTOCOL(b) == 17                        \
+                               && IPV4_PROTOCOL(b) == 17                      \
                                && s >= (sizeof(LN_HDR_UDP) + IPV4_HDRSZ(b)))
 
 void *ln_tcp_get_opt(void *msg, int sz, int sopt);

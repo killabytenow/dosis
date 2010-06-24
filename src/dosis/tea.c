@@ -397,9 +397,7 @@ int tea_thread_listener_search(int proto, char *b, unsigned int l, int pivot_id)
   if(pivot_id < 0 || pivot_id >= cfg.maxthreads)
     pivot_id = 0;
 
-  DBG("Going to look for a listener.");
   pthreadex_lock_get_shared(&ttable_lock);
-  DBG("  looking for a listener.");
 
   tid = pivot_id;
   do {
@@ -462,7 +460,6 @@ int tea_thread_msg_push(int tid, INET_ADDR *addr, void *msg, int msg_size)
          msg_set_addr(tmsg, addr);
       msg_fill(tmsg, msg, msg_size);
       mqueue_push(ttable[tid]->mqueue, tmsg);
-      DBG("  message pushed to %d.", tid);
       pthreadex_flag_up(&(ttable[tid]->mwaiting));
     } else
       DBG("  message ignored by %d", tid);

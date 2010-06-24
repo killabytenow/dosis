@@ -158,7 +158,7 @@ static int slowy__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned i
 
       /* check msg */
       return IPV4_HDR(msg)->saddr == tc->dhost.addr.addr.in.addr
-          && ntohs(IPV4_TCP_SPORT(msg)) == tc->dhost.port
+          && IPV4_TCP_SPORT(msg) == tc->dhost.port
              ? -1 : 0;
 
     case INET_FAMILY_IPV6:
@@ -192,7 +192,7 @@ static void slowy__listen(THREAD_WORK *tw)
         {
           /* send request in one TCP packet */
           ln_send_tcp_packet(tc->lnc,
-                             &tc->shost.addr, ntohs(IPV4_TCP_DPORT(m->b)),
+                             &tc->shost.addr, IPV4_TCP_DPORT(m->b),
                              &tc->dhost.addr, tc->dhost.port,
                              LN_TH_ACK | LN_TH_PUSH,
                              ntohs(c->window),
@@ -247,7 +247,7 @@ static void slowy__listen(THREAD_WORK *tw)
         TDBG2("  # (%d) sending handshake", c->sport);
         TERR("  # (%d) window %d", c->sport, c->window);
         ln_send_tcp_packet(tc->lnc,
-                           &tc->shost.addr, ntohs(IPV4_TCP_DPORT(m->b)),
+                           &tc->shost.addr, IPV4_TCP_DPORT(m->b),
                            &tc->dhost.addr, tc->dhost.port,
                            c->flags,
                            c->window,
@@ -303,7 +303,7 @@ static void slowy__listen(THREAD_WORK *tw)
         /*   - (fin) schedule fin/ack packet */
         if(!IPV4_TCP_HDR(m->b)->rst)
           ln_send_tcp_packet(tc->lnc,
-                             &tc->shost.addr, ntohs(IPV4_TCP_DPORT(m->b)),
+                             &tc->shost.addr, IPV4_TCP_DPORT(m->b),
                              &tc->dhost.addr, tc->dhost.port,
                              LN_TH_FIN | LN_TH_ACK,
                              ntohs(IPV4_TCP_HDR(m->b)->th_win),

@@ -262,11 +262,9 @@ static void listener__thread(THREAD_WORK *tw)
     pthreadex_mutex_begin(&ipq_mutex);
     if(ipq_on)
     {
-      TDBG("Going to read...");
       r = ipqex_msg_read(&lcfg->imsg, 1000000);
       if(r < 0)
         TERR("Error reading from IPQ: %s", lcfg->imsg.err.str);
-      TDBG("  ipqex_msg_read finished.");
     } else
       r = -1;
     pthreadex_mutex_end();
@@ -293,6 +291,73 @@ DBG("Analizing packet proto = %d", proto);
              lcfg->imsg.m->hw_type);
     }
 
+    if(lcfg->debug)
+    {
+      switch(proto)
+      {
+        case INET_FAMILY_IPV4:
+          if(IPV4_UDP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
+          {
+            TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
+                   lcfg->imsg.m->data_len,
+                   IPV4_SADDR_P(3, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(2, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(1, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(0, lcfg->imsg.m->payload),
+                   ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_sport),
+                   IPV4_TADDR_P(3, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(2, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(1, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(0, lcfg->imsg.m->payload),
+                   ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_dport));
+          } else
+          if(IPV4_TCP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
+          {
+            TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
+                   lcfg->imsg.m->data_len,
+                   IPV4_SADDR_P(3, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(2, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(1, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(0, lcfg->imsg.m->payload),
+                   ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_sport),
+                   IPV4_TADDR_P(3, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(2, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(1, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(0, lcfg->imsg.m->payload),
+                   ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_dport),
+                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->fin ? "F" : "",
+                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->syn ? "S" : "",
+                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->rst ? "R" : "",
+                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->psh ? "P" : "",
+                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->ack ? "A" : "",
+                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->urg ? "U" : "");
+          } else
+          if(IPV4_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
+          {
+            TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
+                   IPV4_PROTOCOL(lcfg->imsg.m->payload),
+                   lcfg->imsg.m->data_len,
+                   IPV4_SADDR_P(3, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(2, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(1, lcfg->imsg.m->payload),
+                   IPV4_SADDR_P(0, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(3, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(2, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(1, lcfg->imsg.m->payload),
+                   IPV4_TADDR_P(0, lcfg->imsg.m->payload));
+          } else {
+            TLOG("Malformed IPV4 packet received (%d bytes):", lcfg->imsg.m->data_len);
+          }
+          break;
+        case INET_FAMILY_IPV6:
+          TLOG("IPv6 packet received (%d bytes):", lcfg->imsg.m->data_len);
+          break;
+        default:
+          TLOG("Unknown protocol %d packet received (%d bytes):", proto, lcfg->imsg.m->data_len);
+      }
+      TDUMP(LOG_LEVEL_LOG, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+    }
+
 repeat_search:
     id = proto != 0
            ? tea_thread_listener_search(proto, (char *) lcfg->imsg.m->payload, lcfg->imsg.m->data_len, id+1)
@@ -317,73 +382,9 @@ repeat_search:
         pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
         pthread_testcancel();
         goto repeat_search;
-      }
-      if(lcfg->debug)
-      {
-        switch(proto)
-        {
-          case INET_FAMILY_IPV4:
-            if(IPV4_UDP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
-            {
-              TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
-                     lcfg->imsg.m->data_len,
-                     IPV4_SADDR_P(3, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(2, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(1, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(0, lcfg->imsg.m->payload),
-                     ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_sport),
-                     IPV4_TADDR_P(3, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(2, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(1, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(0, lcfg->imsg.m->payload),
-                     ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_dport));
-            } else
-            if(IPV4_TCP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
-            {
-              TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
-                     lcfg->imsg.m->data_len,
-                     IPV4_SADDR_P(3, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(2, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(1, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(0, lcfg->imsg.m->payload),
-                     ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_sport),
-                     IPV4_TADDR_P(3, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(2, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(1, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(0, lcfg->imsg.m->payload),
-                     ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_dport),
-                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->fin ? "F" : "",
-                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->syn ? "S" : "",
-                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->rst ? "R" : "",
-                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->psh ? "P" : "",
-                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->ack ? "A" : "",
-                     IPV4_TCP_HDR(lcfg->imsg.m->payload)->urg ? "U" : "");
-            } else
-            if(IPV4_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
-            {
-              TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
-                     IPV4_PROTOCOL(lcfg->imsg.m->payload),
-                     lcfg->imsg.m->data_len,
-                     IPV4_SADDR_P(3, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(2, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(1, lcfg->imsg.m->payload),
-                     IPV4_SADDR_P(0, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(3, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(2, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(1, lcfg->imsg.m->payload),
-                     IPV4_TADDR_P(0, lcfg->imsg.m->payload));
-            } else {
-              TLOG("Malformed IPV4 packet received (%d bytes):", lcfg->imsg.m->data_len);
-            }
-            break;
-          case INET_FAMILY_IPV6:
-            TLOG("IPv6 packet received (%d bytes):", lcfg->imsg.m->data_len);
-            break;
-          default:
-            TLOG("Unknown protocol %d packet received (%d bytes):", proto, lcfg->imsg.m->data_len);
-        }
-        TDUMP(LOG_LEVEL_LOG, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
-      }
+      } else
+        if(lcfg->debug)
+          TLOG("Packet pushed to thread %d", id);
 
       /* ok... msg pushed (accepted) so drop package */
       pthreadex_mutex_begin(&ipq_mutex);
@@ -409,6 +410,8 @@ repeat_search:
       {
         if(ipqex_set_verdict(&lcfg->imsg, NF_ACCEPT) <= 0)
           TERR("Cannot ACCEPT IPQ packet.");
+        if(lcfg->debug)
+          TLOG("Packet not handled - ACCEPTED");
       }
       pthreadex_mutex_end();
     }

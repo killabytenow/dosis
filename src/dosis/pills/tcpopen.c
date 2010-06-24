@@ -69,7 +69,7 @@ static int tcpopen__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned
 
       /* check msg */
       return IPV4_SADDR(msg) == tc->dhost.addr.addr.in.addr
-          && ntohs(IPV4_TCP_SPORT(msg)) == tc->dhost.port
+          && IPV4_TCP_SPORT(msg) == tc->dhost.port
              ? -1 : 0;
 
     case INET_FAMILY_IPV6:
@@ -87,12 +87,12 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
 
   /* send handshake and data TCP packet */
 DBG("Building TCP-ACK packet...");
-  if((t = msg_build_ip_tcp_packet(&tc->shost.addr, ntohs(IPV4_TCP_DPORT(m->b)),
-                                  &tc->dhost.addr, ntohs(IPV4_TCP_SPORT(m->b)),
+  if((t = msg_build_ip_tcp_packet(&tc->shost.addr, IPV4_TCP_DPORT(m->b),
+                                  &tc->dhost.addr, IPV4_TCP_SPORT(m->b),
                                   LN_TH_ACK,
                                   tc->tcp_win,
-                                  ntohl(IPV4_TCP_HDR(m->b)->th_ack),
-                                  ntohl(IPV4_TCP_HDR(m->b)->th_seq) + 1,
+                                  IPV4_TCP_ACK(m->b),
+                                  IPV4_TCP_SEQ(m->b) + 1,
                                   NULL, 0,
                                   NULL, 0)) == NULL)
     TFAT("Cannot build syn packet.");
@@ -100,12 +100,12 @@ DBG("Enqueuing TCP-ACK packet...");
   tea_thread_msg_send(&tc->lnc, t, tc->delay);
 
 DBG("Building TCP-ACK-DATA-PUSH packet...");
-  if((t = msg_build_ip_tcp_packet(&tc->shost.addr, ntohs(IPV4_TCP_DPORT(m->b)),
-                                  &tc->dhost.addr, ntohs(IPV4_TCP_SPORT(m->b)),
+  if((t = msg_build_ip_tcp_packet(&tc->shost.addr, IPV4_TCP_DPORT(m->b),
+                                  &tc->dhost.addr, IPV4_TCP_SPORT(m->b),
                                   LN_TH_ACK | LN_TH_PUSH,
                                   tc->tcp_win,
-                                  ntohl(IPV4_TCP_HDR(m->b)->th_ack),
-                                  ntohl(IPV4_TCP_HDR(m->b)->th_seq) + 1,
+                                  IPV4_TCP_ACK(m->b),
+                                  IPV4_TCP_SEQ(m->b) + 1,
                                   (char *) tc->payload.data, tc->payload.size,
                                   NULL, 0)) == NULL)
     TFAT("Cannot build ack packet.");
@@ -125,16 +125,17 @@ static void tcpopen__thread(THREAD_WORK *tw)
     /* check for messages */
     m = tea_thread_msg_wait(tw);
 
-    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d (rst=%d,syn=%d,ack=%d) => [%08x/%08x] >>",
+    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d [%s%s%s%s] => [%08x/%08x] >>",
             IPV4_PROTOCOL(m->b),
             IPV4_SADDR_P(3, m->b),
             IPV4_SADDR_P(2, m->b),
             IPV4_SADDR_P(1, m->b),
             IPV4_SADDR_P(0, m->b),
             IPV4_TCP_DPORT(m->b), tc->dhost.port,
-            IPV4_TCP_HDR(m->b)->rst,
-            IPV4_TCP_HDR(m->b)->syn,
-            IPV4_TCP_HDR(m->b)->ack,
+            IPV4_TCP_HDR(m->b)->rst ? "R" : "",
+            IPV4_TCP_HDR(m->b)->syn ? "S" : "",
+            IPV4_TCP_HDR(m->b)->psh ? "P" : "",
+            IPV4_TCP_HDR(m->b)->ack ? "A" : "",
             IPV4_SADDR(m->b), tc->shost.addr.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */

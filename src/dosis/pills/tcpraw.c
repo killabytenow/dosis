@@ -69,7 +69,7 @@ static int tcpraw__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned 
 
       /* check msg */
       return IPV4_SADDR(msg) == tc->dhost.addr.addr.in.addr
-          && ntohs(IPV4_TCP_SPORT(msg)) == tc->dhost.port
+          && IPV4_TCP_SPORT(msg) == tc->dhost.port
              ? -255 : 0;
 
     case INET_FAMILY_IPV6:

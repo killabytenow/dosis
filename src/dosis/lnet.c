@@ -271,8 +271,8 @@ int ln_build_tcp_packet(void *buff,
   tcph = (LN_HDR_TCP *) buff;
   tcph->th_sport = htons(sport);
   tcph->th_dport = htons(dport);
-  tcph->th_seq   = seq;
-  tcph->th_ack   = ack;
+  tcph->th_seq   = htonl(seq);
+  tcph->th_ack   = htonl(ack);
   tcph->th_x2    = 0;
   tcph->th_off   = 5 + ((optssz + 3) >> 2);
   tcph->th_flags = flags;
