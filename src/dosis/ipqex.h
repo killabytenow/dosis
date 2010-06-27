@@ -39,21 +39,23 @@
                                                       (x)->m->packet_id,  \
                                                       (y), 0, NULL)
 
+#define IPQEX_ERR_MAXL  255
+
 typedef struct _tag_ipqex_info_t {
-  struct ipq_handle *ipqh;    /* ipq handle                  */
-  unsigned int       bufsize; /* buffer size                 */
+  struct ipq_handle *ipqh;                /* ipq handle                  */
+  unsigned int       bufsize;             /* buffer size                 */
+  char               err[IPQEX_ERR_MAXL]; /* buffer for error messages   */
 } ipqex_info_t;
 
 typedef struct _tag_ipqex_msg_t {
-  ipqex_info_t     *i;        /* pointer to IPQ handler info */
-  int               s;        /* state (0 w/o data)          */
-  unsigned char    *b;        /* packet buffer               */
+  ipqex_info_t     *i;                    /* pointer to IPQ handler info */
+  int               s;                    /* state (0 w/o data)          */
+  unsigned char    *b;                    /* packet buffer               */
   union {
-    ipq_packet_msg_t *m;      /* (state > 0) packet msg      */
-    struct {                  /* (state < 0)                 */
-      int           ipq;      /*   ipq error code            */
-      int           errnum;   /*   errorno code              */
-      char         *str;      /*   error description         */
+    ipq_packet_msg_t *m;                  /* (state > 0) packet msg      */
+    struct {                              /* (state < 0)                 */
+      int           ipq;                  /*   ipq error code            */
+      int           errnum;               /*   errorno code              */
     } err;
   };
 } ipqex_msg_t;

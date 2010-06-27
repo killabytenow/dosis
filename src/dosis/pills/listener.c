@@ -68,11 +68,11 @@ static void listener__global_fini(void)
 
   /* restore ipforward */
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
+    GFAT_ERRNO("/proc/sys/net/ipv4/ip_forward");
   buf[0] = ip_forward_status;
   buf[1] = '\n';
   if(write(f, buf, 2) < 0)
-    GFAT("Cannot set ip_forward: %s", strerror(errno));
+    GFAT_ERRNO("Cannot set ip_forward");
   close(f);
 
   /* restore iptables */
@@ -82,17 +82,17 @@ static void listener__global_fini(void)
     /* restore iptables state */
     close(0);
     if(open(iptables_tmp, O_RDONLY) < 0)
-      GFAT("Cannot read %s: %s", iptables_tmp, strerror(errno));
+      GFAT_ERRNO("Cannot read %s", iptables_tmp);
     execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
     /* if this code is executed, we have an error */
-    GFAT("/sbin/iptables-restore: %s", strerror(errno));
+    GFAT_ERRNO("/sbin/iptables-restore");
   }
   /* parent */
   waitpid(pid, &r, 0);
   if(r != 0)
     GFAT("iptables-restore failed.");
   if(unlink(iptables_tmp) < 0)
-    GFAT("Cannot unlink %s: %s", iptables_tmp, strerror(errno));
+    GFAT_ERRNO("Cannot unlink %s", iptables_tmp);
 
   /* XXX: commented... is necesary until program exit */
   /* pthreadex_mutex_destroy(&ipq_mutex); */
@@ -111,7 +111,7 @@ static void apply_iptables_script(char **script)
   for(a = script; *a; )
   {
     if(pipe(p) < 0)
-        GFAT("Cannot pipe: %s", strerror(errno));
+        GFAT_ERRNO("Cannot pipe");
 
     if((pid = dosis_fork()) == 0)
     {
@@ -119,18 +119,18 @@ static void apply_iptables_script(char **script)
       close(p[0]);
       close(1);
       close(2);
-      if(dup(p[1]) < 0) GFAT("Cannot dup(1): %s", strerror(errno));
-      if(dup(p[1]) < 0) GFAT("Cannot dup(2): %s", strerror(errno));
+      if(dup(p[1]) < 0) GFAT_ERRNO("Cannot dup(1)");
+      if(dup(p[1]) < 0) GFAT_ERRNO("Cannot dup(2)");
 
       /* child */
       execv(a[0], a);
-      GFAT("Cannot execute /sbin/iptables: %s", strerror(errno));
+      GFAT_ERRNO("Cannot execute /sbin/iptables");
     }
 
     /* write output to log */
     close(p[1]);
     if((f = fdopen(p[0], "r")) == NULL)
-      GFAT("Cannot fdopen pipe: %s", strerror(errno));
+      GFAT_ERRNO("Cannot fdopen pipe");
 
     while(fgets(buff, sizeof(buff), f) != NULL)
     {
@@ -183,17 +183,17 @@ static void listener__global_init(void)
   /* read/change ipforward */
   GDBG2("Enable ip_forward flag.");
   if((f = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY)) < 0)
-    GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
+    GFAT_ERRNO("/proc/sys/net/ipv4/ip_forward");
   r = read(f, &ip_forward_status, 1);
   if(r == 0)
     GFAT("Invalid ip_forward content.");
   if(r < 0)
-    GFAT("Cannot read ip_forward status: %s", strerror(errno));
+    GFAT_ERRNO("Cannot read ip_forward status");
   close(f);
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    GFAT("/proc/sys/net/ipv4/ip_forward: %s", strerror(errno));
+    GFAT_ERRNO("/proc/sys/net/ipv4/ip_forward");
   if(write(f, "1\n", 2) < 0)
-    GFAT("Cannot write ip_forward status: %s", strerror(errno));
+    GFAT_ERRNO("Cannot write ip_forward status");
   close(f);
 
   /* prepare the ipqueue */
@@ -206,11 +206,11 @@ static void listener__global_init(void)
       /* save iptables state */
       close(1);
       if(dup(f) < 0)
-        GFAT("Cannot dup: %s", strerror(errno));
+        GFAT_ERRNO("Cannot dup");
       close(f);
       execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
       /* if this code is executed, we have an error */
-      GFAT("Cannot execute /sbin/iptables-save: %s", strerror(errno));
+      GFAT_ERRNO("Cannot execute /sbin/iptables-save");
   }
   /* here continues parent */
   close(f);
@@ -264,7 +264,7 @@ static void listener__thread(THREAD_WORK *tw)
     {
       r = ipqex_msg_read(&lcfg->imsg, 1000000);
       if(r < 0)
-        TERR("Error reading from IPQ: %s", lcfg->imsg.err.str);
+        TERR("Error reading from IPQ: %s", ipq.err);
     } else
       r = -1;
     pthreadex_mutex_end();
@@ -449,7 +449,7 @@ static int listener__configure(THREAD_WORK *tw, SNODE *command, int first_time)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(listener_cfg_def)
-  TOC("debug", TEA_TYPE_BOOL, 0, LISTENER_CFG, debug, NULL)
+  TOC("debug",  TEA_TYPE_BOOL,   0, LISTENER_CFG, debug, NULL)
 TOC_END
 
 TEA_OBJECT teaLISTENER = {

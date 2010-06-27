@@ -81,7 +81,7 @@ int ipqex_msg_read(ipqex_msg_t *m, int timeout)
   /* be optimistic */
   m->err.ipq    = 0;
   m->err.errnum = 0;
-  m->err.str    = NULL;
+  *m->i->err    = '\0';
 
   /* read packet */
   m->s = ipq_read(m->i->ipqh, m->b, m->i->bufsize, timeout);
@@ -92,7 +92,7 @@ int ipqex_msg_read(ipqex_msg_t *m, int timeout)
     /* Input/output error */
     m->err.ipq    = 0;
     m->err.errnum = errno;
-    m->err.str    = strerror(m->err.errnum);
+    strerror_r(m->err.errnum, m->i->err, IPQEX_ERR_MAXL);
   } else
   if(m->s > 0)
   {
@@ -102,7 +102,7 @@ int ipqex_msg_read(ipqex_msg_t *m, int timeout)
         m->s            = -1;
         m->err.ipq    = ipq_get_msgerr(m->b);
         m->err.errnum = errno;
-        m->err.str    = ipq_errstr();
+        strncpy(m->i->err, ipq_errstr(), IPQEX_ERR_MAXL);
         break;
 
       case IPQM_PACKET:
@@ -114,7 +114,7 @@ int ipqex_msg_read(ipqex_msg_t *m, int timeout)
         m->s            = -1;
         m->err.ipq    = 0;
         m->err.errnum = 74;
-        m->err.str    = strerror(m->err.errnum);
+        strerror_r(m->err.errnum, m->i->err, IPQEX_ERR_MAXL);
     }
   }
 
