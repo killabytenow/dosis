@@ -31,7 +31,7 @@
 
 /* default config and global configuration pointer */
 DOS_CONFIG cfg = {
-  /* verbosity        */ LOG_LEVEL_WARNING,
+  /* verbosity        */ LOG_LEVEL_LOG,
   /* output filename  */ NULL,
   /* script filename  */ NULL,
   /* max threads      */ 100,
@@ -110,6 +110,19 @@ static void dos_config_parse_command(int argc, char **argv)
           break;
       case 'q':
           cfg.verbosity = 0;
+          break;
+      case 'i':
+          {
+            int i;
+            if(!optarg || strlen(optarg) == 0)
+              FAT("Required interface.");
+            for(i = 0; i < MAX_INTERFACES && cfg.interfaces[i]; i++)
+              ;
+            if(i >= MAX_INTERFACES)
+              FAT("No space for more interfaces.");
+            if((cfg.interfaces[i] = strdup(optarg)) == NULL)
+              FAT("No mem for interface.");
+          }
           break;
       case 'I':
           if(!optarg || strlen(optarg) == 0)
