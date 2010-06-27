@@ -54,6 +54,29 @@ typedef struct _tag_TEA_OBJCFG {
   unsigned  offset;
   int       (*handler)(struct _tag_TEA_OBJCFG *oc, THREAD_WORK *tw);
 } TEA_OBJCFG;
+
+/* TOC MACROS
+ * 
+ * These macros make easy to build the list of configuration parameters used by
+ * a TEA object (a list of TEA_OBJCFG structures).
+ *
+ *   TOC_BEGIN(x)
+ *     Creates a new TOC named 'x'.
+ *   TOC(n,t,m,s,f,h)
+ *     Creates a new entry. Must be used in a block delimited by TOC_BEGIN()
+ *     and TOC_END() macro calls.
+ *     Parameters:
+ *       n   String with name of configuration parameter (ie 'debug')
+ *       t   Type of this config param (see teatypes.h)
+ *       m   If it is different of zero it is a mandatory parameter and must be
+ *           defined, by default or explicitily.
+ *       s   Structure type that contains this param
+ *       f   Field where write the config readed
+ *       h   Handler function (callback) that will be invoked if this parameter
+ *           is defined.
+ *   TOC_END
+ *     Closes a TOC block.
+ */
 #define TOC_BEGIN(x)     TEA_OBJCFG x[] = {
 #define TOC(n,t,m,s,f,h) { n, t##_ID, m, offsetof(s, f), h },
 #define TOC_END          { NULL, 0, 0, 0 } };
