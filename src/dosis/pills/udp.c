@@ -99,7 +99,7 @@ static void udp__thread(THREAD_WORK *tw)
     /* wait for work */
     if(tu->hitratio > 0)
       if(pthreadex_timer_wait(&(tu->timer)) < 0)
-        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
+        TERR_ERRNO("Error at pthreadex_timer_wait()");
 
     /* build UDP packet with payload (if requested) */
     TDBG2("Sending %d packet(s)...", tu->npackets);

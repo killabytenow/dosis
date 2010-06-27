@@ -320,11 +320,7 @@ int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
         case ETIMEDOUT: /* do nothing really ... */
           break;
         default:
-          {
-            char buff[512];
-            strerror_r(e, buff, sizeof(buff));
-            ERR("Error at pthread_cond_timedwait(): %s", buff);
-          }
+          ERR_ERRNO("Error at pthread_cond_timedwait()");
       }
     } else
       e = pthread_cond_wait(&flag->flag_up, &flag->lock);

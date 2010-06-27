@@ -812,15 +812,15 @@ char *script_get_data(SNODE *n, unsigned int *size)
       s = dosis_search_file(s2);
       free(s2);
       if(stat(s, &pls) < 0)
-        FAT("%d: Cannot stat file '%s': %s", n->line, s, strerror(errno));
+        FAT_ERRNO("%d: Cannot stat file '%s'", n->line, s);
       *size = pls.st_size;
       if((buffer = malloc(*size + 1)) == NULL)
         FAT("%d: Cannot alloc %d bytes for payload.", n->line, *size);
       buffer[*size] = '\0';
       if((f = open(s, O_RDONLY)) < 0)
-        FAT("%d: Cannot open payload: %s", n->line, strerror(errno));
+        FAT_ERRNO("%d: Cannot open payload", n->line);
       if(read(f, buffer, *size) < *size)
-        FAT("%d: Cannot read the payload file: %s", n->line, strerror(errno));
+        FAT_ERRNO("%d: Cannot read the payload file", n->line);
       close(f);
       free(s);
       break;

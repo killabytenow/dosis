@@ -104,25 +104,29 @@ int      tea_thread_listener_search(int proto, char *b, unsigned int l, int pivo
 int      tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay);
 
 /*- THREAD LOG UTILITIES ----------------------------------------------------*/
-#define GFAT(msg, ...)   FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)
-#define GERR(msg, ...)   ERR("[%s] " msg, MODNAME, ## __VA_ARGS__)
-#define GWRN(msg, ...)   WRN("[%s] " msg, MODNAME, ## __VA_ARGS__)
-#define GLOG(msg, ...)   LOG("[%s] " msg, MODNAME, ## __VA_ARGS__)
-#define GDBG(msg, ...)   DBG("[%s] " msg, MODNAME, ## __VA_ARGS__)
-#define GDBG2(msg, ...)  DBG2("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GFAT(msg, ...)       FAT("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GERR(msg, ...)       ERR("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GWRN(msg, ...)       WRN("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GLOG(msg, ...)       LOG("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GDBG(msg, ...)       DBG("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GDBG2(msg, ...)      DBG2("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GFAT_ERRNO(msg, ...) FAT_ERRNO("[%s] " msg, MODNAME, ## __VA_ARGS__)
+#define GERR_ERRNO(msg, ...) ERR_ERRNO("[%s] " msg, MODNAME, ## __VA_ARGS__)
 
-#define TFAT(msg, ...)   FAT("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
-#define TERR(msg, ...)   ERR("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
-#define TWRN(msg, ...)   WRN("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
-#define TLOG(msg, ...)   LOG("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
-#define TDBG(msg, ...)   DBG("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
-#define TDBG2(msg, ...)  DBG2("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
-#define TDUMP(l,b,s)     {                                                \
-                           char __dump_prefix[256];                       \
-                           snprintf(__dump_prefix, sizeof(__dump_prefix), \
-                                    "[%d/%s] ", tw->id, tw->to->name);    \
-                           DUMP(l, __dump_prefix, b, s);                  \
-                         }
+#define TFAT(msg, ...)       FAT("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TERR(msg, ...)       ERR("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TWRN(msg, ...)       WRN("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TLOG(msg, ...)       LOG("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TDBG(msg, ...)       DBG("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TDBG2(msg, ...)      DBG2("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TFAT_ERRNO(msg, ...) FAT_ERRNO("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TERR_ERRNO(msg, ...) ERR_ERRNO("[%d/%s] " msg, tw->id, tw->to->name, ## __VA_ARGS__)
+#define TDUMP(l,b,s)         {                                                \
+                               char __dump_prefix[256];                       \
+                               snprintf(__dump_prefix, sizeof(__dump_prefix), \
+                                        "[%d/%s] ", tw->id, tw->to->name);    \
+                               DUMP(l, __dump_prefix, b, s);                  \
+                             }
 
 /*- CORE --------------------------------------------------------------------*/
 void tea_init(void);

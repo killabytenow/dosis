@@ -47,6 +47,16 @@ extern "C" {
 #define LOG(...)              d_log_level(LOG_LEVEL_LOG,     THIS, __VA_ARGS__)
 #define DBG(...)              d_log_level(LOG_LEVEL_DEBUG,   THIS, __VA_ARGS__) 
 #define DBG2(...)             d_log_level(LOG_LEVEL_DEBUG2,  THIS, __VA_ARGS__)
+#define ERR_ERRNO(f, ...)     {                                               \
+                                char __ed[255];                               \
+                                strerror_r(errno,  __ed, sizeof(__ed));       \
+                                ERR(f ": %s", ## __VA_ARGS__, __ed);          \
+                              }
+#define FAT_ERRNO(f, ...)     {                                               \
+                                char __ed[255];                               \
+                                strerror_r(errno,  __ed, sizeof(__ed));       \
+                                FAT(f ": %s", ## __VA_ARGS__, __ed);          \
+                              }
 
 #define DUMP(l,p,b,s)         d_dump(l, THIS, p, b, s)
 #define STACKTRACE(...)       d_stacktrace(THIS, __VA_ARGS__)

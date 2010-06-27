@@ -53,12 +53,10 @@ unsigned ln_get_next_random_port_number(unsigned *n)
 
 void ln_init_context(LN_CONTEXT *lnc)
 {
-  char err[1024];
   const int one = 1;
 
   if((lnc->rs = socket(PF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
   {
-    strerror_r(errno, err, sizeof(err));
     if(errno == EPERM)
     {
       ERR("-------------------------------------------------------------------------");
@@ -66,13 +64,10 @@ void ln_init_context(LN_CONTEXT *lnc)
       ERR("effective user ID of 0 (root) or the CAP_NET_RAW attribute may do that.");
       ERR("-------------------------------------------------------------------------");
     }
-    FAT("Cannot open a raw socket: %s", err);
+    FAT_ERRNO("Cannot open a raw socket");
   }
   if(setsockopt(lnc->rs, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0)
-  {
-    strerror_r(errno, err, sizeof(err));
-    FAT("Cannot set HDRINCL: %s", err);
-  }
+    FAT_ERRNO("Cannot set HDRINCL");
   if((lnc->buff = malloc(LN_DEFAULT_BUFF_SIZE)) == NULL)
     FAT("Cannot make space for local buffer.");
   lnc->buff_size = LN_DEFAULT_BUFF_SIZE;
@@ -462,9 +457,7 @@ int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *a)
   if(sendto(lnc->rs, buff, sz,
             0, &bs.sa, sizeof(struct sockaddr)) < 0)
   {
-    char err[1024];
-    strerror_r(errno, err, sizeof(err));
-    ERR("Cannot send packet: %s", err);
+    ERR_ERRNO("Cannot send packet");
 FAT("XXX");
     return -1;
   }

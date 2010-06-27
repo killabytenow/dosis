@@ -325,7 +325,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
   {
-    ERR("Error creating thread %d: %s", tid, strerror(errno));
+    ERR_ERRNO("Error creating thread %d", tid);
     goto fatal;
   }
 
@@ -372,14 +372,14 @@ static void tea_thread_stop(int tid)
       errno = 0;
     }
     if(r != 0)
-      ERR("[kill %d] Cannot detach thread:(%d) %s", tid, errno, strerror(errno));
+      ERR_ERRNO("[kill %d] Cannot detach thread", tid);
     while((r = pthread_cancel(tw->pthread_id)) != 0 && errno == EINTR)
     {
       DBG("[kill %d] Cancel EINTR; repeating pthread_cancel()", tid);
       errno = 0;
     }
     if(r != 0)
-      ERR("[kill %d] Cannot cancel thread: %s", tid, strerror(errno));
+      ERR_ERRNO("[kill %d] Cannot cancel thread", tid);
 
     DBG("[kill %d] KILLED!", tid);
   } else {

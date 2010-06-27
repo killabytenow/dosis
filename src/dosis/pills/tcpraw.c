@@ -117,7 +117,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
     /* now wait for more work */
     if(tc->hitratio > 0)
       if(pthreadex_timer_wait(&(tc->timer)) < 0)
-        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
+        TERR_ERRNO("Error at pthreadex_timer_wait()");
 
   }
 }
