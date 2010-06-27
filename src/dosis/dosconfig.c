@@ -277,7 +277,7 @@ void dos_get_addresses(void)
     if((ifc.ifc_req = realloc(ifc.ifc_req, ifc.ifc_len)) == NULL)
       FAT("Out of memory.\n");
     if(ioctl(sockfd, SIOCGIFCONF, &ifc))
-      FAT("Cannot ioctl SIOCFIFCONF: %s", strerror(errno));
+      FAT_ERRNO("Cannot ioctl SIOCFIFCONF");
   } while(size <= ifc.ifc_len);
 
   /* get the info! */
@@ -413,7 +413,7 @@ int dosis_fork(void)
 
   r = fork();
   if(r < 0)
-    FAT("Cannot fork: %s", strerror(errno));
+    FAT_ERRNO("Cannot fork");
   if(r == 0)
     dosis_forked = -1;
 
@@ -625,7 +625,7 @@ void dos_config_init(int argc, char **argv)
   {
     close(0);
     if(open(cfg.script, O_RDONLY) < 0)
-      FAT("Cannot read file '%s': %s.", argv[optind], strerror(errno));
+      FAT_ERRNO("Cannot read file '%s'", argv[optind]);
   } else
     WRN("Reading standard input.");
 }
