@@ -48,6 +48,7 @@ typedef struct _tag_TCP_CFG {
   TEA_TYPE_FLOAT     hitratio;
 
   /* other things */
+  char              *thread_buff;
   int                sock;
   pthreadex_timer_t  timer;
   struct timeval     sockwait_cwait;
@@ -167,7 +168,7 @@ static void tcp__thread(THREAD_WORK *tw)
     /* wait for work */
     if(tt->hitratio > 0)
       if(pthreadex_timer_wait(&(tt->timer)) < 0)
-        TERR("Error at pthreadex_timer_wait(): %s", strerror(errno));
+        TERR_ERRNO("Error at pthreadex_timer_wait()");
 
     /*** CONNECTION **********************************************************/
     TDBG2("  Connecting...");
@@ -177,7 +178,7 @@ static void tcp__thread(THREAD_WORK *tw)
     tt->sock = socket(PF_INET, SOCK_STREAM, 0);
     if(tt->sock < 0)
     {
-      TERR("socket() failed (%s)", strerror(errno));
+      TERR_ERRNO("socket() failed");
       continue;
     }
 
@@ -188,7 +189,7 @@ static void tcp__thread(THREAD_WORK *tw)
     if(connect(tt->sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0
     && errno != EINPROGRESS)
     {
-      TERR("connect() 1 failed:%s", strerror(errno));
+      TERR_ERRNO("connect() 1 failed");
       close(tt->sock);
       continue;
     } else
@@ -210,7 +211,7 @@ static void tcp__thread(THREAD_WORK *tw)
     if(connect(tt->sock, &tt->dsockaddr, sizeof(struct sockaddr_in)) < 0)
     {
       /* XXX: Se puede llegar aqui porque aún no ha conectado :) */
-      TERR("connect() 2 failed: %s", strerror(errno));
+      TERR_ERRNO("connect() 2 failed");
       close(tt->sock);
       continue;
     }
@@ -260,30 +261,53 @@ static void tcp__thread(THREAD_WORK *tw)
     r = select(tt->sock+1, &socks, NULL, NULL, &sockwait);
     if(!FD_ISSET(tt->sock, &socks))
     {
-      TERR("select() error %d: %s", r, strerror(errno));
+      TERR_ERRNO("select() error %d", r);
       continue;
     }
-    fcntl(tt->sock,F_SETFL,sopts);
+    fcntl(tt->sock, F_SETFL, sopts);
 
     /* Rediret to /dev/null :) */
     if(tt->debug)
     {
-      while((r = SSL_read(tt->ssl_conn, nullbuff, sizeof(nullbuff))) > 0)
+      /* get buffer! */
+      if(!tt->thread_buff && (tt->thread_buff = calloc(1, BUFSIZE + 1)) == NULL)
+        TFAT("No memory for thread buffer of %d bytes.", BUFSIZE+1);
+      if(tt->ssl)
       {
-        TLOG("  data readed:");
-        TDUMP(LOG_LEVEL_LOG, nullbuff, r);
+#ifdef HAVE_SSL
+        TDBG2("HTTPS DEBUG bulkreading...");
+        while((r = SSL_read(tt->ssl_conn, tt->thread_buff, BUFSIZE+1)) > 0)
+        {
+          TLOG("  read %d bytes:", r);
+          TDUMP(LOG_LEVEL_LOG, tt->thread_buff, r);
+        }
+        if(r < 0)
+          TERR("  SSL error %d (see SSL_get_error(3SSL).", SSL_get_error(tt->ssl_conn, r));
+#else
+        TFAT("Not compiled with SSL support.");
+#endif
+      } else {
+        TDBG2("HTTP DEBUG bulkreading...");
+        while((r = read(tt->sock, tt->thread_buff, BUFSIZE+1)) > 0)
+        {
+          TLOG("  read %d bytes:", r);
+          TDUMP(LOG_LEVEL_LOG, tt->thread_buff, r);
+        }
+        if(r < 0)
+          ERR_ERRNO("read()");
       }
-      if(r < 0)
-        TERR("  SSL error %d (see SSL_get_error(3SSL).", SSL_get_error(tt->ssl_conn, r));
     } else {
+      TDBG2("HTTP/HTTPS null bulkreading...");
       while((r = read(tt->sock, nullbuff, sizeof(nullbuff))) > 0)
-        TDBG2("  read %d bytes...", r);
+        ;
+      if(r < 0)
+        ERR_ERRNO("read()");
     }
 
     /* Hemos terminado */
     TDBG("  Closing connection.");
     if(close(tt->sock) != 0)
-      TERR("error on close(): %s", strerror(errno));
+      TERR_ERRNO("error on close()");
   }
 }
 
