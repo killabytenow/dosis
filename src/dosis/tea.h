@@ -127,6 +127,13 @@ int      tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay);
                                         "[%d/%s] ", tw->id, tw->to->name);    \
                                DUMP(l, __dump_prefix, b, s);                  \
                              }
+#define TDUMPMSG(l,t,p,s)    {                                                \
+                               char __dump_prefix[256];                       \
+                               snprintf(__dump_prefix, sizeof(__dump_prefix), \
+                                        "[%d/%s] ", tw->id, tw->to->name);    \
+                               ln_dump_msg(l, THIS, __dump_prefix, t, p, s);  \
+                             }
+
 
 /*- CORE --------------------------------------------------------------------*/
 void tea_init(void);

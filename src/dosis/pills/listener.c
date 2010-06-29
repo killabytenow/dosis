@@ -34,9 +34,6 @@
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
 
-#define IPV4_SADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_SADDR(x))
-#define IPV4_TADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_TADDR(x))
-
 static char              iptables_tmp[255];
 static char              ip_forward_status;
 static int               ipq_on;
@@ -253,6 +250,7 @@ static void listener__global_init(void)
 static void listener__thread(THREAD_WORK *tw)
 {
   LISTENER_CFG *lcfg = (LISTENER_CFG *) tw->data;
+  INET_ADDR addr;
   int id = 0;
   int r, proto;
 
@@ -276,15 +274,13 @@ static void listener__thread(THREAD_WORK *tw)
     if(lcfg->imsg.m->hw_type == ARPHRD_ETHER
     || lcfg->imsg.m->hw_type == ARPHRD_LOOPBACK)
     {
-DBG("Analizing packet hw_type = %d (%x)", lcfg->imsg.m->hw_type, lcfg->imsg.m->hw_type);
       switch(ntohs(lcfg->imsg.m->hw_protocol))
       {
         case ETHERTYPE_IP:   proto = INET_FAMILY_IPV4; break;
         case ETHERTYPE_IPV6: proto = INET_FAMILY_IPV6; break;
         default:
-          TDBG("Unknown ethernet protocol %d.", ntohs(lcfg->imsg.m->hw_protocol));
+          TWRN("Unknown ethernet type %d.", ntohs(lcfg->imsg.m->hw_protocol));
       }
-DBG("Analizing packet proto = %d", proto);
     } else {
       TWRN("Unknown hardware type (hw_type) %d (0x%04x). Ignoring data package.",
              lcfg->imsg.m->hw_type,
@@ -293,69 +289,8 @@ DBG("Analizing packet proto = %d", proto);
 
     if(lcfg->debug)
     {
-      switch(proto)
-      {
-        case INET_FAMILY_IPV4:
-          if(IPV4_UDP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
-          {
-            TLOG("IPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
-                   lcfg->imsg.m->data_len,
-                   IPV4_SADDR_P(3, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(2, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(1, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(0, lcfg->imsg.m->payload),
-                   ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_sport),
-                   IPV4_TADDR_P(3, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(2, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(1, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(0, lcfg->imsg.m->payload),
-                   ntohs(IPV4_UDP_HDR(lcfg->imsg.m->payload)->uh_dport));
-          } else
-          if(IPV4_TCP_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
-          {
-            TLOG("IPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
-                   lcfg->imsg.m->data_len,
-                   IPV4_SADDR_P(3, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(2, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(1, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(0, lcfg->imsg.m->payload),
-                   ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_sport),
-                   IPV4_TADDR_P(3, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(2, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(1, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(0, lcfg->imsg.m->payload),
-                   ntohs(IPV4_TCP_HDR(lcfg->imsg.m->payload)->th_dport),
-                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->fin ? "F" : "",
-                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->syn ? "S" : "",
-                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->rst ? "R" : "",
-                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->psh ? "P" : "",
-                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->ack ? "A" : "",
-                   IPV4_TCP_HDR(lcfg->imsg.m->payload)->urg ? "U" : "");
-          } else
-          if(IPV4_HDRCK(lcfg->imsg.m->payload, lcfg->imsg.m->data_len))
-          {
-            TLOG("IPv4/Unknown(%d) packet received (%d bytes) from %d.%d.%d.%d to %d.%d.%d.%d:",
-                   IPV4_PROTOCOL(lcfg->imsg.m->payload),
-                   lcfg->imsg.m->data_len,
-                   IPV4_SADDR_P(3, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(2, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(1, lcfg->imsg.m->payload),
-                   IPV4_SADDR_P(0, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(3, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(2, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(1, lcfg->imsg.m->payload),
-                   IPV4_TADDR_P(0, lcfg->imsg.m->payload));
-          } else {
-            TLOG("Malformed IPV4 packet received (%d bytes):", lcfg->imsg.m->data_len);
-          }
-          break;
-        case INET_FAMILY_IPV6:
-          TLOG("IPv6 packet received (%d bytes):", lcfg->imsg.m->data_len);
-          break;
-        default:
-          TLOG("Unknown protocol %d packet received (%d bytes):", proto, lcfg->imsg.m->data_len);
-      }
-      TDUMP(LOG_LEVEL_LOG, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+      TLOG("Received following packet:");
+      TDUMPMSG(LOG_LEVEL_LOG, proto, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
     }
 
 repeat_search:
@@ -368,10 +303,21 @@ repeat_search:
       pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
       /* copy destination address */
-#warning "TODO: copy destination address"
+      addr.type = proto;
+      switch(proto)
+      {
+        case INET_FAMILY_IPV4:
+          memcpy(&addr.in.inaddr, &IPV4_TADDR(lcfg->imsg.m->payload), sizeof(addr.in.inaddr));
+          break;
+        case INET_FAMILY_IPV6:
+#warning "IPv6 address not implemented."
+          break;
+        default:
+          TWRN("Unknown protocol %d.", proto);
+      }
 
       /* copy this msg and send to the thread */
-      r = tea_thread_msg_push(id, NULL, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
+      r = tea_thread_msg_push(id, &addr, lcfg->imsg.m->payload, lcfg->imsg.m->data_len);
 
       /* if the msg cannot be pushed... repeat this until it is pushed       */
       /* NOTE: rarely result (r) will be a negative number, because it would */
@@ -449,7 +395,7 @@ static int listener__configure(THREAD_WORK *tw, SNODE *command, int first_time)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(listener_cfg_def)
-  TOC("debug",  TEA_TYPE_BOOL,   0, LISTENER_CFG, debug, NULL)
+  TOC("debug", TEA_TYPE_BOOL, 0, LISTENER_CFG, debug, NULL)
 TOC_END
 
 TEA_OBJECT teaLISTENER = {

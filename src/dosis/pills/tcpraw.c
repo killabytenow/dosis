@@ -68,7 +68,7 @@ static int tcpraw__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned 
         return 0;
 
       /* check msg */
-      return IPV4_SADDR(msg) == tc->dhost.addr.addr.in.addr
+      return IPV4_SADDR(msg) == tc->dhost.addr.in.addr
           && IPV4_TCP_SPORT(msg) == tc->dhost.port
              ? -255 : 0;
 

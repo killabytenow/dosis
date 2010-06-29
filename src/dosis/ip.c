@@ -145,7 +145,7 @@ void ip_socket_to_addr(BIG_SOCKET_PTR saddr, INET_ADDR *addr, int *port)
   switch(saddr.sa->sa_family)
   {
     case AF_INET:
-      addr->addr.in.addr = saddr.in->sin_addr.s_addr;
+      addr->in.addr = saddr.in->sin_addr.s_addr;
       addr->type = INET_FAMILY_IPV4;
       if(port)
         *port = saddr.in->sin_port;
@@ -153,7 +153,7 @@ void ip_socket_to_addr(BIG_SOCKET_PTR saddr, INET_ADDR *addr, int *port)
 
     case AF_INET6:
 #if HAVE_STRUCT_SOCKADDR_IN6
-      memcpy(addr->addr.in6.addr, &saddr.in6->sin6_addr, sizeof(addr->addr.in6));
+      memcpy(addr->in6.addr, &saddr.in6->sin6_addr, sizeof(addr->in6));
       addr->type = INET_FAMILY_IPV6;
       if(port)
         *port = saddr.in6->sin6_port;
@@ -176,7 +176,7 @@ void ip_addr_to_socket(INET_ADDR *addr, int port, struct sockaddr *saddr)
         struct sockaddr_in *sin;
 
         sin = (struct sockaddr_in *) saddr;
-        sin->sin_addr.s_addr = addr->addr.in.addr;
+        sin->sin_addr.s_addr = addr->in.addr;
         sin->sin_family = AF_INET;
         sin->sin_port = htons(port);
         memset(&(sin->sin_zero), 0, 8);
@@ -195,7 +195,7 @@ void ip_addr_to_socket(INET_ADDR *addr, int port, struct sockaddr *saddr)
         sin6->sin6_family = AF_INET6;
         sin6->sin6_flowinfo = 0;
         sin6->sin6_port = htons(port);
-        memcpy(&sin6->sin6_addr, addr->addr.in6.addr, sizeof(addr->addr.in6));
+        memcpy(&sin6->sin6_addr, addr->in6.addr, sizeof(addr->in6));
       }
 #else
       FAT("This platform does not support IPv6.");
@@ -247,13 +247,13 @@ void ip_addr_set_null(INET_ADDR *addr)
 void ip_addr_set_ipv4(INET_ADDR *addr, INET_IPV4_ADDR *in)
 {
   addr->type = INET_FAMILY_IPV4;
-  memcpy(&addr->addr.in, in, sizeof(INET_IPV4_ADDR));
+  memcpy(&addr->in, in, sizeof(INET_IPV4_ADDR));
 }
 
 void ip_addr_set_ipv6(INET_ADDR *addr, INET_IPV6_ADDR *in6)
 {
   addr->type = INET_FAMILY_IPV6;
-  memcpy(&addr->addr.in6, in6, sizeof(INET_IPV6_ADDR));
+  memcpy(&addr->in6, in6, sizeof(INET_IPV6_ADDR));
 }
 
 void ip_addr_copy(INET_ADDR *to, INET_ADDR *from)
@@ -276,17 +276,17 @@ int ip_addr_snprintf_ipv4(INET_ADDR *addr, int port, int l, char *str)
   if(port >= 0)
   {
     r = snprintf(str, l, "%d.%d.%d.%d:%d",
-                    IPV4_GETP(3, &addr->addr.in),
-                    IPV4_GETP(2, &addr->addr.in),
-                    IPV4_GETP(1, &addr->addr.in),
-                    IPV4_GETP(0, &addr->addr.in),
+                    IPV4_GETP(3, &addr->in),
+                    IPV4_GETP(2, &addr->in),
+                    IPV4_GETP(1, &addr->in),
+                    IPV4_GETP(0, &addr->in),
                     port);
   } else {
     r = snprintf(str, l, "%d.%d.%d.%d",
-                    IPV4_GETP(3, &addr->addr.in),
-                    IPV4_GETP(2, &addr->addr.in),
-                    IPV4_GETP(1, &addr->addr.in),
-                    IPV4_GETP(0, &addr->addr.in));
+                    IPV4_GETP(3, &addr->in),
+                    IPV4_GETP(2, &addr->in),
+                    IPV4_GETP(1, &addr->in),
+                    IPV4_GETP(0, &addr->in));
   }
 
   return r;
@@ -305,22 +305,14 @@ int ip_addr_snprintf_ipv6(INET_ADDR *addr, int port, int l, char *str)
 
   return snprintf(str, l, "%02x%02x:%02x%02x:%02x%02x:%02x%02x:"
                           "%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-                  IPV6_GETB( 0, &addr->addr.in6),
-                  IPV6_GETB( 1, &addr->addr.in6),
-                  IPV6_GETB( 2, &addr->addr.in6),
-                  IPV6_GETB( 3, &addr->addr.in6),
-                  IPV6_GETB( 4, &addr->addr.in6),
-                  IPV6_GETB( 5, &addr->addr.in6),
-                  IPV6_GETB( 6, &addr->addr.in6),
-                  IPV6_GETB( 7, &addr->addr.in6),
-                  IPV6_GETB( 8, &addr->addr.in6),
-                  IPV6_GETB( 9, &addr->addr.in6),
-                  IPV6_GETB(10, &addr->addr.in6),
-                  IPV6_GETB(11, &addr->addr.in6),
-                  IPV6_GETB(12, &addr->addr.in6),
-                  IPV6_GETB(13, &addr->addr.in6),
-                  IPV6_GETB(14, &addr->addr.in6),
-                  IPV6_GETB(15, &addr->addr.in6));
+                  IPV6_GETB( 0, &addr->in6), IPV6_GETB( 1, &addr->in6),
+                  IPV6_GETB( 2, &addr->in6), IPV6_GETB( 3, &addr->in6),
+                  IPV6_GETB( 4, &addr->in6), IPV6_GETB( 5, &addr->in6),
+                  IPV6_GETB( 6, &addr->in6), IPV6_GETB( 7, &addr->in6),
+                  IPV6_GETB( 8, &addr->in6), IPV6_GETB( 9, &addr->in6),
+                  IPV6_GETB(10, &addr->in6), IPV6_GETB(11, &addr->in6),
+                  IPV6_GETB(12, &addr->in6), IPV6_GETB(13, &addr->in6),
+                  IPV6_GETB(14, &addr->in6), IPV6_GETB(15, &addr->in6));
 }
 
 int ip_addr_snprintf(INET_ADDR *addr, int port, int l, char *str)
@@ -395,7 +387,7 @@ int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr, int *port)
     return -1;
 
   addr->type = INET_FAMILY_IPV4;
-  addr->addr.in.addr = htonl(
+  addr->in.addr = htonl(
              ((d & 0x000000ffl) <<  0)
            | ((c & 0x000000ffl) <<  8)
            | ((b & 0x000000ffl) << 16)
@@ -434,7 +426,7 @@ unsigned int ip_addr_get_part_ipv4(INET_ADDR *addr, int part)
     FAT("Bad IPv4 address '%s' or invalid part number (%d).", buff, part);
   }
 
-  return IPV4_GETP(part-1, &addr->addr.in);
+  return IPV4_GETP(part-1, &addr->in);
 }
 
 unsigned int ip_addr_get_part_ipv6_nibble(INET_ADDR *addr, int part)
@@ -451,7 +443,7 @@ unsigned int ip_addr_get_part_ipv6_nibble(INET_ADDR *addr, int part)
   byte = (part - 1) >> 1;
   desp = (part - 1) & 1 ? 0 : 4;
 
-  return (IPV6_GETB(byte, &addr->addr.in6) >> desp) & 0x0f;
+  return (IPV6_GETB(byte, &addr->in6) >> desp) & 0x0f;
 }
 
 unsigned int ip_addr_get_part_ipv6_byte(INET_ADDR *addr, int part)
@@ -464,7 +456,7 @@ unsigned int ip_addr_get_part_ipv6_byte(INET_ADDR *addr, int part)
     FAT("Bad IPv6 address '%s' or invalid byte-part number (%d).", buff, part);
   }
 
-  return IPV6_GETB(part - 1, &addr->addr.in6);
+  return IPV6_GETB(part - 1, &addr->in6);
 }
 
 unsigned int ip_addr_get_part_ipv6_word(INET_ADDR *addr, int part)
@@ -477,8 +469,8 @@ unsigned int ip_addr_get_part_ipv6_word(INET_ADDR *addr, int part)
     FAT("Bad IPv6 address '%s' or invalid word-part number (%d).", buff, part);
   }
 
-  return IPV6_GETB(((part - 1) * 2) + 0, &addr->addr.in6) << 8
-       | IPV6_GETB(((part - 1) * 2) + 1, &addr->addr.in6);
+  return IPV6_GETB(((part - 1) * 2) + 0, &addr->in6) << 8
+       | IPV6_GETB(((part - 1) * 2) + 1, &addr->in6);
 }
 
 int ip_addr_check_mask(INET_ADDR *addr, INET_ADDR *netw, INET_ADDR *mask)
@@ -494,14 +486,14 @@ int ip_addr_check_mask(INET_ADDR *addr, INET_ADDR *netw, INET_ADDR *mask)
     return -1;
 
   if(addr->type == INET_FAMILY_IPV4)
-    return (netw->addr.in.addr & mask->addr.in.addr)
-        == (addr->addr.in.addr & mask->addr.in.addr);
+    return (netw->in.addr & mask->in.addr)
+        == (addr->in.addr & mask->in.addr);
 
   if(addr->type == INET_FAMILY_IPV6)
   {
-    for(i = 15; i >= 0 && mask->addr.in6.addr[i]; i--)
-      if((netw->addr.in6.addr[i] & addr->addr.in6.addr[i])
-      != (addr->addr.in6.addr[i] & addr->addr.in6.addr[i]))
+    for(i = 15; i >= 0 && mask->in6.addr[i]; i--)
+      if((netw->in6.addr[i] & addr->in6.addr[i])
+      != (addr->in6.addr[i] & addr->in6.addr[i]))
         return 0;
     return -1;
   }

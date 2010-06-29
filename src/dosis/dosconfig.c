@@ -31,10 +31,11 @@
 
 /* default config and global configuration pointer */
 DOS_CONFIG cfg = {
-  /* verbosity        */ LOG_LEVEL_LOG,
-  /* output filename  */ NULL,
-  /* script filename  */ NULL,
-  /* max threads      */ 100,
+  .verbosity  = LOG_LEVEL_LOG, /* verbosity                 */
+  .output     = NULL,          /* output filename           */
+  .script     = NULL,          /* script filename           */
+  .maxthreads = 100,           /* max threads               */
+  .tstamp_log = 0,             /* time stamped log messages */
 };
 
 /* unix wrappers */
@@ -64,6 +65,7 @@ DOS_CMD_OPTION cmd_options[] = {
   { 'q', "quiet",         0 },
   { 'o', "output-file",   1 },
   { 't', "max-threads",   1 },
+  { 'T', "tstamp-log",    0 },
   { 'v', "verbose",       2 },
   { 'Z', "debug",         0 },
   {   0, NULL,            0 },
@@ -133,6 +135,9 @@ static void dos_config_parse_command(int argc, char **argv)
           cfg.maxthreads = atoi(optarg);
           if(cfg.maxthreads < 1)
             FAT("A minimum of 1 thread is needed.");
+          break;
+      case 'T':
+          cfg.tstamp_log = -1;
           break;
       case 'v':
           s = optarg ? optarg : "3";

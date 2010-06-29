@@ -48,16 +48,36 @@ static void sender__thread(THREAD_WORK *tw)
   SENDER_CFG *scfg = (SENDER_CFG *) tw->data;
   TEA_MSG *m;
   long long tout = 100;
+  struct timespec now;
 
   /* send packets */
   while(!cfg.finalize)
   {
     /* wait for signal/timeout */
-    pthreadex_flag_wait_timeout(&tw->mwaiting, tout);
+    if(pthreadex_flag_wait_timeout(&tw->mwaiting, tout) == ETIMEDOUT)
+      TDBG2("timeout after %lld miliseconds!", tout);
+    else
+      TDBG2("something received");
 
     /* send packets in cronological order */
-    m = mqueue_shift(tw->mqueue);
-    ln_send_packet(&scfg->lnc, m->b, m->s, &m->dest);
+    TDBG("sending everything scheduled until now!");
+    if(clock_gettime(CLOCK_REALTIME, &now) < 0)
+    {
+      ERR_ERRNO("Cannot read CLOCK_REALTIME");
+      continue;
+    }
+
+    while((m = mqueue_shift(tw->mqueue)) != NULL
+    && (now.tv_sec > m->w.tv_sec
+    || (now.tv_sec == m->w.tv_sec && now.tv_nsec > m->w.tv_nsec)))
+    {
+      if(scfg->debug)
+      {
+        TLOG("Going to send following packet:");
+        TDUMPMSG(LOG_LEVEL_LOG, m->dest.type,  m->b, m->s);
+      }
+      ln_send_packet(&scfg->lnc, m->b, m->s, &m->dest);
+    }
   }
 }
 
@@ -66,6 +86,11 @@ static void sender__cleanup(THREAD_WORK *tw)
   SENDER_CFG *scfg = (SENDER_CFG *) tw->data;
 
   /* XXX close raw socket */
+  if(scfg)
+  {
+    ln_destroy_context(&scfg->lnc);
+  }
+  TDBG("Finalized.");
 }
 
 static int sender__configure(THREAD_WORK *tw, SNODE *command, int first_time)

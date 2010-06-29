@@ -204,6 +204,8 @@ unsigned ln_get_next_random_port_number(unsigned *n);
 #define IPV4_PROTOCOL(x)       (((LN_HDR_IPV4 *) (x))->protocol)
 #define IPV4_SADDR(x)          (IPV4_HDR(x)->saddr)
 #define IPV4_TADDR(x)          (IPV4_HDR(x)->daddr)
+#define IPV4_SADDR_P(p,x)      INET_ADDR_IPV4_GETP(p, IPV4_SADDR(x))
+#define IPV4_TADDR_P(p,x)      INET_ADDR_IPV4_GETP(p, IPV4_TADDR(x))
 
 /* TCPoIPv4 helper macros */
 #define IPV4_TCP_DATA(x)       ((void *) (x)                                  \
@@ -228,11 +230,13 @@ unsigned ln_get_next_random_port_number(unsigned *n);
 #define IPV4_UDP_HDRCK(b,s)    (IPV4_HDRCK(b,s)                               \
                                && IPV4_PROTOCOL(b) == 17                      \
                                && s >= (sizeof(LN_HDR_UDP) + IPV4_HDRSZ(b)))
+#define IPV4_UDP_DPORT(x)      ntohs(IPV4_UDP_HDR(x)->uh_dport)
+#define IPV4_UDP_SPORT(x)      ntohs(IPV4_UDP_HDR(x)->uh_sport)
 
 void *ln_tcp_get_opt(void *msg, int sz, int sopt);
 int ln_tcp_get_mss(void *msg, int sz);
 
-int ln_dump_msg(int loglevel, int protocol, void *msg, int sz);
+void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, void *p, int s);
 
 #ifdef __cplusplus
 }

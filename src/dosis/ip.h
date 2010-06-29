@@ -76,11 +76,11 @@ typedef union __attribute__ ((__transparent_union__))
 #define INET_ADDR_IS_IPV4(x)     ((x).type == INET_FAMILY_IPV4)
 #define INET_ADDR_IS_IPV6(x)     ((x).type == INET_FAMILY_IPV6)
 #define INET_ADDR_IS_VALID(x)    ((x).type != INET_FAMILY_NONE)
-#define INET_ADDR_IS_ZERO(x)     ((x).type == INET_FAMILY_IPV4) ? !((x).addr.in.addr) :       \
-                                 ((x).type == INET_FAMILY_IPV6) ? !((x).addr.in6.addr32[0]    \
-                                                                  | (x).addr.in6.addr32[1]    \
-                                                                  | (x).addr.in6.addr32[2]    \
-                                                                  | (x).addr.in6.addr32[3]) : \
+#define INET_ADDR_IS_ZERO(x)     ((x).type == INET_FAMILY_IPV4) ? !((x).in.addr) :       \
+                                 ((x).type == INET_FAMILY_IPV6) ? !((x).in6.addr32[0]    \
+                                                                  | (x).in6.addr32[1]    \
+                                                                  | (x).in6.addr32[2]    \
+                                                                  | (x).in6.addr32[3]) : \
                                  0;
 #define INET_ADDR_IPV4_GETP(p,x) ((unsigned) ((ntohl((x)) >> ((p) << 3)) & 0x000000ffl))
 
@@ -89,7 +89,7 @@ typedef struct _tag_INET_ADDR {
   union {
     INET_IPV4_ADDR  in;       /* IPv4 address                            */
     INET_IPV6_ADDR  in6;      /* IPv6 address                            */
-  } addr;
+  };
 } INET_ADDR;
 
 typedef struct _tag_INET_IPV4_RANGE {

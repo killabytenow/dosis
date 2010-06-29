@@ -58,17 +58,29 @@ extern "C" {
 
 /* #define PTHREADEX_DEBUG 1 */
 
-#ifndef FAT
-#define PTHREADEX_LOG(l, ...) { fputs("pthreadex:" l ":", stderr); \
-                                fprintf(stderr, __VA_ARGS__); }
-#define FAT(...) { PTHREADEX_LOG("fatal", __VA_ARGS__); exit(1); }
-#define DBG(...) { PTHREADEX_LOG("debug", __VA_ARGS__); }
+/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ + DEBUG MACROS
+ + 
+ +   Enabled automatically if not exists a macro before with name FAT or DBG.
+ +   Both functions take same parameters as printf(3).
+ +
+ ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+#if ((!defined FAT) || (!defined DBG))
+#  define PTHREADEX_LOG(l, ...) { fputs("pthreadex:" l ":", stderr); \
+                                  fprintf(stderr, __VA_ARGS__); }
+#  ifndef FAT
+#    define FAT(...) { PTHREADEX_LOG("fatal", __VA_ARGS__); exit(1); }
+#  endif
+#  ifndef DBG
+#  define DBG(...) { PTHREADEX_LOG("debug", __VA_ARGS__); }
+#  endif
 #endif
 
 #if PTHREADEX_DEBUG
-#define __X_FAT(m, f, ...)   FAT("%s: " f, (m)->n,  __VA_ARGS__)
+#  define __X_FAT(m, f, ...)   FAT("%s: " f, (m)->n,  __VA_ARGS__)
 #else
-#define __X_FAT(m, f, ...)   FAT(f, __VA_ARGS__)
+#  define __X_FAT(m, f, ...)   FAT(f, __VA_ARGS__)
 #endif
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

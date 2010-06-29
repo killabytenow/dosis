@@ -157,7 +157,7 @@ static int slowy__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned i
         return 0;
 
       /* check msg */
-      return IPV4_HDR(msg)->saddr == tc->dhost.addr.addr.in.addr
+      return IPV4_HDR(msg)->saddr == tc->dhost.addr.in.addr
           && IPV4_TCP_SPORT(msg) == tc->dhost.port
              ? -1 : 0;
 
@@ -217,7 +217,7 @@ static void slowy__listen(THREAD_WORK *tw)
               IPV4_SADDR_P(0, m->b),
               IPV4_TCP_DPORT(m->b), tc->dhost.port,
               IPV4_TCP_HDR(m->b)->rst,
-              IPV4_HDR(m->b)->saddr, tc->shost.addr.addr.in.addr);
+              IPV4_HDR(m->b)->saddr, tc->shost.addr.in.addr);
 
       c = conn_get(tw, IPV4_TCP_DPORT(m->b));
       if(c)

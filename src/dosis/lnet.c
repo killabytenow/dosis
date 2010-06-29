@@ -218,8 +218,8 @@ int ln_build_ip_packet(void *buff,
       ip.v4->frag_off = 0;
       ip.v4->ttl = 255;
       ip.v4->protocol   = proto;
-      ip.v4->saddr = shost->addr.in.inaddr.s_addr;
-      ip.v4->daddr = dhost->addr.in.inaddr.s_addr;
+      ip.v4->saddr = shost->in.inaddr.s_addr;
+      ip.v4->daddr = dhost->in.inaddr.s_addr;
       ip.v4->check = 0;
 
       /* copy data */
@@ -283,8 +283,8 @@ int ln_build_tcp_packet(void *buff,
 
   /* [calculate cheksum] PSEUDO-HEADER */
   sum = 0;
-  C1_SUM(sum, shost->addr.in.addr);
-  C1_SUM(sum, dhost->addr.in.addr);
+  C1_SUM(sum, shost->in.addr);
+  C1_SUM(sum, dhost->in.addr);
   C1_SUM(sum, 0x0600);
   C1_SUM(sum, htons(psize));
   /* [calculate cheksum] header+segment */
@@ -463,5 +463,71 @@ FAT("XXX");
   }
 
   return 0;
+}
+
+void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, void *p, int s)
+{
+  if(!prefix)
+    prefix = "";
+
+  switch(proto)
+  {
+    case INET_FAMILY_IPV4:
+      if(IPV4_UDP_HDRCK(p, s))
+      {
+        d_log_level(level, file, func,
+                    "%sIPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
+                    prefix, s,
+                    IPV4_SADDR_P(3, p), IPV4_SADDR_P(2, p),
+                    IPV4_SADDR_P(1, p), IPV4_SADDR_P(0, p),
+                    IPV4_UDP_SPORT(p),
+                    IPV4_TADDR_P(3, p), IPV4_TADDR_P(2, p),
+                    IPV4_TADDR_P(1, p), IPV4_TADDR_P(0, p),
+                    IPV4_UDP_DPORT(p));
+      } else
+      if(IPV4_TCP_HDRCK(p, s))
+      {
+        d_log_level(level, file, func,
+                    "%sIPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
+                    prefix, s,
+                    IPV4_SADDR_P(3, p), IPV4_SADDR_P(2, p),
+                    IPV4_SADDR_P(1, p), IPV4_SADDR_P(0, p),
+                    IPV4_TCP_SPORT(p),
+                    IPV4_TADDR_P(3, p), IPV4_TADDR_P(2, p),
+                    IPV4_TADDR_P(1, p), IPV4_TADDR_P(0, p),
+                    IPV4_TCP_DPORT(p),
+                    IPV4_TCP_HDR(p)->fin ? "F" : "",
+                    IPV4_TCP_HDR(p)->syn ? "S" : "",
+                    IPV4_TCP_HDR(p)->rst ? "R" : "",
+                    IPV4_TCP_HDR(p)->psh ? "P" : "",
+                    IPV4_TCP_HDR(p)->ack ? "A" : "",
+                    IPV4_TCP_HDR(p)->urg ? "U" : "");
+      } else
+      if(IPV4_HDRCK(p, s))
+      {
+        d_log_level(level, file, func,
+                    "%sIPv4/Unknown(%d) packet received (%d bytes) %d.%d.%d.%d->%d.%d.%d.%d:",
+                    prefix, IPV4_PROTOCOL(p), s,
+                    IPV4_SADDR_P(3, p), IPV4_SADDR_P(2, p),
+                    IPV4_SADDR_P(1, p), IPV4_SADDR_P(0, p),
+                    IPV4_TADDR_P(3, p), IPV4_TADDR_P(2, p),
+                    IPV4_TADDR_P(1, p), IPV4_TADDR_P(0, p));
+      } else {
+        d_log_level(level, file, func,
+                    "%sMalformed IPV4 packet received (%d bytes):",
+                    prefix, s);
+      }
+      break;
+    case INET_FAMILY_IPV6:
+      d_log_level(level, file, func,
+                  "%sIPv6 packet received (%d bytes):",
+                  prefix, s);
+      break;
+    default:
+      d_log_level(level, file, func,
+                  "%sUnknown protocol %d packet received (%d bytes):",
+                  prefix, proto, s);
+  }
+  d_dump(level, file, func, prefix, p, s);
 }
 

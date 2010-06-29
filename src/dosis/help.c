@@ -58,6 +58,7 @@ void print_help(void)
     "  -q, --quiet             Shut up.",
     "  -o, --output-file=FILE  Write results to FILE.",
     "  -t, --max-threads=FILE  Set maximum thread parallelism (default 100).",
+    "  -T, --tstamp-log        Time stamped log messages (default no).",
     "  -v, --verbose[=LEVEL]   Don't stop writing baby (default). LEVEL is a value",
     "                          between 0 (errors) and 4 (deep debugging messages).",
     "  -Z, --debug             Very verbose. Specially funny with a slow SSH session.",

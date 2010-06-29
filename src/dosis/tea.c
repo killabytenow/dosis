@@ -483,7 +483,7 @@ int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
       /* calculate when */
       if(clock_gettime(CLOCK_REALTIME, &m->w) < 0)
       {
-        ERR("Cannot read CLOCK_REALTIME.");
+        ERR_ERRNO("Cannot read CLOCK_REALTIME.");
         return -1;
       }
       m->w.tv_nsec += delay % 1000;
@@ -498,7 +498,7 @@ int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
       m->w.tv_nsec = 0;
       m->w.tv_sec  = 0;
     }
-DBG("DELAY %ld.%09ld secs", m->w.tv_sec, m->w.tv_nsec);
+    DBG("PACKET QUEUED AND DELAYED UNTIL %ld.%09ld secs", m->w.tv_sec, m->w.tv_nsec);
 
     /* search sender and insert msg into its queue */
     pthreadex_lock_get_shared(&ttable_lock);
@@ -521,8 +521,10 @@ DBG("DELAY %ld.%09ld secs", m->w.tv_sec, m->w.tv_nsec);
   if(m)
   {
     if(lnc)
+    {
+      DBG("PACKET IS BEING SENT NOW");
       ln_send_packet(lnc, m->b, m->s, &m->dest);
-    else
+    } else
       WRN("Cannot send message!");
   }
 

@@ -48,6 +48,7 @@ typedef struct _tag_TCPOPEN_CFG {
   TEA_TYPE_INT   tcp_mss;
   TEA_TYPE_INT   tcp_win;
   TEA_TYPE_INT   delay;
+  TEA_TYPE_BOOL  debug;
 
   LN_CONTEXT     lnc;
 } TCPOPEN_CFG;
@@ -68,7 +69,7 @@ static int tcpopen__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned
         return 0;
 
       /* check msg */
-      return IPV4_SADDR(msg) == tc->dhost.addr.addr.in.addr
+      return IPV4_SADDR(msg) == tc->dhost.addr.in.addr
           && IPV4_TCP_SPORT(msg) == tc->dhost.port
              ? -1 : 0;
 
@@ -86,7 +87,6 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
   TEA_MSG *t;
 
   /* send handshake and data TCP packet */
-DBG("Building TCP-ACK packet...");
   if((t = msg_build_ip_tcp_packet(&tc->shost.addr, IPV4_TCP_DPORT(m->b),
                                   &tc->dhost.addr, IPV4_TCP_SPORT(m->b),
                                   LN_TH_ACK,
@@ -96,10 +96,13 @@ DBG("Building TCP-ACK packet...");
                                   NULL, 0,
                                   NULL, 0)) == NULL)
     TFAT("Cannot build syn packet.");
-DBG("Enqueuing TCP-ACK packet...");
+  if(tc->debug)
+  {
+    TLOG("Sending >> packet with delay %d milisec:", tc->delay);
+    TDUMPMSG(LOG_LEVEL_LOG, t->dest.type, t->b, t->s);
+  }
   tea_thread_msg_send(&tc->lnc, t, tc->delay);
 
-DBG("Building TCP-ACK-DATA-PUSH packet...");
   if((t = msg_build_ip_tcp_packet(&tc->shost.addr, IPV4_TCP_DPORT(m->b),
                                   &tc->dhost.addr, IPV4_TCP_SPORT(m->b),
                                   LN_TH_ACK | LN_TH_PUSH,
@@ -109,9 +112,12 @@ DBG("Building TCP-ACK-DATA-PUSH packet...");
                                   (char *) tc->payload.data, tc->payload.size,
                                   NULL, 0)) == NULL)
     TFAT("Cannot build ack packet.");
-DBG("Enqueuing TCP-ACK-DATA-PUSH packet...");
+  if(tc->debug)
+  {
+    TLOG("Sending >> packet with delay %d milisec:", tc->delay);
+    TDUMPMSG(LOG_LEVEL_LOG, t->dest.type, t->b, t->s);
+  }
   tea_thread_msg_send(&tc->lnc, t, tc->delay);
-DBG("Send_kakita() finished.");
 }
 
 static void tcpopen__thread(THREAD_WORK *tw)
@@ -125,18 +131,25 @@ static void tcpopen__thread(THREAD_WORK *tw)
     /* check for messages */
     m = tea_thread_msg_wait(tw);
 
-    TDBG2("Received << %d - %d.%d.%d.%d:%d/%d [%s%s%s%s] => [%08x/%08x] >>",
-            IPV4_PROTOCOL(m->b),
+    if(IPV4_PROTOCOL(m->b) != 6)
+      TFAT("Received << NON-TCP message. Filter func has failed?");
+
+    if(tc->debug)
+    {
+      TLOG("Received << following packet:");
+      TDUMPMSG(LOG_LEVEL_LOG, m->dest.type, m->b, m->s);
+    } else
+      TDBG2("Received << from %d.%d.%d.%d:%d->%d [%s%s%s%s] => [%08x/%08x] >>",
             IPV4_SADDR_P(3, m->b),
             IPV4_SADDR_P(2, m->b),
             IPV4_SADDR_P(1, m->b),
             IPV4_SADDR_P(0, m->b),
-            IPV4_TCP_DPORT(m->b), tc->dhost.port,
+            IPV4_TCP_SPORT(m->b), IPV4_TCP_DPORT(m->b),
             IPV4_TCP_HDR(m->b)->rst ? "R" : "",
             IPV4_TCP_HDR(m->b)->syn ? "S" : "",
             IPV4_TCP_HDR(m->b)->psh ? "P" : "",
             IPV4_TCP_HDR(m->b)->ack ? "A" : "",
-            IPV4_SADDR(m->b), tc->shost.addr.addr.in.addr);
+            IPV4_SADDR(m->b), tc->shost.addr.in.addr);
 
     /* in some special case (handshake) send kakitas */
     if(IPV4_TCP_HDR(m->b)->syn != 0
@@ -172,11 +185,13 @@ static int tcpopen__configure(THREAD_WORK *tw, SNODE *command, int first_time)
     return -1;
 
   /* (debug) print configuration */
+  if(tc->debug)
+    TLOG("LISTENER debug mode enabled. Packets will be printed.");
+
   {
     char buff[255];
 
     TDBG2("config.periodic.bytes  = %d", tc->payload.size);
-
     ip_addr_snprintf(&tc->shost.addr, tc->shost.port, sizeof(buff)-1, buff);
     TDBG2("config.options.shost   = %s", buff);
     ip_addr_snprintf(&tc->dhost.addr, tc->dhost.port, sizeof(buff)-1, buff);
@@ -209,11 +224,12 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(teaTCPOPEN_cfg)
-  TOC("src_addr", TEA_TYPE_ADDR, 0, TCPOPEN_CFG, shost,   NULL)
-  TOC("src_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, shost,   NULL)
+  TOC("debug",    TEA_TYPE_BOOL, 0, TCPOPEN_CFG, debug,   NULL)
   TOC("dst_addr", TEA_TYPE_ADDR, 1, TCPOPEN_CFG, dhost,   NULL)
   TOC("dst_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, dhost,   NULL)
   TOC("payload",  TEA_TYPE_DATA, 1, TCPOPEN_CFG, payload, NULL)
+  TOC("src_addr", TEA_TYPE_ADDR, 0, TCPOPEN_CFG, shost,   NULL)
+  TOC("src_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, shost,   NULL)
   TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, tcp_mss, NULL)
   TOC("tcp_win",  TEA_TYPE_INT,  1, TCPOPEN_CFG, tcp_win, NULL)
 TOC_END

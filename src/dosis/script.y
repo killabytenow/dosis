@@ -683,6 +683,7 @@ DBG("TOKEN[STRING] = '%s' (network address?)", buff);
     return c;
   }
   if(c == ','
+  || c == '+'
   || c == ':'
   || c == '='
   || c == '*' || c == '/'
@@ -762,14 +763,13 @@ void script_init(void)
   hash_entry_add(defvalues, "periodic_n",     NULL);
 
   /* set default config */
-  hash_entry_add(defvalues, "debug",      node_new_bool(1));
+  hash_entry_add(defvalues, "debug",      node_new_bool(0));
   hash_entry_set(defvalues, "tcp_cwait",  node_new_int(3000000));
   hash_entry_set(defvalues, "tcp_rwait",  node_new_int(10000000));
   hash_entry_set(defvalues, "tcp_win",    node_new_int(31337));
   hash_entry_set(defvalues, "ssl_cipher", node_new_string("DES-CBC3-SHA", 0, 1));
   hash_entry_set(defvalues, "src_port",   node_new_int(-1));
   hash_entry_set(defvalues, "dst_port",   node_new_int(-1));
-
 }
 
 static void yyerror(char const *str)

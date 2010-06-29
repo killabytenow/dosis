@@ -29,6 +29,11 @@
 #include "dosis.h"
 #include "log.h"
 
+/* important: pthreadex.h always must be included after log.h */
+#ifdef HAVE_PTHREADEX_H
+#include <pthreadex.h>
+#endif
+
 #if HAVE_DLFCN_H
 void *lst = NULL;
 #endif
@@ -42,6 +47,10 @@ void *lst = NULL;
  */
 
 FILE *logfile = NULL;
+static struct timeval tstamp_pstart;
+#ifdef HAVE_PTHREADEX_H
+pthreadex_mutex_t ivedapowa;
+#endif
 
 static char *d_log_get_level_desc(int level)
 {
@@ -64,6 +73,21 @@ static char *d_log_get_level_desc(int level)
 
 static void d_log_prefix_print(int level, char *file, char *function)
 {
+  if(cfg.tstamp_log)
+  {
+    struct timeval temptv;
+    if(gettimeofday(&temptv, NULL) < 0)
+      FAT_ERRNO("Cannot get current time");
+    temptv.tv_usec -= tstamp_pstart.tv_usec;
+    temptv.tv_sec  -= tstamp_pstart.tv_sec;
+    if(temptv.tv_usec < 0)
+    {
+      temptv.tv_usec += 1000000;
+      temptv.tv_sec  += 1;
+    }
+    fprintf(logfile, "[%3ld.%06ld] ",
+            temptv.tv_sec, temptv.tv_usec);
+  }
   fputs(d_log_get_level_desc(level), logfile);
   if(file)     fprintf(logfile, "%s:", file);
   if(function) fprintf(logfile, "%s:", function);
@@ -74,11 +98,20 @@ static void d_log_level_print(int level, char *file, char *function, char *forma
   if(cfg.verbosity < level)
     return;
 
-/* XXX: When threaded, get log library lock here */
-  d_log_prefix_print(level, file, function);
+  /* (when threaded) get log library lock here */
+#ifdef HAVE_PTHREADEX_H
+  pthreadex_mutex_begin(&ivedapowa);
+#endif
 
+  /* print The Pretty Log Line (tm) */
+  d_log_prefix_print(level, file, function);
   vfprintf(logfile, format, args);
   fputc('\n', logfile);
+
+  /* (when threaded) unlock the log lock */
+#ifdef HAVE_PTHREADEX_H
+  pthreadex_mutex_end();
+#endif
 }
 
 /******************************************************************************
@@ -170,6 +203,12 @@ void d_dump(int level, char *file, char *func, char *prefix, void *buff, int siz
   if(cfg.verbosity < level)
     return;
 
+  /* (if threaded) get the log lock now */
+#ifdef HAVE_PTHREADEX_H
+  pthreadex_mutex_begin(&ivedapowa);
+#endif
+
+  /* dump... */
   if(!prefix)
     prefix = "";
 
@@ -206,6 +245,11 @@ void d_dump(int level, char *file, char *func, char *prefix, void *buff, int siz
     d_log_prefix_print(level, file, func);
     fprintf(logfile, "%s%04x %s\n", prefix, i, dump);
   }
+
+  /* (if threaded) free da lock */
+#ifdef HAVE_PTHREADEX_H
+  pthreadex_mutex_end();
+#endif
   
   if(level == LOG_LEVEL_FATAL)
     exit(1);
@@ -235,6 +279,9 @@ static void log_fini(void)
   }
   lst = NULL;
 #endif
+#ifdef HAVE_PTHREADEX_H
+  pthreadex_mutex_destroy(&ivedapowa);
+#endif
 }
 
 void log_init(void)
@@ -246,6 +293,12 @@ void log_init(void)
 
   /* init log file */
   logfile = stderr;
+
+  /* init thread lock */
+#ifdef HAVE_PTHREADEX_H
+  pthreadex_mutex_init(&ivedapowa);
+  pthreadex_mutex_name(&ivedapowa, "log-lock");
+#endif
 
   /* init libstacktrace (if available) */
 #if HAVE_DLFCN_H
@@ -268,6 +321,10 @@ void log_init(void)
   } else
     DBG("Cannot load libstacktrace.");
 #endif
+
+  /* get program start timestamp */
+  if(gettimeofday(&tstamp_pstart, NULL) < 0)
+    FAT_ERRNO("Cannot get current time");
 
   /* get concious about dead */
   if(atexit(log_fini))

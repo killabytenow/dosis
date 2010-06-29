@@ -112,7 +112,10 @@ double pthreadex_time_get(void)
 
   /* XXX TODO: we should use gettimeofday(2) if clock_gettime(3) is not available */
   if(clock_gettime(CLOCK_REALTIME, &t) < 0)
+  {
     FAT("Cannot read CLOCK_REALTIME.");
+    exit(1);
+  }
 
   return ((double) t.tv_sec) + (((double) t.tv_nsec) / 1000000000.0);
 }
@@ -302,7 +305,10 @@ int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
       /* get current time */
       /* XXX TODO: we should use gettimeofday(2) if clock_gettime(3) is not available */
       if(clock_gettime(CLOCK_REALTIME, &t) < 0)
+      {
         FAT("Cannot read CLOCK_REALTIME.");
+        exit(1);
+      }
       /* add timeout */
       t.tv_nsec = ((tout % 1000) * 1000) + t.tv_nsec;
       t.tv_sec  = (tout / 1000) + (t.tv_nsec / 1000000000);

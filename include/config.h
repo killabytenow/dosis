@@ -115,6 +115,9 @@ extern "C" {
 # endif
 #endif
 
+/* pthreadex */
+#define HAVE_PTHREADEX_H 1
+
 /* data types */
 #if HAVE_INT8_T
 # define INT8_T         int8_t
