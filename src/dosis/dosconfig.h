@@ -61,7 +61,8 @@ typedef struct _tag_DOS_CONFIG {
   char           *output;
   char           *script;
   int             maxthreads;
-  int             tstamp_log;
+  int             log_tstamp;
+  int             log_srcloc;
   char           *includedir[MAX_INCLUDE_DIRS+1];
   char           *interfaces[MAX_INTERFACES+1];
   DOS_ROUTE_INFO *routes;

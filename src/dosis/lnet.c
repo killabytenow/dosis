@@ -334,7 +334,6 @@ int ln_build_ip_tcp_packet(void *buff,
       tcp_offset, data_offset;
 
   /* calculate size */
-  DBG("Calculate size...");
   if((tcp_size = ln_build_tcp_packet(NULL,
                                      shost, sport, dhost, dport,
                                      flags, window, seq, ack,
@@ -345,14 +344,12 @@ int ln_build_ip_tcp_packet(void *buff,
     return -1;
 
   /* check space */
-  DBG("Check space...");
   if(pdata)
     *pdata = tcp_offset + data_offset;
   if(!buff)
     return ip_size;
 
   /* buid packet */
-  DBG("Build packet...");
   if(ln_build_tcp_packet(buff + tcp_offset,
                          shost, sport, dhost, dport,
                          flags, window, seq, ack,
@@ -374,7 +371,6 @@ int ln_build_ip_udp_packet(void *buff,
       udp_offset, data_offset;
 
   /* calculate size */
-  DBG("Calculate size...");
   if((udp_size = ln_build_udp_packet(NULL, sport, dport,
                                      NULL, datasz, &data_offset)) < 0
   || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 17, 0,
@@ -382,14 +378,12 @@ int ln_build_ip_udp_packet(void *buff,
     return -1;
 
   /* check space */
-  DBG("Check space...");
   if(pdata)
     *pdata = udp_offset + data_offset;
   if(!buff)
     return ip_size;
 
   /* buid packet */
-  DBG("Build packet...");
   if(ln_build_udp_packet(buff + udp_offset, sport, dport,
                          data, datasz, NULL) < 0
   || ln_build_ip_packet(buff, shost, dhost, 17, 0, NULL, udp_size, NULL) < 0)
@@ -408,7 +402,6 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
 {
   int size;
 
-  DBG("Building TCP...");
   if((size = ln_build_ip_tcp_packet(lnc->buff,
                                     shost, sport, dhost, dport,
                                     flags, window, seq, ack,
@@ -418,11 +411,6 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
     ERR("Cannot build TCP/IP package.");
     return -1;
   }
-
-  DBG("%d bytes (0x%04x):", size, size);
-  DUMP(LOG_LEVEL_DEBUG2,NULL, lnc->buff, size);
-
-  DBG("Sending TCP...");
   return ln_send_packet(lnc, lnc->buff, size, dhost);
 }
 
@@ -433,7 +421,6 @@ int ln_send_udp_packet(LN_CONTEXT *lnc,
 {
   int size;
 
-  DBG("Building UDP...");
   if((size = ln_build_ip_udp_packet(lnc->buff,
                                     shost, sport, dhost, dport,
                                     data, datasz, NULL)) < 0)
@@ -441,10 +428,6 @@ int ln_send_udp_packet(LN_CONTEXT *lnc,
     ERR("Cannot build UDP/IP package.");
     return -1;
   }
-  DBG("%d bytes (0x%04x):", size, size);
-  DUMP(LOG_LEVEL_DEBUG2,NULL, lnc->buff, size);
-
-  DBG("Sending UDP...");
   return ln_send_packet(lnc, lnc->buff, size, dhost);
 }
 
@@ -458,10 +441,8 @@ int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *a)
             0, &bs.sa, sizeof(struct sockaddr)) < 0)
   {
     ERR_ERRNO("Cannot send packet");
-FAT("XXX");
     return -1;
   }
-
   return 0;
 }
 

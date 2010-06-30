@@ -52,7 +52,7 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
-  TDBG2("Thread cleanup.");
+  TDBG2("[tea-cleanup] Thread final cleanup started.");
 
   /* do thread cleanup */
   if(tw->to->cleanup)
@@ -68,7 +68,7 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
   if(tw->to->listener)
   {
     pthreadex_mutex_begin(&(tw->mqueue->mutex));
-    TDBG2("  [cleanup] listen cleanup");
+    TDBG2("[tea-cleanup] listen cleanup");
     if(tw->mqueue)
       mq = tw->mqueue;
     else
@@ -78,15 +78,15 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 
     if(mq)
     {
-      TDBG2("  [cleanup] mqueue cleanup");
+      TDBG2("[tea-cleanup] mqueue cleanup");
       mqueue_destroy(mq);
     }
   }
 
-  TDBG2("  [cleanup] destroy mwaiting flag");
+  TDBG2("[tea-cleanup] destroy mwaiting flag");
   pthreadex_flag_destroy(&(tw->mwaiting));
 
-  TDBG("Thread finished.");
+  TDBG("[tea-cleanup] Thread finished.");
 
   /* free mem */
   free(tw);
@@ -103,24 +103,9 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
-  TDBG("Starting thread.");
+  TDBG("[tea] Starting thread main function");
   tw->to->thread(tw);
-  TDBG("Thread finished.");
-
-  /*
-   *# set timeout/wait condition
-   *XXX
-   *# do actions
-   *if(tw->to->listen)
-   *{
-   *  while(1)
-   *  {
-   *    # XXX TIMEOUT HERE?? XXX
-   *    pthreadex_flag_wait(&(tw->mwaiting));
-   *    tw->to->listen(tw);
-   *  }
-   *} else
-   */
+  TDBG("[tea] Thread main function finished.");
 
   /* finish him */
   pthread_cleanup_pop(1);
@@ -129,7 +114,6 @@ static void *tea_thread(void *data)
   return NULL;
 }
 
-/* XXX */
 static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
 {
   char *s;
@@ -182,7 +166,8 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
       break;
 
     default:
-      ERR("Unknown type %d.", oc->type);
+      ERR("Tea object %s, Parameter %s, unknown type %d.",
+          tw->to->name, oc->name, oc->type);
       return -1;
   }
 
@@ -211,7 +196,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   HASH_ITER hi;
   HASH_NODE *hn;
 
-  DBG("Going to create thread %d.", tid);
+  DBG("[tea] Creating thread %d.", tid);
   if((tw = calloc(1, sizeof(THREAD_WORK))) == NULL)
   {
     ERR("Cannot alloc THREAD_WORK struct for thread %d.", tid);
@@ -246,18 +231,18 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   /* check config params */
   if(to->cparams)
   {
-    DBG("Checking parameters for object %s", to->name);
     /* check only allowed params are defined */
     for(hn = hash_iter_first(&hi, command->command.thc.to->options);
         !hash_iter_finished(&hi);
         hn = hash_iter_next(&hi))
     {
-      DBG("  - checking [%s]", hn->key);
+      /* iterate all allowed params and stop if (1) declared  */
+      /* parameter hn->key is found in allowed paramter list, */
+      /* or (2) stop if there is not moar allowed params      */
       for(ocline = to->cparams;
           ocline->name && strcasecmp(hn->key, ocline->name);
           ocline++)
-        {
-    }
+        ;
       if(!ocline->name)
       {
         ERR("%d:%s: Parameter %s not allowed here.", command->line, to->name, hn->key);
@@ -266,7 +251,6 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
     }
 
     /* set params (apply configuration) */
-    DBG("Reading parameters...");
     for(ocline = to->cparams; ocline->name; ocline++)
     {
       SNODE *val;
@@ -311,15 +295,14 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 
   /* add thread to the list */
   pthreadex_lock_get_exclusive(&ttable_lock);
-  DBG("Installing thread %d.", tid);
+  DBG("[tea] Installing thread %d.", tid);
 
   /* build threads */
   if(ttable[tid])
   {
-    ERR("Cannot alloc thread %d because it is already used.", tid);
+    ERR("Thread slot %d is used already.", tid);
     goto fatal;
   }
-
   ttable[tid] = tw;
 
   /* launch thread */
@@ -333,7 +316,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   return;
 
 fatal:
-  ERR("Fatal error happened. Going to abort...");
+  ERR("A fatal error has happened. Going to abort...");
   if(tw)
   {
     if(ttable[tid] == tw)
@@ -352,15 +335,17 @@ static void tea_thread_stop(int tid)
   THREAD_WORK *tw;
   int r;
 
-  DBG("Thread %d kill scheduled.", tid);
+  /* wait until we have exclusive access right on ttable */
+  DBG("[tea] Thread %d killing scheduled.", tid);
   pthreadex_lock_get_exclusive(&ttable_lock);
-  DBG("  going to kill %d.", tid);
+
+  /* going to kill thread */
   tw = ttable[tid];
   pthreadex_lock_release();
 
   if(tw != NULL)
   {
-    DBG2("[kill %d] detaching thread", tid);
+    DBG("[tea] Killing thread %d.", tid);
 
     /* consider it dead */
     ttable[tid] = NULL;
@@ -368,23 +353,22 @@ static void tea_thread_stop(int tid)
     /* kill thread */
     while((r = pthread_detach(tw->pthread_id)) != 0 && errno == EINTR)
     {
-      DBG("[kill %d] Detach EINTR; repeating pthread_detach()", tid);
+      DBG("[tea] Detach EINTR; repeating pthread_detach() on  %d", tid);
       errno = 0;
     }
     if(r != 0)
-      ERR_ERRNO("[kill %d] Cannot detach thread", tid);
+      ERR_ERRNO("[tea] Cannot detach thread %d", tid);
     while((r = pthread_cancel(tw->pthread_id)) != 0 && errno == EINTR)
     {
-      DBG("[kill %d] Cancel EINTR; repeating pthread_cancel()", tid);
+      DBG("[tea] Cancel EINTR; repeating pthread_cancel() on %d", tid);
       errno = 0;
     }
     if(r != 0)
-      ERR_ERRNO("[kill %d] Cannot cancel thread", tid);
+      ERR_ERRNO("[tea] Cannot cancel thread %d", tid);
 
-    DBG("[kill %d] KILLED!", tid);
-  } else {
-    ERR("Thread %u does not exist.", tid);
-  }
+    DBG("[tea] THREAD %d KILLED!", tid);
+  } else
+    ERR("[tea] Thread %d does not exist or died voluntarely.", tid);
 }
 
 int tea_thread_listener_search(int proto, char *b, unsigned int l, int pivot_id)
@@ -462,7 +446,7 @@ int tea_thread_msg_push(int tid, INET_ADDR *addr, void *msg, int msg_size)
       mqueue_push(ttable[tid]->mqueue, tmsg);
       pthreadex_flag_up(&(ttable[tid]->mwaiting));
     } else
-      DBG("  message ignored by %d", tid);
+      DBG("[tea] network message ignored by %d", tid);
   } else
     r = -1;
 
@@ -498,7 +482,7 @@ int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
       m->w.tv_nsec = 0;
       m->w.tv_sec  = 0;
     }
-    DBG("PACKET QUEUED AND DELAYED UNTIL %ld.%09ld secs", m->w.tv_sec, m->w.tv_nsec);
+    DBG("[tea] Packet queued and delayed until %ld.%09ld secs", m->w.tv_sec, m->w.tv_nsec);
 
     /* search sender and insert msg into its queue */
     pthreadex_lock_get_shared(&ttable_lock);
@@ -522,10 +506,10 @@ int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
   {
     if(lnc)
     {
-      DBG("PACKET IS BEING SENT NOW");
+      DBG("[tea] Packet is being sent now");
       ln_send_packet(lnc, m->b, m->s, &m->dest);
     } else
-      WRN("Cannot send message!");
+      WRN("[tea] Cannot send message (lnc neither sender thread available).");
   }
 
   return 0;
@@ -556,23 +540,23 @@ static void tea_fini(void)
     /* NOTE: Only cancelations with 'errno' different from zero are real    */
     /*       errors. A pthread_cancel return value different from zero, but */
     /*       a zero errno only means that thread is already finished.       */
-    DBG("The begining of the end");
-    DBG("  - Cancelling all threads.");
+    DBG("[tea] The begining of the end");
+    DBG("[tea]   - Cancelling all threads.");
     for(i = 0; i < cfg.maxthreads; i++)
       if(ttable[i])
         tea_thread_stop(i);
-    DBG("  - All threads cancelled.");
+    DBG("[tea]   - All threads cancelled.");
 
     /* free mem */
     free(ttable);
   }
 
-  DBG("Finalizing ttable_lock.");
+  DBG("[tea] Finalizing ttable_lock.");
   pthreadex_lock_fini(&ttable_lock);
 
   mqueue_fini();
 
-  DBG("tea timer finished.");
+  DBG("[tea] tea timer finished.");
 }
 
 void tea_init(void)
@@ -622,7 +606,7 @@ void tea_timer(SNODE *program)
           WRN("Command on line %d happened too fast.", cmd->line);
       }
 
-      LOG("Now it is %.2f seconds from the begining of time.", tea_time_get() - stime);
+      LOG("[tea] Now it is %.2f seconds from the begining of time.", tea_time_get() - stime);
     }
     ltime = ctime;
 
@@ -651,8 +635,9 @@ void tea_timer(SNODE *program)
             default:
               FAT("Unknown thread type %d.", cmd->command.thc.to->type);
           }
-          LOG("[tea %d] %s thread of type %s.",
-              tid, cmd->type == TYPE_CMD_ON ? "Started" : "Modified", to->name);
+          LOG("[tea] %s thread %d of type %s.",
+              cmd->type == TYPE_CMD_ON ? "Started" : "Modified",
+              tid, to->name);
           tea_thread_new(tid, to, cmd);
         }
         break;
@@ -663,7 +648,7 @@ void tea_timer(SNODE *program)
             tid = tea_iter_next(&ti))
           if(ttable[tid])
           {
-            LOG("[tea %d] Stopped thread of type %s.", tid, to->name);
+            LOG("[tea] Stopped thread %d of type %s.", tid, to->name);
             tea_thread_stop(tid);
           }
         break;
@@ -691,10 +676,10 @@ void tea_timer(SNODE *program)
     }
   }
   if(cfg.finalize)
-    WRN("Attack cancelled by user.");
+    WRN("[tea] Attack cancelled by user.");
 
   /* free memory */
-  DBG("Script finished.");
+  DBG("[tea] Script finished.");
   //pthreadex_timer_destroy(&timer);
 }
 

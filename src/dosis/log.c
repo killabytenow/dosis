@@ -58,12 +58,12 @@ static char *d_log_get_level_desc(int level)
 
   switch(level)
   {
-    case LOG_LEVEL_DEBUG2:  type = "DEBUG2:";   break;
-    case LOG_LEVEL_DEBUG:   type = "DEBUG:";   break;
-    case LOG_LEVEL_LOG:     type = "";         break;
-    case LOG_LEVEL_WARNING: type = "warning:"; break;
+    case LOG_LEVEL_DEBUG2:  type = "DB2:";     break;
+    case LOG_LEVEL_DEBUG:   type = "DBG:";     break;
+    case LOG_LEVEL_LOG:     type = "LOG:";     break;
+    case LOG_LEVEL_WARNING: type = "WARNING:"; break;
     case LOG_LEVEL_ERROR:   type = "ERROR:";   break;
-    case LOG_LEVEL_FATAL:   type = "ERROR:";   break;
+    case LOG_LEVEL_FATAL:   type = "FATAL:";   break;
     default:
       FAT("Unknown log level when printing message.");
   }
@@ -73,7 +73,7 @@ static char *d_log_get_level_desc(int level)
 
 static void d_log_prefix_print(int level, char *file, char *function)
 {
-  if(cfg.tstamp_log)
+  if(cfg.log_tstamp)
   {
     struct timeval temptv;
     if(gettimeofday(&temptv, NULL) < 0)
@@ -89,8 +89,11 @@ static void d_log_prefix_print(int level, char *file, char *function)
             temptv.tv_sec, temptv.tv_usec);
   }
   fputs(d_log_get_level_desc(level), logfile);
-  if(file)     fprintf(logfile, "%s:", file);
-  if(function) fprintf(logfile, "%s:", function);
+  if(cfg.log_srcloc)
+  {
+    if(file)     fprintf(logfile, "%s:", file);
+    if(function) fprintf(logfile, "%s:", function);
+  }
 }
 
 static void d_log_level_print(int level, char *file, char *function, char *format, va_list args)

@@ -31,11 +31,12 @@
 
 /* default config and global configuration pointer */
 DOS_CONFIG cfg = {
-  .verbosity  = LOG_LEVEL_LOG, /* verbosity                 */
-  .output     = NULL,          /* output filename           */
-  .script     = NULL,          /* script filename           */
-  .maxthreads = 100,           /* max threads               */
-  .tstamp_log = 0,             /* time stamped log messages */
+  .verbosity  = LOG_LEVEL_LOG, /* verbosity                     */
+  .output     = NULL,          /* output filename               */
+  .script     = NULL,          /* script filename               */
+  .maxthreads = 100,           /* max threads                   */
+  .log_tstamp = 0,             /* time stamped log messages     */
+  .log_srcloc = 0,             /* src code location of log msgs */
 };
 
 /* unix wrappers */
@@ -59,16 +60,17 @@ typedef struct _tag_CMD_OPTION {
 } DOS_CMD_OPTION;
 
 DOS_CMD_OPTION cmd_options[] = {
-  { 'h', "help",          0 },
-  { 'i', "interface",     1 },
-  { 'I', "include",       1 },
-  { 'q', "quiet",         0 },
-  { 'o', "output-file",   1 },
-  { 't', "max-threads",   1 },
-  { 'T', "tstamp-log",    0 },
-  { 'v', "verbose",       2 },
-  { 'Z', "debug",         0 },
-  {   0, NULL,            0 },
+  { 'h', "help",             0 },
+  { 'i', "interface",        1 },
+  { 'I', "include",          1 },
+  { 'L', "log-src-location", 0 },
+  { 'q', "quiet",            0 },
+  { 'o', "output-file",      1 },
+  { 't', "max-threads",      1 },
+  { 'T', "log-tstamp",       0 },
+  { 'v', "verbose",          2 },
+  { 'Z', "debug",            0 },
+  {   0, NULL,               0 },
 };
 #define CMD_OPTIONS_N (sizeof(cmd_options) / sizeof(DOS_CMD_OPTION))
 
@@ -131,13 +133,16 @@ static void dos_config_parse_command(int argc, char **argv)
             FAT("Required pathname.");
           dosis_add_include_dir(optarg, 0);
           break;
+      case 'L':
+          cfg.log_srcloc = -1;
+          break;
       case 't':
           cfg.maxthreads = atoi(optarg);
           if(cfg.maxthreads < 1)
             FAT("A minimum of 1 thread is needed.");
           break;
       case 'T':
-          cfg.tstamp_log = -1;
+          cfg.log_tstamp = -1;
           break;
       case 'v':
           s = optarg ? optarg : "3";
