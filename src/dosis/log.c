@@ -123,6 +123,14 @@ static void d_log_level_print(int level, char *file, char *function, char *forma
  *   These functions only use the previous functions to expose a rich log API.
  */
 
+void d_log_level_v(int level, char *file, char *function, char *format, va_list args)
+{
+  d_log_level_print(level, file, function, format, args);
+  
+  if(level == LOG_LEVEL_FATAL)
+    exit(1);
+}
+
 void d_log_level(int level, char *file, char *function, char *format, ...)
 {
   va_list args;
@@ -291,7 +299,7 @@ void log_init(void)
 {
 #if HAVE_DLFCN_H
   int  (*stacktrace_version_check)(int, int, int);
-  void (*stacktrace_init)(int);
+  void (*stacktrace_init_siglist)(int, ...);
 #endif
 
   /* init log file */
@@ -309,12 +317,14 @@ void log_init(void)
   {
     stacktrace_version_check = dlsym(lst, "stacktrace_version_check");
 
-    if(!dlerror() && stacktrace_version_check(1, 1, 2))
+    if(!dlerror() && stacktrace_version_check(1, 2, 1))
     {
-      stacktrace_init = dlsym(lst, "stacktrace_init");
+      stacktrace_init_siglist = dlsym(lst, "stacktrace_init_siglist");
       if(!dlerror())
       {
-        stacktrace_init(0);
+        stacktrace_init_siglist(1,
+                                SIGILL, SIGFPE, SIGSEGV,
+                                SIGABRT, SIGBUS, 0);
         DBG("libstacktrace loaded.");
       }
     } else {
