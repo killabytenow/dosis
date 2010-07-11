@@ -57,31 +57,35 @@ extern "C" {
   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 /* #define PTHREADEX_DEBUG 1 */
+#define PTHREADEX_DEBUG 1
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  + DEBUG MACROS
  + 
  +   Enabled automatically if not exists a macro before with name FAT or DBG.
- +   Both functions take same parameters as printf(3).
+ +   Both functions take same parameters of printf(3).
  +
  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-#if ((!defined FAT) || (!defined DBG))
-#  define PTHREADEX_LOG(l, ...) { fputs("pthreadex:" l ":", stderr); \
-                                  fprintf(stderr, __VA_ARGS__); }
-#  ifndef FAT
-#    define FAT(...) { PTHREADEX_LOG("fatal", __VA_ARGS__); exit(1); }
-#  endif
-#  ifndef DBG
-#  define DBG(...) { PTHREADEX_LOG("debug", __VA_ARGS__); }
-#  endif
+#ifdef PTHREADEX_NEVER_DEBUG
+#  undef PTHREADEX_DEBUG
 #endif
 
-#if PTHREADEX_DEBUG
-#  define __X_FAT(m, f, ...)   FAT("%s: " f, (m)->n,  __VA_ARGS__)
+#define PTHREADEX_LOG(l, ...) { fputs("pthreadex:" l ":", stderr); \
+                                fprintf(stderr, __VA_ARGS__);      \
+                                fputc('\n', stderr); }
+#define PTHREADEX_FAT(...)    { PTHREADEX_LOG("fatal", __VA_ARGS__); exit(1); }
+#define PTHREADEX_ERR(...)    { PTHREADEX_LOG("error", __VA_ARGS__); exit(1); }
+#ifdef PTHREADEX_DEBUG
+#  define PTHREADEX_DBG(...)  { PTHREADEX_LOG("debug", __VA_ARGS__); }
 #else
-#  define __X_FAT(m, f, ...)   FAT(f, __VA_ARGS__)
+#  define PTHREADEX_DBG(...)
 #endif
+#define PTHREADEX_ERR_ERRNO(f, ...) \
+                              { char __ed[255];                            \
+                                strerror_r(errno,  __ed, sizeof(__ed));    \
+                                PTHREADEX_ERR(f ": %s", ## __VA_ARGS__,    \
+                                              __ed); }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  + MUTEX
@@ -112,10 +116,13 @@ typedef struct _tag_pthreadex_mutex_t {
 #if PTHREADEX_DEBUG
 #define __x_pthreadex_munlock            pthreadex_debug_mutex_unlock
 #define __x_pthreadex_mutex_get(x)       &((x)->m)
+#define __X_FAT(m, f, ...)               PTHREADEX_FAT("%s: " f, (m)->n,  __VA_ARGS__)
 #else
 #define __x_pthreadex_munlock            ((void (*)(void *)) pthread_mutex_unlock)
 #define __x_pthreadex_mutex_get(x)       ((pthread_mutex_t *) (x))
+#define __X_FAT(m, f, ...)               PTHREADEX_FAT(f, __VA_ARGS__)
 #endif
+
 #define __x_pthreadex_mutex_begin(x)     pthread_cleanup_push_defer_np(                          \
                                            __x_pthreadex_munlock,                                \
                                            __x_pthreadex_mutex_get(x));                          \
@@ -128,11 +135,11 @@ typedef struct _tag_pthreadex_mutex_t {
 #define __x_pthreadex_mutex_init(x)      pthread_mutex_init(__x_pthreadex_mutex_get(x), NULL);
 #if PTHREADEX_DEBUG
 #define pthreadex_mutex_name(x,y)        ((x)->n = (y))
-#define pthreadex_mutex_begin(x)         DBG("Mutex %s: Entering...", (x)->n);               \
+#define pthreadex_mutex_begin(x)         PTHREADEX_DBG("Mutex %s: Entering...", (x)->n);               \
                                          __x_pthreadex_mutex_begin(x);                           \
-                                         DBG("Mutex %s: In mutual exclusion zone.", (x)->n);
+                                         PTHREADEX_DBG("Mutex %s: In mutual exclusion zone.", (x)->n);
 #define pthreadex_mutex_init(x)          { __x_pthreadex_mutex_init(x); (x)->n = "$unnamed:mutex$"; }
-#define pthreadex_mutex_destroy(x)       { DBG("Mutex %s: DESTROY", (x)->n);                  \
+#define pthreadex_mutex_destroy(x)       { PTHREADEX_DBG("Mutex %s: DESTROY", (x)->n);                  \
                                            pthread_mutex_destroy(__x_pthreadex_mutex_get(x)); }
 #else
 #define pthreadex_mutex_name(x,y)
@@ -325,6 +332,7 @@ void pthreadex_flag_init(pthreadex_flag_t *flag, int initial_state);
 void pthreadex_flag_destroy(pthreadex_flag_t *flag);
 int  pthreadex_flag_wait(pthreadex_flag_t *flag);
 int  pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout);
+int  pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout);
 int  pthreadex_flag_up(pthreadex_flag_t *flag);
 
 /* signal callback */
@@ -335,6 +343,8 @@ int (*pthreadex_set_signal_callback(int (*f)(void)))(void);
  +   A timer.. a simply and silly timer. Without portability issues.
  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
+/* -- nanosleep implementation --------------------------------------------- */
+#if PTHREADEX_TIMER_NANOSLEEP
 typedef struct _tag_pthreadex_timer_t
 {
   struct timespec t;
@@ -343,7 +353,24 @@ typedef struct _tag_pthreadex_timer_t
 #endif
 } pthreadex_timer_t;
 
-#define __PTHREADEX_TIMER_STRUCT_INIT { 0, 0 }
+#define __PTHREADEX_TIMER_STRUCT_INIT .t = { 0, 0 }
+/* -- pthread based implementation ----------------------------------------- */
+#else
+typedef struct _tag_pthreadex_timer_t
+{
+  struct timespec t;
+  pthread_mutex_t lock;
+  pthread_cond_t  cond;
+#if PTHREADEX_DEBUG
+  char           *n;
+#endif
+} pthreadex_timer_t;
+
+#define __PTHREADEX_TIMER_STRUCT_INIT .t = { 0, 0 },                     \
+                                      .lock = PTHREAD_MUTEX_INITIALIZER, \
+                                      .cond = PTHREAD_COND_INITIALIZER
+#endif
+
 #if PTHREADEX_DEBUG
 #define pthreadex_timer_name(x,y)     ((x)->n = (y))
 #define PTHREADEX_TIMER_INIT_NAMED(n) { __PTHREADEX_TIMER_STRUCT_INIT, n }

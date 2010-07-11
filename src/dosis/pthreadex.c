@@ -24,7 +24,6 @@
  *****************************************************************************/
 
 #include <config.h>
-#include "log.h"
 #include "pthreadex.h"
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -34,7 +33,7 @@
 #if PTHREADEX_DEBUG
 void pthreadex_debug_mutex_unlock(void *d)
 {
-  DBG("Mutex %s: Going out...", ((pthreadex_mutex_t *) d)->n);
+  PTHREADEX_DBG("Mutex %s: Going out...", ((pthreadex_mutex_t *) d)->n);
   pthread_mutex_unlock(&(((pthreadex_mutex_t *) d)->m));
 }
 #endif
@@ -73,6 +72,10 @@ void pthreadex_timer_set_frequency(pthreadex_timer_t *t, double tps)
 void pthreadex_timer_init(pthreadex_timer_t *t, double secs)
 {
   pthreadex_timer_set(t, secs);
+#if PTHREADEX_TIMER_NANOSLEEP
+  pthread_mutex_init(&(flag->lock), NULL);
+  pthread_cond_init(&(flag->flag_up), NULL);
+#endif
 }
 
 double pthreadex_timer_get(pthreadex_timer_t *t)
@@ -82,28 +85,77 @@ double pthreadex_timer_get(pthreadex_timer_t *t)
 
 void pthreadex_timer_destroy(pthreadex_timer_t *t)
 {
+  PTHREADEX_DBG("Timer %s: DESTROY", t->n);
   pthreadex_timer_set(t, 0.0);
+#if PTHREADEX_TIMER_NANOSLEEP
+  pthread_mutex_destroy(&flag->lock);
+  pthread_cond_destroy(&flag->cond);
+#endif
 }
 
 int pthreadex_timer_wait(pthreadex_timer_t *t)
 {
-  int ret = 0;
+#if PTHREADEX_TIMER_NANOSLEEP
   struct timespec r, *c;
 
   if(t->t.tv_nsec || t->t.tv_sec)
   {
     c = &(t->t);
-    while((ret = nanosleep(c, &r)) < 0)
-      if(errno == EINTR)
-      {
-        if(pthreadex_signal_callback
-        && pthreadex_signal_callback())
-          return 0;
-        c = &r;
-      } else
-        break;
+    while(nanosleep(c, &r) < 0)
+    {
+      if(errno != EINTR)
+        return -1;
+      if(pthreadex_signal_callback
+      && pthreadex_signal_callback())
+        return 0;
+      c = &r;
+    }
   }
-  return ret;
+#else
+  int e;
+  struct timespec tt;
+
+  /* get current time & add timeout */
+  if(clock_gettime(CLOCK_REALTIME, &tt) < 0)
+  {
+    PTHREADEX_ERR_ERRNO("Cannot read CLOCK_REALTIME");
+    return -1;
+  }
+  tt.tv_nsec += t->t.tv_nsec;
+  while(tt.tv_nsec > 1000000000)
+  {
+    tt.tv_nsec++;
+    tt.tv_nsec -= 1000000000;
+  }
+  tt.tv_sec += t->t.tv_sec;
+
+  /* lock the lock */
+  pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(t->lock));
+  pthread_mutex_lock(&(t->lock));
+
+  /* wait! */
+  PTHREADEX_DBG("Timer %s: Going to wait %ld.%09ld...", t->n, t->t.tv_sec, t->t.tv_nsec);
+  while((e = pthread_cond_timedwait(&t->cond, &t->lock, &tt)) == EINTR)
+  {
+    if(pthreadex_signal_callback && pthreadex_signal_callback())
+      return 0;
+  }
+
+  /* check return code */
+  switch(e)
+  {
+    case ETIMEDOUT: /* do nothing really ... */
+      PTHREADEX_DBG("Timer %s: Timed out!", t->n);
+    case 0:         /* everything ok ... somebody set up the bomb */
+      break;
+    default:
+      PTHREADEX_ERR_ERRNO("pthread_cond_timedwait()");
+      return e;
+  }
+  pthread_cleanup_pop_restore_np(1);
+#endif
+
+  return 0;
 }
 
 double pthreadex_time_get(void)
@@ -112,10 +164,7 @@ double pthreadex_time_get(void)
 
   /* XXX TODO: we should use gettimeofday(2) if clock_gettime(3) is not available */
   if(clock_gettime(CLOCK_REALTIME, &t) < 0)
-  {
-    FAT("Cannot read CLOCK_REALTIME.");
-    exit(1);
-  }
+    PTHREADEX_FAT("Cannot read CLOCK_REALTIME.");
 
   return ((double) t.tv_sec) + (((double) t.tv_nsec) / 1000000000.0);
 }
@@ -134,9 +183,7 @@ void pthreadex_barrier_init(pthreadex_barrier_t *barrier, int num_threads)
 
 void pthreadex_barrier_destroy(pthreadex_barrier_t *barrier)
 {
-#if PTHREADEX_DEBUG
-  DBG("Barrier %s: DESTROY", barrier->n);
-#endif
+  PTHREADEX_DBG("Barrier %s: DESTROY", barrier->n);
   pthread_mutex_destroy(&(barrier->Lock));
   pthread_cond_destroy(&(barrier->CV));
 }
@@ -151,9 +198,7 @@ void pthreadex_barrier_wait(pthreadex_barrier_t *barrier)
 
   Par = barrier->EvenOdd;
   OldCount = ++(barrier->Count[Par]);
-#if PTHREADEX_DEBUG
-  DBG("Barrier %s: entering (%d/%d)...", barrier->n, OldCount, barrier->NNodes);
-#endif
+  PTHREADEX_DBG("Barrier %s: entering (%d/%d)...", barrier->n, OldCount, barrier->NNodes);
   if(OldCount < barrier->NNodes)
   {
     pthread_cond_wait(&(barrier->CV), &(barrier->Lock));
@@ -165,9 +210,7 @@ void pthreadex_barrier_wait(pthreadex_barrier_t *barrier)
       pthread_cond_signal(&(barrier->CV));
   }
 
-#if PTHREADEX_DEBUG
-  DBG("Barrier %s: Exiting!.", barrier->n);
-#endif
+  PTHREADEX_DBG("Barrier %s: Exiting!.", barrier->n);
 
   /* following does unlock */
   pthread_cleanup_pop_restore_np(1);
@@ -191,9 +234,7 @@ void pthreadex_semaphore_wait(pthreadex_semaphore_t *sema)
   pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(sema->lock));
   pthread_mutex_lock(&(sema->lock));
 
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: entering (waiters=%d, max=%d)", sema->n, sema->waiters_count, sema->count);
-#endif
+  PTHREADEX_DBG("Semaphore %s: entering (waiters=%d, max=%d)", sema->n, sema->waiters_count, sema->count);
 
   /* (probably) one more thread waiting until semaphore count >0 */
   sema->waiters_count++;
@@ -204,9 +245,8 @@ void pthreadex_semaphore_wait(pthreadex_semaphore_t *sema)
   /* decrement one semaphore resource */
   sema->count--;
 
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: resumed", sema->n);
-#endif
+  PTHREADEX_DBG("Semaphore %s: resumed", sema->n);
+
   /* unlock */
   pthread_cleanup_pop_restore_np(1);
 }
@@ -219,9 +259,8 @@ int pthreadex_semaphore_post(pthreadex_semaphore_t *sema)
   pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(sema->lock));
   pthread_mutex_lock(&(sema->lock));
 
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: releasing one thread.", sema->n);
-#endif
+  PTHREADEX_DBG("Semaphore %s: releasing one thread.", sema->n);
+
   /* Always allow one thread to continue if it is waiting */
   if(sema->waiters_count > 0)
   {
@@ -246,9 +285,8 @@ int pthreadex_semaphore_set(pthreadex_semaphore_t *sema, int count)
   pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(sema->lock));
   pthread_mutex_lock(&(sema->lock));
 
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: setting counter (max) to %d.", sema->n, count);
-#endif
+  PTHREADEX_DBG("Semaphore %s: setting counter (max) to %d.", sema->n, count);
+
   if(sema->waiters_count > 0 && sema->count < count)
   {
     awake = 1;
@@ -265,9 +303,7 @@ int pthreadex_semaphore_set(pthreadex_semaphore_t *sema, int count)
 
 void pthreadex_semaphore_destroy(pthreadex_semaphore_t *sema)
 {
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: DESTROY", sema->n);
-#endif
+  PTHREADEX_DBG("Semaphore %s: DESTROY", sema->n);
   pthread_mutex_destroy(&(sema->lock));
   pthread_cond_destroy(&(sema->count_nonzero));
 }
@@ -284,49 +320,34 @@ void pthreadex_flag_init(pthreadex_flag_t *flag, int initial_state)
   flag->waiters_count = 0;
 }
 
-int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
+int pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout)
 {
   int e = 0;
 
   /* lock semaphore data */
   pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(flag->lock));
   pthread_mutex_lock(&(flag->lock));
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: Going to wait...", flag->n);
-#endif
+  PTHREADEX_DBG("Flag %s: Going to wait...", flag->n);
 
   /* (probably) one more thread waiting nnutil flag count >0 */
   flag->waiters_count++;
   while(flag->state == 0)
-    if(tout > 0)
+    if(tout)
     {
-      struct timespec t;
-
-      /* get current time */
-      /* XXX TODO: we should use gettimeofday(2) if clock_gettime(3) is not available */
-      if(clock_gettime(CLOCK_REALTIME, &t) < 0)
-      {
-        FAT("Cannot read CLOCK_REALTIME.");
-        exit(1);
-      }
-      /* add timeout */
-      t.tv_nsec = ((tout % 1000) * 1000) + t.tv_nsec;
-      t.tv_sec  = (tout / 1000) + (t.tv_nsec / 1000000000);
-      t.tv_nsec = t.tv_nsec / 1000000000;
       /* wait until somebody flags or time run out */
-      while((e = pthread_cond_timedwait(&flag->flag_up, &flag->lock, &t)) == EINTR)
-      {
-        if(pthreadex_signal_callback
-        && pthreadex_signal_callback())
+      while((e = pthread_cond_timedwait(&flag->flag_up, &flag->lock, tout)) == EINTR)
+        if(pthreadex_signal_callback && pthreadex_signal_callback())
           return 0;
-      }
+
+      /* check return code */
       switch(e)
       {
-        case 0:         /* everything ok ... somebody set up the bomb */
         case ETIMEDOUT: /* do nothing really ... */
+          PTHREADEX_DBG("Flag %s: Timed out!", flag->n);
+        case 0:         /* everything ok ... somebody set up the bomb */
           break;
         default:
-          ERR_ERRNO("Error at pthread_cond_timedwait()");
+          PTHREADEX_ERR_ERRNO("Error at pthread_cond_timedwait()");
       }
     } else
       e = pthread_cond_wait(&flag->flag_up, &flag->lock);
@@ -335,13 +356,29 @@ int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
   /* decrement one flag resource */
   flag->state = 0;
 
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: Restarted.", flag->n);
-#endif
+  PTHREADEX_DBG("Flag %s: Restarted.", flag->n);
+
   /* unlock */
   pthread_cleanup_pop_restore_np(1);
 
   return e;
+}
+
+int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
+{
+  struct timespec t;
+
+  /* get current time */
+  if(clock_gettime(CLOCK_REALTIME, &t) < 0)
+    PTHREADEX_FAT("Cannot read CLOCK_REALTIME.");
+
+  /* add timeout */
+  t.tv_nsec += (tout % 1000) * 1000;
+  t.tv_sec  += (tout / 1000) + (t.tv_nsec / 1000000000);
+  t.tv_nsec = t.tv_nsec / 1000000000;
+
+  /* call wait op */
+  return pthreadex_flag_wait_timeout_ts(flag, &t);
 }
 
 int pthreadex_flag_wait(pthreadex_flag_t *flag)
@@ -357,9 +394,8 @@ int pthreadex_flag_up(pthreadex_flag_t *flag)
   pthread_cleanup_push_defer_np((void *) pthread_mutex_unlock, &(flag->lock));
   pthread_mutex_lock(&(flag->lock));
 
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: Flag is going up!.", flag->n);
-#endif
+  PTHREADEX_DBG("Flag %s: Flag is going up!.", flag->n);
+
   /* Allow one thread to continue if it is waiting */
   if(flag->waiters_count > 0)
   {
@@ -378,9 +414,7 @@ int pthreadex_flag_up(pthreadex_flag_t *flag)
 
 void pthreadex_flag_destroy(pthreadex_flag_t *flag)
 {
-#if PTHREADEX_DEBUG
-  DBG("Semaphore %s: DESTROY", flag->n);
-#endif
+  PTHREADEX_DBG("Flag %s: DESTROY", flag->n);
   pthread_mutex_destroy(&(flag->lock));
   pthread_cond_destroy(&(flag->flag_up));
 }
@@ -392,7 +426,7 @@ void pthreadex_flag_destroy(pthreadex_flag_t *flag)
 #if PTHREADEX_DEBUG
 void pthreadex_debug_lock_mutex_unlock(void *d)
 {
-  DBG("Lock %s: Going out...", ((pthreadex_lock_t *) d)->n);
+  PTHREADEX_DBG("Lock %s: Going out...", ((pthreadex_lock_t *) d)->n);
   pthread_mutex_unlock(&(((pthreadex_lock_t *) d)->lock));
 }
 #define __pthreadex_lock_get_mutex(x)                                                       \
@@ -418,11 +452,9 @@ void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
   /* lock semaphore data */
   __pthreadex_lock_get_mutex(l);
 
-#if PTHREADEX_DEBUG
-  DBG("Lock %s: Going to enter %s lock...",
+  PTHREADEX_DBG("Lock %s: Going to enter %s lock...",
         l->n,
         type == PTHREADEX_LOCK_SHARED ? "SHARED" : "EXCLUSIVE");
-#endif
   switch(type)
   {
     case PTHREADEX_LOCK_SHARED:
@@ -432,18 +464,16 @@ void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
       break;
 
     default:
-      WRN("warning: Unknown type '%d'.", type);
+      PTHREADEX_ERR("Unknown type '%d'.", type);
 
     case PTHREADEX_LOCK_EXCLUSIVE:
       while(l->lock_count != 0)
         pthread_cond_wait(&l->lock_zero, &l->lock);
       l->lock_count--;
   }
-#if PTHREADEX_DEBUG
-  DBG("Lock %s: Lock captured with %s mode",
+  PTHREADEX_DBG("Lock %s: Lock captured with %s mode",
         l->n,
         type == PTHREADEX_LOCK_SHARED ? "SHARED" : "EXCLUSIVE");
-#endif
 
   /* unlock */
   __pthreadex_lock_release_mutex();
@@ -452,9 +482,7 @@ void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
 void pthreadex_lock_release_raw(pthreadex_lock_t *l)
 {
   /* lock semaphore data */
-#if PTHREADEX_DEBUG
-  DBG("Lock %s: Going to be released", l->n);
-#endif
+  PTHREADEX_DBG("Lock %s: Going to be released", l->n);
 
   __pthreadex_lock_get_mutex(l);
 
@@ -462,9 +490,7 @@ void pthreadex_lock_release_raw(pthreadex_lock_t *l)
   if(l->lock_count == 0)
     pthread_cond_signal(&l->lock_zero);
 
-#if PTHREADEX_DEBUG
-  DBG("Lock %s: Released", l->n);
-#endif
+  PTHREADEX_DBG("Lock %s: Released", l->n);
 
   /* unlock */
   __pthreadex_lock_release_mutex();
@@ -472,9 +498,7 @@ void pthreadex_lock_release_raw(pthreadex_lock_t *l)
 
 void pthreadex_lock_fini(pthreadex_lock_t *l)
 {
-#if PTHREADEX_DEBUG
-  DBG("Lock %s: DESTROY", l->n);
-#endif
+  PTHREADEX_DBG("Lock %s: DESTROY", l->n);
   pthread_mutex_destroy(&l->lock);
   pthread_cond_destroy(&l->lock_zero);
 }
