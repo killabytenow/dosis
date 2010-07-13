@@ -65,14 +65,11 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
   }
 
   /* disassociate mqueue of tw and destroy it */
-  if(tw->to->listener)
+  if(tw->to->listener || tw->to->sender)
   {
     pthreadex_mutex_begin(&(tw->mqueue->mutex));
-    TDBG2("[tea-cleanup] listen cleanup");
-    if(tw->mqueue)
-      mq = tw->mqueue;
-    else
-      mq = NULL;
+    TDBG2("[tea-cleanup] listener/sender cleanup");
+    mq = tw->mqueue;
     tw->mqueue = NULL;
     pthreadex_mutex_end();
 
@@ -208,11 +205,10 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
   tw->to         = to;
 
   /* check methods */
-  tw->mqueue = tw->to->listener
-                 ? mqueue_create()
-                 : NULL;
+  if(tw->to->listener || tw->to->sender)
+    tw->mqueue = mqueue_create();
   pthreadex_flag_init(&(tw->mwaiting), 0);
-  pthreadex_flag_name(&(tw->mwaiting), "flag-mwaiting");
+  pthreadex_flag_name(&(tw->mwaiting), "mwaiting");
 
   /* global thread initialization here */
   if(tw->to->global_init && !tw->to->initialized)
@@ -420,10 +416,8 @@ TEA_MSG *tea_thread_msg_wait(THREAD_WORK *tw)
 {
   TEA_MSG *m;
 
-  do {
-    pthreadex_flag_wait(&(tw->mwaiting));
-    m = mqueue_shift(tw->mqueue);
-  } while(!m);
+  while((m = mqueue_shift(tw->mqueue)) == NULL)
+    pthreadex_flag_wait(&tw->mwaiting);
 
   return m;
 }
@@ -470,8 +464,9 @@ int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
         ERR_ERRNO("Cannot read CLOCK_REALTIME.");
         return -1;
       }
-      m->w.tv_nsec += delay % 1000;
-      m->w.tv_sec  += delay / 1000;
+      DBG2("[tea] Now is %ld.%09ld", m->w.tv_sec, m->w.tv_nsec);
+      m->w.tv_nsec += (delay % 1000) * 1000000;;
+      m->w.tv_sec  += (delay / 1000) * 1000000;
       if(m->w.tv_nsec > 1000000000)
       {
         m->w.tv_sec  += m->w.tv_nsec / 1000000000;
@@ -490,10 +485,13 @@ int tea_thread_msg_send(LN_CONTEXT *lnc, TEA_MSG *m, int delay)
     do {
       if(++tid >= cfg.maxthreads)
         tid = 0;
-      if(ttable[tid] && !ttable[tid]->to->sender)
+      if(ttable[tid] && ttable[tid]->to->sender)
       {
         /* insert into queue in correct order */
+        DBG2("[tea] Selected sender thread %d.", tid);
         mqueue_insert_delayed(ttable[tid]->mqueue, m);
+        pthreadex_flag_up(&(ttable[tid]->mwaiting));
+        m = NULL;
         break;
       }
     } while(tid != pivot_id);

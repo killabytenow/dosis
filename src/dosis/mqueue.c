@@ -84,6 +84,15 @@ void mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m)
   pthreadex_mutex_end();
 }
 
+TEA_MSG *mqueue_peek(TEA_MSG_QUEUE *mq)
+{
+  TEA_MSG *m;
+  pthreadex_mutex_begin(&(mq->mutex));
+  m = mq ? mq->first : NULL;
+  pthreadex_mutex_end();
+  return m;
+}
+
 TEA_MSG *mqueue_shift(TEA_MSG_QUEUE *mq)
 {
   TEA_MSG *m;
@@ -116,6 +125,31 @@ void mqueue_fini(void)
 void mqueue_init(void)
 {
   msg_free = mqueue_create();
+}
+
+void mqueue_dump(int level, TEA_MSG_QUEUE *mq, char *prefixfrm, ...)
+{
+  va_list prefixarg;
+  TEA_MSG *m, *lf;
+  char prefix[256];
+
+  if(prefixfrm)
+  {
+    va_start(prefixarg, prefixfrm);
+    vsnprintf(prefix, sizeof(prefix), prefixfrm, prefixarg);
+    va_end(prefixarg);
+  } else
+    *prefix = '\0';
+
+  for(m = lf = mq->first; m; m = m->next)
+  {
+    d_log_level(level, THIS, "%s%s %ld.%09ld [0x" STRF_PTR_X "]",
+                prefix,
+                m == lf ? "==" : "| ",
+                m->w.tv_sec, m->w.tv_nsec, (UINT_POINTER) m);
+    if(m == lf)
+      lf = lf->ff_next;
+  }
 }
 
 /*---------------------------------------------------------------------------*
@@ -391,6 +425,8 @@ DBG("POLLA CASE: new segment coes to the party.");
       }
     }
   }
+
+  mqueue_dump(LOG_LEVEL_DEBUG, mq, NULL);
 
   pthreadex_mutex_end();
 }

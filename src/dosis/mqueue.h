@@ -62,8 +62,10 @@ void           mqueue_fini(void);
 TEA_MSG_QUEUE *mqueue_create(void);
 void           mqueue_destroy(TEA_MSG_QUEUE *mq);
 void           mqueue_push(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+TEA_MSG       *mqueue_peek(TEA_MSG_QUEUE *mq);
 TEA_MSG       *mqueue_shift(TEA_MSG_QUEUE *mq);
 void           mqueue_insert_delayed(TEA_MSG_QUEUE *mq, TEA_MSG *m);
+void           mqueue_dump(int level, TEA_MSG_QUEUE *mq, char *prefixfrm, ...);
 
 /*- MESSAGE MANAGAMENT ------------------------------------------------------*/
 TEA_MSG *msg_get(void);

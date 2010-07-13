@@ -75,7 +75,7 @@
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
 %token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_CIPHER OPT_ZWIN
-%token            OPT_WINDOW OPT_DEBUG
+%token            OPT_WINDOW OPT_DEBUG OPT_DELAY
 %token            TO_LISTEN TO_SEND TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
@@ -167,6 +167,7 @@ opts:
 | OPT_CWAIT nint opts       { $$ = $3; hash_entry_add($$, "tcp_cwait",  $2);   }
 | OPT_DEBUG nbool opts      { $$ = $3; hash_entry_add($$, "debug",      $2);   }
 | OPT_DEBUG opts            { $$ = $2; hash_entry_add($$, "debug",      node_new_bool(1)); }
+| OPT_DELAY nint opts       { $$ = $3; hash_entry_add($$, "delay",      $2);   }
 | OPT_DST string opts       { $$ = $3; hash_entry_add($$, "dst_addr",   $2);   }
 | OPT_DST string nint opts  { $$ = $4; hash_entry_add($$, "dst_addr",   $2);
                                        hash_entry_add($$, "dst_port",   $3);   }
@@ -454,6 +455,7 @@ static int yylex(void)
     { "CIPHER",   OPT_CIPHER  },
     { "CWAIT",    OPT_CWAIT   },
     { "DEBUG",    OPT_DEBUG   },
+    { "DELAY",    OPT_DELAY   },
     { "DISABLE",  BFALSE      },
     { "DISABLED", BFALSE      },
     { "DLL",      OPT_DLL     },
@@ -763,6 +765,7 @@ void script_init(void)
   hash_entry_add(defvalues, "periodic_n",     NULL);
 
   /* set default config */
+  hash_entry_add(defvalues, "delay",      node_new_int(0));
   hash_entry_add(defvalues, "debug",      node_new_bool(0));
   hash_entry_set(defvalues, "tcp_cwait",  node_new_int(3000000));
   hash_entry_set(defvalues, "tcp_rwait",  node_new_int(10000000));
@@ -993,7 +996,7 @@ SNODE *script_get_default(char *param)
 {
   /* try to get default value from default config */
   if(!hash_key_exists(defvalues, param))
-    FAT("Cannot get invalid parameter '%s'.", param);
+    FAT("Parameter '%s' does not exist in dosis' parameter list/hash.", param);
 
   return hash_entry_get(defvalues, param);
 }

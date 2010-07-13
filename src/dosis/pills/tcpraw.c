@@ -104,6 +104,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
       seq += (NEXT_RAND_PORT(seq) & 0x1f);
+DBG("alert 1");
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr, sport,
                          &tc->dhost.addr, dport,
@@ -112,13 +113,15 @@ static void tcpraw__thread(THREAD_WORK *tw)
                          seq, 0,
                          (char *) tc->payload.data, tc->payload.size,
                          NULL, 0);
+DBG("alert 2");
     }
+DBG("alert 3");
 
     /* now wait for more work */
     if(tc->hitratio > 0)
       if(pthreadex_timer_wait(&(tc->timer)) < 0)
         TERR_ERRNO("Error at pthreadex_timer_wait()");
-
+DBG("alert 4");
   }
 }
 

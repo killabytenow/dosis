@@ -47,37 +47,58 @@ static void sender__thread(THREAD_WORK *tw)
 {
   SENDER_CFG *scfg = (SENDER_CFG *) tw->data;
   TEA_MSG *m;
-  long long tout = 100;
-  struct timespec now;
+  struct timespec now, tout;
+
+  /* set initial timeout (5 minutes?) */
+  if(clock_gettime(CLOCK_REALTIME, &tout) < 0)
+  {
+    ERR_ERRNO("Cannot read CLOCK_REALTIME");
+    return;
+  }
+  tout.tv_sec += 10;
 
   /* send packets */
   while(!cfg.finalize)
   {
     /* wait for signal/timeout */
-    if(pthreadex_flag_wait_timeout(&tw->mwaiting, tout) == ETIMEDOUT)
-      TDBG2("timeout after %lld miliseconds!", tout);
+    if(pthreadex_flag_wait_timeout_ts(&tw->mwaiting, &tout) == ETIMEDOUT)
+      TDBG2("timeout after %ld.%09ld miliseconds!", tout.tv_sec, tout.tv_nsec);
     else
       TDBG2("something received");
 
+TDBG("Dumping current queue:");
+mqueue_dump(LOG_LEVEL_DEBUG, tw->mqueue, "[%d/%s]   ", tw->id, tw->to->name);
+
     /* send packets in cronological order */
-    TDBG("sending everything scheduled until now!");
     if(clock_gettime(CLOCK_REALTIME, &now) < 0)
     {
       ERR_ERRNO("Cannot read CLOCK_REALTIME");
       continue;
     }
 
-    while((m = mqueue_shift(tw->mqueue)) != NULL
+    TDBG("sending everything scheduled until now (%ld.%09ld)", now.tv_sec, now.tv_nsec);
+    while((m = mqueue_peek(tw->mqueue)) != NULL
     && (now.tv_sec > m->w.tv_sec
     || (now.tv_sec == m->w.tv_sec && now.tv_nsec > m->w.tv_nsec)))
     {
+      m = mqueue_shift(tw->mqueue);
       if(scfg->debug)
       {
         TLOG("Going to send following packet:");
         TDUMPMSG(LOG_LEVEL_LOG, m->dest.type,  m->b, m->s);
       }
       ln_send_packet(&scfg->lnc, m->b, m->s, &m->dest);
+      memcpy(&tout, &m->w, sizeof(struct timespec));
+      msg_release(m);
     }
+    if((m = mqueue_peek(tw->mqueue)) != NULL)
+    {
+      memcpy(&tout, &m->w, sizeof(struct timespec));
+    } else {
+      memcpy(&tout, &now, sizeof(struct timespec));
+      tout.tv_sec += 10;
+    }
+    TDBG("  Everything sent (next action at %ld.%09ld)", tout.tv_sec, tout.tv_nsec);
   }
 }
 
@@ -125,5 +146,6 @@ TEA_OBJECT teaSENDER = {
   .cleanup     = sender__cleanup,
   .thread      = sender__thread,
   .cparams     = sender_cfg_def,
+  .sender      = 1,
 };
 

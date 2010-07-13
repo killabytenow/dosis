@@ -57,7 +57,6 @@ extern "C" {
   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 /* #define PTHREADEX_DEBUG 1 */
-#define PTHREADEX_DEBUG 1
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  + DEBUG MACROS
@@ -300,11 +299,15 @@ int  pthreadex_semaphore_set(pthreadex_semaphore_t *sema, int new_count);
  *   'initial_state' can take values 0 flag down (so any thread will be
  *   blocked), or 1 that means the first thread that arrives to flag will pass.
  * pthreadex_flag_destroy(flag)
- *   Destro the flag freeing memory.
+ *   Destroy the flag freeing memory.
  * pthreadex_flag_wait(flag)
- *   Wait until flag is up -see pthreadex_flag_up()-
+ * pthreadex_flag_wait_timeout(flag, tout);
+ * pthreadex_flag_wait_timeout_ts(flag, tout);
+ *   Wait until flag is up -see pthreadex_flag_up()- or timeout expires (in
+ *   pthreadex_flag_wait_timeout*() family).
  * pthreadex_flag_up(flag)
- *   Allow one thread to pass.
+ *   Allow one thread to pass. If there is not a thread waiting, next call to
+ *   pthreadex_flag_wait() will not block the caller thread.
  *
  *****************************************************************************/
 
@@ -341,36 +344,38 @@ int (*pthreadex_set_signal_callback(int (*f)(void)))(void);
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  + TIMER
  +   A timer.. a simply and silly timer. Without portability issues.
+ +
+ +   Currently there are two implementations,
+ +     - one based on nanosleep (stable)
+ +     - one based on POSIX pthreads (unestable)
+ +   pthreads version will allow to waken timers and be more
+ +   flexible than nanosleep version, but perhaps less
+ +   efficient :(
  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-/* -- nanosleep implementation --------------------------------------------- */
-#if PTHREADEX_TIMER_NANOSLEEP
-typedef struct _tag_pthreadex_timer_t
-{
-  struct timespec t;
-#if PTHREADEX_DEBUG
-  char           *n;
-#endif
-} pthreadex_timer_t;
+/* if defined PTHREADEX_TIMER_NANOSLEEP def, the nanosleep */
+/* (stable) version will be compiled                       */
+#define PTHREADEX_TIMER_NANOSLEEP 1
 
-#define __PTHREADEX_TIMER_STRUCT_INIT .t = { 0, 0 }
-/* -- pthread based implementation ----------------------------------------- */
-#else
 typedef struct _tag_pthreadex_timer_t
 {
   struct timespec t;
+#if ! PTHREADEX_TIMER_NANOSLEEP
   pthread_mutex_t lock;
   pthread_cond_t  cond;
+#endif
 #if PTHREADEX_DEBUG
   char           *n;
 #endif
 } pthreadex_timer_t;
 
-#define __PTHREADEX_TIMER_STRUCT_INIT .t = { 0, 0 },                     \
-                                      .lock = PTHREAD_MUTEX_INITIALIZER, \
-                                      .cond = PTHREAD_COND_INITIALIZER
+#if PTHREADEX_TIMER_NANOSLEEP
+#  define __PTHREADEX_TIMER_STRUCT_INIT .t = { 0, 0 }
+#else
+#  define __PTHREADEX_TIMER_STRUCT_INIT .t = { 0, 0 },                     \
+                                        .lock = PTHREAD_MUTEX_INITIALIZER, \
+                                        .cond = PTHREAD_COND_INITIALIZER
 #endif
-
 #if PTHREADEX_DEBUG
 #define pthreadex_timer_name(x,y)     ((x)->n = (y))
 #define PTHREADEX_TIMER_INIT_NAMED(n) { __PTHREADEX_TIMER_STRUCT_INIT, n }

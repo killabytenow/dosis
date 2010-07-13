@@ -72,9 +72,9 @@ void pthreadex_timer_set_frequency(pthreadex_timer_t *t, double tps)
 void pthreadex_timer_init(pthreadex_timer_t *t, double secs)
 {
   pthreadex_timer_set(t, secs);
-#if PTHREADEX_TIMER_NANOSLEEP
-  pthread_mutex_init(&(flag->lock), NULL);
-  pthread_cond_init(&(flag->flag_up), NULL);
+#if ! PTHREADEX_TIMER_NANOSLEEP
+  pthread_mutex_init(&t->lock, NULL);
+  pthread_cond_init(&t->cond, NULL);
 #endif
 }
 
@@ -87,9 +87,9 @@ void pthreadex_timer_destroy(pthreadex_timer_t *t)
 {
   PTHREADEX_DBG("Timer %s: DESTROY", t->n);
   pthreadex_timer_set(t, 0.0);
-#if PTHREADEX_TIMER_NANOSLEEP
-  pthread_mutex_destroy(&flag->lock);
-  pthread_cond_destroy(&flag->cond);
+#if ! PTHREADEX_TIMER_NANOSLEEP
+  pthread_mutex_destroy(&t->lock);
+  pthread_cond_destroy(&t->cond);
 #endif
 }
 
@@ -314,8 +314,8 @@ void pthreadex_semaphore_destroy(pthreadex_semaphore_t *sema)
 
 void pthreadex_flag_init(pthreadex_flag_t *flag, int initial_state)
 {
-  pthread_mutex_init(&(flag->lock), NULL);
-  pthread_cond_init(&(flag->flag_up), NULL);
+  pthread_mutex_init(&flag->lock, NULL);
+  pthread_cond_init(&flag->flag_up, NULL);
   flag->state = initial_state;
   flag->waiters_count = 0;
 }
@@ -331,7 +331,7 @@ int pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout
 
   /* (probably) one more thread waiting nnutil flag count >0 */
   flag->waiters_count++;
-  while(flag->state == 0)
+  while(flag->state == 0 && !e)
     if(tout)
     {
       /* wait until somebody flags or time run out */
@@ -342,12 +342,16 @@ int pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout
       /* check return code */
       switch(e)
       {
-        case ETIMEDOUT: /* do nothing really ... */
+        case ETIMEDOUT:
           PTHREADEX_DBG("Flag %s: Timed out!", flag->n);
-        case 0:         /* everything ok ... somebody set up the bomb */
+        case 0:
           break;
         default:
-          PTHREADEX_ERR_ERRNO("Error at pthread_cond_timedwait()");
+#         if PTHREADEX_DEBUG
+          PTHREADEX_ERR_ERRNO("Flag %s: pthread_cond_timedwait()", flag->n);
+#         else
+          PTHREADEX_ERR_ERRNO("pthreadex_flag_wait_timeout_ts:pthread_cond_timedwait()");
+#         endif
       }
     } else
       e = pthread_cond_wait(&flag->flag_up, &flag->lock);
@@ -366,24 +370,30 @@ int pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout
 
 int pthreadex_flag_wait_timeout(pthreadex_flag_t *flag, long long tout)
 {
-  struct timespec t;
+  struct timespec t, *pt;
 
-  /* get current time */
-  if(clock_gettime(CLOCK_REALTIME, &t) < 0)
-    PTHREADEX_FAT("Cannot read CLOCK_REALTIME.");
+  pt = NULL;
+  if(tout > 0)
+  {
+    /* get current time */
+    if(clock_gettime(CLOCK_REALTIME, &t) < 0)
+      PTHREADEX_FAT("Cannot read CLOCK_REALTIME.");
 
-  /* add timeout */
-  t.tv_nsec += (tout % 1000) * 1000;
-  t.tv_sec  += (tout / 1000) + (t.tv_nsec / 1000000000);
-  t.tv_nsec = t.tv_nsec / 1000000000;
+    /* add timeout */
+    t.tv_nsec += (tout % 1000) * 1000;
+    t.tv_sec  += (tout / 1000) + (t.tv_nsec / 1000000000);
+    t.tv_nsec = t.tv_nsec / 1000000000;
+
+    pt = &t;
+  }
 
   /* call wait op */
-  return pthreadex_flag_wait_timeout_ts(flag, &t);
+  return pthreadex_flag_wait_timeout_ts(flag, pt);
 }
 
 int pthreadex_flag_wait(pthreadex_flag_t *flag)
 {
-  return pthreadex_flag_wait_timeout(flag, 0);
+  return pthreadex_flag_wait_timeout_ts(flag, NULL);
 }
 
 int pthreadex_flag_up(pthreadex_flag_t *flag)

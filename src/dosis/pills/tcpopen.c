@@ -225,6 +225,7 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
 
 TOC_BEGIN(teaTCPOPEN_cfg)
   TOC("debug",    TEA_TYPE_BOOL, 0, TCPOPEN_CFG, debug,   NULL)
+  TOC("delay",    TEA_TYPE_INT,  0, TCPOPEN_CFG, delay,   NULL)
   TOC("dst_addr", TEA_TYPE_ADDR, 1, TCPOPEN_CFG, dhost,   NULL)
   TOC("dst_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, dhost,   NULL)
   TOC("payload",  TEA_TYPE_DATA, 1, TCPOPEN_CFG, payload, NULL)
