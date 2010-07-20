@@ -44,8 +44,8 @@ typedef struct _tag_TCP_CFG {
   TEA_TYPE_INT       tcp_cwait;
   TEA_TYPE_INT       tcp_rwait;
   TEA_TYPE_INT       pattern;
-  TEA_TYPE_INT       n;
-  TEA_TYPE_FLOAT     hitratio;
+  TEA_TYPE_INT       p_num;
+  TEA_TYPE_FLOAT     p_ratio;
 
   /* other things */
   char              *thread_buff;
@@ -120,13 +120,9 @@ int SSL_initialize(THREAD_WORK *tw)
     return 1;
   }
 
-  DBG("New SSL context");
-  DBG("  - Session cache = SSL_SESS_CACHE_BOTH");
   SSL_CTX_set_mode(tt->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
   SSL_CTX_set_session_cache_mode(tt->ssl_ctx, SSL_SESS_CACHE_BOTH);
-  DBG("  - SSL timeout = 500000 (constant)");
   SSL_CTX_set_timeout(tt->ssl_ctx, 500000);
-  DBG("  - cipher list = %s", tt->sslcipher);
   if(!SSL_CTX_set_cipher_list(tt->ssl_ctx, tt->sslcipher))
   {
     TERR("SSL_CTX_set_cipher_list");
@@ -166,7 +162,7 @@ static void tcp__thread(THREAD_WORK *tw)
   while(1)
   {
     /* wait for work */
-    if(tt->hitratio > 0)
+    if(tt->p_ratio > 0)
       if(pthreadex_timer_wait(&(tt->timer)) < 0)
         TERR_ERRNO("Error at pthreadex_timer_wait()");
 
@@ -336,11 +332,11 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
     TERR("Uknown pattern %d.", tt->pattern);
     return -1;
   }
-  if(tt->n)
-    TWRN("Talking about number of packets here has non sense (ignoring periodic.n value %d).", tt->n);
-  if(tt->hitratio < 0)
+  if(tt->p_num != 1)
+    TWRN("Talking about number of packets here has non sense (ignoring periodic.p_num value %d).", tt->p_num);
+  if(tt->p_ratio <= 0)
   {
-    TERR("Bad hit ratio '%f'.", tt->hitratio);
+    TERR("Bad hit ratio '%f'.", tt->p_ratio);
     return -1;
   }
 
@@ -350,7 +346,7 @@ static int tcp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   tt->sockwait_rwait.tv_sec  = tt->tcp_rwait / 1000000;
   tt->sockwait_rwait.tv_usec = tt->tcp_rwait % 1000000;
 
-  pthreadex_timer_set_frequency(&(tt->timer), tt->hitratio);
+  pthreadex_timer_set_frequency(&(tt->timer), tt->p_ratio);
 
   /* convert dhost to sockaddr */
   ip_addr_to_socket(&tt->dhost.addr, tt->dhost.port, &tt->dsockaddr);
@@ -384,8 +380,8 @@ TOC_BEGIN(tcp_cfg_def)
   TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCP_CFG, dhost,      NULL)
   TOC("dst_port",       TEA_TYPE_PORT,   0, TCP_CFG, dhost,      NULL)
   TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
-  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCP_CFG, hitratio,   NULL)
-  TOC("periodic_n",     TEA_TYPE_INT,    1, TCP_CFG, n,          NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCP_CFG, p_ratio,    NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,    1, TCP_CFG, p_num,      NULL)
   TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
   TOC("payload",        TEA_TYPE_DATA,   1, TCP_CFG, payload,    NULL)
   TOC("ssl",            TEA_TYPE_BOOL,   0, TCP_CFG, ssl,        NULL)
