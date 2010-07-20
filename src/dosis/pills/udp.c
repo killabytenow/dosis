@@ -35,10 +35,10 @@
 typedef struct _tag_UDP_CFG {
   /* parameters */
   TEA_TYPE_ADDR          dhost;
-  TEA_TYPE_INT           pattern;
-  TEA_TYPE_DATA          payload;
   TEA_TYPE_FLOAT         hitratio;
   TEA_TYPE_INT           npackets;
+  TEA_TYPE_INT           pattern;
+  TEA_TYPE_DATA          payload;
   TEA_TYPE_ADDR          shost;
 
   /* other things */
@@ -163,19 +163,6 @@ static int udp__configure(THREAD_WORK *tw, SNODE *command, int first_time)
   /* configure timer */
   if(tu->hitratio > 0)
     pthreadex_timer_set_frequency(&(tu->timer), tu->hitratio);
-
-  /* (debug) print configuration */
-  {
-    char buff[255];
-
-    TDBG2("config.periodic.n     = %d", tu->npackets);
-    TDBG2("config.periodic.ratio = %f", tu->hitratio);
-
-    ip_addr_snprintf(&tu->shost.addr, tu->shost.port, sizeof(buff)-1, buff);
-    TDBG2("config.options.shost  = %s", buff);
-    ip_addr_snprintf(&tu->dhost.addr, tu->dhost.port, sizeof(buff)-1, buff);
-    TDBG2("config.options.dhost  = %s", buff);
-  }
 
   return 0;
 }
