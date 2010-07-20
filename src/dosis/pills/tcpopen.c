@@ -117,7 +117,7 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
     TLOG("Sending >> packet with delay %d milisec:", tc->delay);
     TDUMPMSG(LOG_LEVEL_LOG, t->dest.type, t->b, t->s);
   }
-  tea_thread_msg_send(&tc->lnc, t, tc->delay);
+  tea_thread_msg_send(&tc->lnc, t, tc->delay << 1);
 }
 
 static void tcpopen__thread(THREAD_WORK *tw)
