@@ -28,6 +28,8 @@
 
 #include <config.h>
 
+#include "ip.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -183,8 +185,8 @@ int ln_send_udp_packet(LN_CONTEXT *lnc,
 
 #define NEXT_PORT(n,p)      (((n) + (p)) & 0x0000ffff)
 #define NEXT_SEQ_PORT(n)    NEXT_PORT(n,1)
-#define NEXT_SSEQ_PORT(n)   NEXT_PORT(n,805315183)
-#define NEXT_RAND_PORT(n)   NEXT_PORT(n,2147483647)
+#define NEXT_SSEQ_PORT(n)   NEXT_PORT(n,2147483647)
+#define NEXT_RAND_PORT(n)   NEXT_PORT(n,805315183)
 
 unsigned ln_get_next_seq_random_port_number(unsigned *n);
 unsigned ln_get_next_random_port_number(unsigned *n);
