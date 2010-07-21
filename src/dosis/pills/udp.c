@@ -111,12 +111,10 @@ static void udp__thread(THREAD_WORK *tw)
       dport = tu->dhost.port >= 0
                 ? tu->dhost.port
                 : NEXT_RAND_PORT(dport);
-TDBG2(" --1- sport[%d] [next=%d]", sport, NEXT_RAND_PORT(sport));
       ln_send_udp_packet(&tu->lnc,
                          &tu->shost.addr, sport,
                          &tu->dhost.addr, dport,
                          tu->payload.data, tu->payload.size);
-TDBG2(" --2- sport[%d]", sport);
     }
   }
 }
