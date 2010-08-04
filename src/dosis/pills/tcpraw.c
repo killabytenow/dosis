@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
+ *   (C) 2008-2010 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -44,10 +44,18 @@ typedef struct _tag_TCPRAW_CFG {
   TEA_TYPE_FLOAT     hitratio;
   TEA_TYPE_DATA      payload;
   TEA_TYPE_STRING    tcp_flags;
+  TEA_TYPE_INT       tcp_mss;
+  TEA_TYPE_INT       tcp_sack;
+  TEA_TYPE_INT       tcp_tstamp;
   TEA_TYPE_INT       tcp_win;
+  TEA_TYPE_INT       tcp_wscale;
 
   /* other things */
+  char               tcp_options[20];
+  int                tcp_options_sz;
   int                tcp_flags_bitmap;
+  UINT32_T          *tcp_tstamp_val;
+  UINT32_T          *tcp_tstamp_ecr;
   pthreadex_timer_t  timer;
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
@@ -104,7 +112,8 @@ static void tcpraw__thread(THREAD_WORK *tw)
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
       seq += (NEXT_RAND_PORT(seq) & 0x1f);
-DBG("alert 1");
+#warning "XXX UPDATE tc->tcp_tstamp_val TIMESTAMP XXX"
+#warning "XXX UPDATE tc->tcp_tstamp_ecr TIMESTAMP XXX"
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr, sport,
                          &tc->dhost.addr, dport,
@@ -113,15 +122,12 @@ DBG("alert 1");
                          seq, 0,
                          (char *) tc->payload.data, tc->payload.size,
                          NULL, 0);
-DBG("alert 2");
     }
-DBG("alert 3");
 
     /* now wait for more work */
     if(tc->hitratio > 0)
       if(pthreadex_timer_wait(&(tc->timer)) < 0)
         TERR_ERRNO("Error at pthreadex_timer_wait()");
-DBG("alert 4");
   }
 }
 
@@ -237,6 +243,46 @@ static int cfg_cb_update_flags(TEA_OBJCFG *oc, THREAD_WORK *tw)
   return 0;
 }
 
+static int cfg_cb_update_opts(TEA_OBJCFG *oc, THREAD_WORK *tw)
+{
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+  int p = 0;
+  char *b = tc->tcp_options;
+
+  if(tc->tcp_mss > 0)    /* max size = 4 */
+  {
+    b[p++] = 0x02; b[p++] = 0x04;
+    *((short *) (b + p)) = htons(tc->tcp_mss);
+    p += 2;
+  }
+  if(tc->tcp_sack)       /* max size = 2 */
+  {
+    b[p++] = 0x04; b[p++] = 0x02;
+  } else if(tc->tcp_tstamp)
+  {
+    b[p++] = 0x00; b[p++] = 0x00;
+  }
+  if(tc->tcp_tstamp)     /* max size = 10 */
+  {
+    b[p++] = 0x08; b[p++] = 0x0a;
+    tc->tcp_tstamp_val = (UINT32_T *) (b + p);
+    p += 4;
+    tc->tcp_tstamp_ecr = (UINT32_T *) (b + p);
+    p += 4;
+  }
+  if(tc->tcp_wscale > 0) /* max size = 4 */
+  {
+    b[p++] = 0x00;
+    b[p++] = 0x03; b[p++] = 0x03;
+    b[p++] = tc->tcp_wscale;
+  }
+  if(p > sizeof(tc->tcp_options))
+    FAT("TCPRAW_CFG tcp_options buffer too small (demanded %d, but only %d available).",
+        p, sizeof(tc->tcp_options));
+
+  return 0;
+}
+
 TOC_BEGIN(tcpraw_cfg_def)
   TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,      NULL)
   TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,      NULL)
@@ -247,7 +293,11 @@ TOC_BEGIN(tcpraw_cfg_def)
   TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,      NULL)
   TOC("src_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, shost,      NULL)
   TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, tcp_flags,  cfg_cb_update_flags)
+  TOC("tcp_mss",        TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_mss,    cfg_cb_update_opts)
+  TOC("tcp_sack",       TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_sack,   cfg_cb_update_opts)
+  TOC("tcp_tstamp",     TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_tstamp, cfg_cb_update_opts)
   TOC("tcp_win",        TEA_TYPE_INT,    1, TCPRAW_CFG, tcp_win,    NULL)
+  TOC("tcp_wscale",     TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_wscale, cfg_cb_update_opts)
 TOC_END
 
 TEA_OBJECT teaTCPRAW = {
