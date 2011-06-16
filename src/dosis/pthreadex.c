@@ -457,15 +457,17 @@ void pthreadex_lock_init(pthreadex_lock_t *l)
   pthread_cond_init(&l->lock_zero, NULL);
 }
 
-void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
+void pthreadex_lock_get_raw(pthreadex_lock_state_t *ls)
 {
+  pthreadex_lock_t *l = ls->l;;
+
   /* lock semaphore data */
   __pthreadex_lock_get_mutex(l);
 
-  PTHREADEX_DBG("Lock %s: Going to enter %s lock...",
-        l->n,
-        type == PTHREADEX_LOCK_SHARED ? "SHARED" : "EXCLUSIVE");
-  switch(type)
+  PTHREADEX_DBG("Lock %s: '%s' asks for %s lock...",
+        l->n, ls->zone ? ls->zone : "unknown",
+        ls->type == PTHREADEX_LOCK_SHARED ? "SHARED" : "EXCLUSIVE");
+  switch(ls->type)
   {
     case PTHREADEX_LOCK_SHARED:
       while(l->lock_count < 0)
@@ -474,25 +476,28 @@ void pthreadex_lock_get_raw(pthreadex_lock_t *l, int type)
       break;
 
     default:
-      PTHREADEX_ERR("Unknown type '%d'.", type);
+      PTHREADEX_ERR("Unknown type '%d'.", ls->type);
 
     case PTHREADEX_LOCK_EXCLUSIVE:
       while(l->lock_count != 0)
         pthread_cond_wait(&l->lock_zero, &l->lock);
       l->lock_count--;
   }
-  PTHREADEX_DBG("Lock %s: Lock captured with %s mode",
+  PTHREADEX_DBG("Lock %s: Captured in %s mode by '%s'",
         l->n,
-        type == PTHREADEX_LOCK_SHARED ? "SHARED" : "EXCLUSIVE");
+        ls->type == PTHREADEX_LOCK_SHARED ? "SHARED" : "EXCLUSIVE",
+        ls->zone ? ls->zone : "unknown");
 
   /* unlock */
   __pthreadex_lock_release_mutex();
 }
 
-void pthreadex_lock_release_raw(pthreadex_lock_t *l)
+void pthreadex_lock_release_raw(pthreadex_lock_state_t *ls)
 {
+  pthreadex_lock_t *l = ls->l;
+
   /* lock semaphore data */
-  PTHREADEX_DBG("Lock %s: Going to be released", l->n);
+  PTHREADEX_DBG("Lock %s: '%s' going to release lock.", l->n, ls->zone);
 
   __pthreadex_lock_get_mutex(l);
 

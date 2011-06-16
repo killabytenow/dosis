@@ -46,16 +46,20 @@ typedef struct _tag_TCPRAW_CFG {
   TEA_TYPE_STRING    tcp_flags;
   TEA_TYPE_INT       tcp_mss;
   TEA_TYPE_INT       tcp_sack;
-  TEA_TYPE_INT       tcp_tstamp;
+  TEA_TYPE_BOOL      tcp_tstamp;
   TEA_TYPE_INT       tcp_win;
   TEA_TYPE_INT       tcp_wscale;
+  TEA_TYPE_INT       tcp_tstamp_val;
+  TEA_TYPE_INT       tcp_tstamp_ecr;
 
   /* other things */
   char               tcp_options[20];
   int                tcp_options_sz;
   int                tcp_flags_bitmap;
-  UINT32_T          *tcp_tstamp_val;
-  UINT32_T          *tcp_tstamp_ecr;
+  int                tcp_tstamp_val_auto;
+  int                tcp_tstamp_ecr_auto;
+  UINT32_T          *tcp_tstamp_val_ptr;
+  UINT32_T          *tcp_tstamp_ecr_ptr;
   pthreadex_timer_t  timer;
   LN_CONTEXT        *lnc;
 } TCPRAW_CFG;
@@ -103,6 +107,8 @@ static void tcpraw__thread(THREAD_WORK *tw)
   {
     /* build TCP packet with payload (if requested) */
     TDBG2("Sending %d packet(s)...", tc->npackets);
+    *tc->tcp_tstamp_val_ptr = tc->tcp_tstamp_val;
+    *tc->tcp_tstamp_ecr_ptr = tc->tcp_tstamp_ecr;
     for(i = 0; i < tc->npackets; i++)
     {
       sport = tc->shost.port >= 0
@@ -111,9 +117,11 @@ static void tcpraw__thread(THREAD_WORK *tw)
       dport = tc->dhost.port >= 0
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
+      if(tc->tcp_tstamp_val_auto)
+        *tc->tcp_tstamp_val_ptr = time(NULL);
+      if(tc->tcp_tstamp_ecr_auto)
+        *tc->tcp_tstamp_ecr_ptr = 0;
       seq += (NEXT_RAND_PORT(seq) & 0x1f);
-#warning "XXX UPDATE tc->tcp_tstamp_val TIMESTAMP XXX"
-#warning "XXX UPDATE tc->tcp_tstamp_ecr TIMESTAMP XXX"
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr, sport,
                          &tc->dhost.addr, dport,
@@ -121,7 +129,7 @@ static void tcpraw__thread(THREAD_WORK *tw)
                          tc->tcp_win,
                          seq, 0,
                          (char *) tc->payload.data, tc->payload.size,
-                         NULL, 0);
+                         tc->tcp_options, tc->tcp_options_sz);
     }
 
     /* now wait for more work */
@@ -265,9 +273,9 @@ static int cfg_cb_update_opts(TEA_OBJCFG *oc, THREAD_WORK *tw)
   if(tc->tcp_tstamp)     /* max size = 10 */
   {
     b[p++] = 0x08; b[p++] = 0x0a;
-    tc->tcp_tstamp_val = (UINT32_T *) (b + p);
+    tc->tcp_tstamp_val_ptr = (UINT32_T *) (b + p);
     p += 4;
-    tc->tcp_tstamp_ecr = (UINT32_T *) (b + p);
+    tc->tcp_tstamp_ecr_ptr = (UINT32_T *) (b + p);
     p += 4;
   }
   if(tc->tcp_wscale > 0) /* max size = 4 */
@@ -279,25 +287,45 @@ static int cfg_cb_update_opts(TEA_OBJCFG *oc, THREAD_WORK *tw)
   if(p > sizeof(tc->tcp_options))
     FAT("TCPRAW_CFG tcp_options buffer too small (demanded %d, but only %d available).",
         p, sizeof(tc->tcp_options));
+  tc->tcp_options_sz = p;
+
+  return 0;
+}
+
+static int cfg_cb_update_tstamp(TEA_OBJCFG *oc, THREAD_WORK *tw)
+{
+  TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
+  HASH_NODE *hn;
+
+  hn = hash_entry_get(tw->options, oc->name);
+  if(!strcmp(oc->name, "tcp_tstamp_val"))
+    tc->tcp_tstamp_val_auto = (hn != NULL && hn->entry != NULL);
+  else
+  if(!strcmp(oc->name, "tcp_tstamp_ecr"))
+    tc->tcp_tstamp_ecr_auto = (hn != NULL && hn->entry != NULL);
+  else
+    FAT("Unknown parameter '%s'.", oc->name);
 
   return 0;
 }
 
 TOC_BEGIN(tcpraw_cfg_def)
-  TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,      NULL)
-  TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,      NULL)
-  TOC("pattern",        TEA_TYPE_INT,    1, TCPRAW_CFG, pattern,    NULL)
-  TOC("payload",        TEA_TYPE_DATA,   0, TCPRAW_CFG, payload,    NULL)
-  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCPRAW_CFG, hitratio,   NULL)
-  TOC("periodic_n",     TEA_TYPE_INT,    1, TCPRAW_CFG, npackets,   NULL)
-  TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,      NULL)
-  TOC("src_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, shost,      NULL)
-  TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, tcp_flags,  cfg_cb_update_flags)
-  TOC("tcp_mss",        TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_mss,    cfg_cb_update_opts)
-  TOC("tcp_sack",       TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_sack,   cfg_cb_update_opts)
-  TOC("tcp_tstamp",     TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_tstamp, cfg_cb_update_opts)
-  TOC("tcp_win",        TEA_TYPE_INT,    1, TCPRAW_CFG, tcp_win,    NULL)
-  TOC("tcp_wscale",     TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_wscale, cfg_cb_update_opts)
+  TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,          NULL)
+  TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,          NULL)
+  TOC("pattern",        TEA_TYPE_INT,    1, TCPRAW_CFG, pattern,        NULL)
+  TOC("payload",        TEA_TYPE_DATA,   0, TCPRAW_CFG, payload,        NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCPRAW_CFG, hitratio,       NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,    1, TCPRAW_CFG, npackets,       NULL)
+  TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,          NULL)
+  TOC("src_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, shost,          NULL)
+  TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, tcp_flags,      cfg_cb_update_flags)
+  TOC("tcp_mss",        TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_mss,        cfg_cb_update_opts)
+  TOC("tcp_sack",       TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_sack,       cfg_cb_update_opts)
+  TOC("tcp_tstamp",     TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_tstamp,     cfg_cb_update_opts)
+  TOC("tcp_tstamp_val", TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_tstamp_val, cfg_cb_update_tstamp)
+  TOC("tcp_tstamp_ecr", TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_tstamp_ecr, cfg_cb_update_tstamp)
+  TOC("tcp_win",        TEA_TYPE_INT,    1, TCPRAW_CFG, tcp_win,        NULL)
+  TOC("tcp_wscale",     TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_wscale,     cfg_cb_update_opts)
 TOC_END
 
 TEA_OBJECT teaTCPRAW = {

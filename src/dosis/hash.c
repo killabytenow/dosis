@@ -132,19 +132,11 @@ HASH_NODE *hash_node_get(HASH *h, char *key)
   return hn;
 }
 
-int hash_entry_add(HASH *h, char *key, void *value)
+static int __hash_entry_add(HASH *h, char *key, void *value)
 {
   HASH_NODE *hn;
   unsigned long hv;
 
-  /* if this entry exists return it directly! */
-  if((hn = hash_node_get(h, key)) != NULL)
-  {
-    ERR("Entry '%s' already exists.", key);
-    return -1;
-  }
-
-  /* make space (if needed) for a new entry */
   if(hash_make_space(h, h->nentries + 1))
     FAT("Cannot make space on hash.");
   h->nentries++;
@@ -160,6 +152,19 @@ int hash_entry_add(HASH *h, char *key, void *value)
   return 0;
 }
 
+int hash_entry_add(HASH *h, char *key, void *value)
+{
+  /* if this entry exists return it directly! */
+  if(hash_node_get(h, key) != NULL)
+  {
+    ERR("Entry '%s' already exists.", key);
+    return -1;
+  }
+
+  /* make space (if needed) for a new entry */
+  return __hash_entry_add(h, key, value);
+}
+
 int hash_entry_set(HASH *h, char *key, void *value)
 {
   HASH_NODE *hn;
@@ -173,6 +178,24 @@ int hash_entry_set(HASH *h, char *key, void *value)
 
   /* set value */
   hn->entry = value;
+
+  return 0;
+}
+
+void *hash_entry_add_or_set(HASH *h, char *key, void *value)
+{
+  HASH_NODE *hn;
+  void *old = NULL;
+
+  if((hn = hash_node_get(h, key)) != NULL)
+  {
+    /* node exists => set value */
+    old = hn->entry;
+    hn->entry = value;
+  } else {
+    /* add node */
+    __hash_entry_add(h, key, value);
+  }
 
   return 0;
 }

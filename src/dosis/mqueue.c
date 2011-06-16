@@ -301,7 +301,7 @@ TEA_MSG *msg_build_ip_tcp_packet(INET_ADDR *saddr, int sport,
 
 void mqueue_insert_delayed(TEA_MSG_QUEUE *mq, TEA_MSG *m)
 {
-  TEA_MSG *ff, *lf;
+  TEA_MSG *ff, *lf, *c;
 
   pthreadex_mutex_begin(&(mq->mutex));
 
@@ -310,25 +310,26 @@ void mqueue_insert_delayed(TEA_MSG_QUEUE *mq, TEA_MSG *m)
 DBG("POLLA STARTS.");
   if(!mq->last)
   {
+DBG("POLLA CASE: set this msg [0x" STRF_PTR_X "] as the only pollancre.", (UINT_POINTER) m);
     mq->first =
       mq->last =
         mq->ff_last = m;
   } else
-  if(m->w.tv_sec > mq->last->w.tv_sec)
+  if((m->w.tv_sec  > mq->last->w.tv_sec)
+  || (m->w.tv_sec == mq->last->w.tv_sec && m->w.tv_nsec >= mq->first->w.tv_nsec))
   {
-DBG("POLLA CASE: new last ff");
+DBG("POLLA CASE: new last msg");
     /* this message defines the new last ff group (new sec group) */
     /* set as last message and last ff */
-    m->prev    = mq->last;
-    m->ff_prev = mq->ff_last;
-    if(mq->last)
+    m->prev = mq->last;
+    mq->last->next = m;
+    if(m->w.tv_sec != mq->last->w.tv_sec)
     {
-      mq->last->next = m;
+      m->ff_prev = mq->ff_last;
       mq->ff_last->ff_next = m;
-    } else
-      mq->first = m;
+      mq->ff_last = m;
+    }
     mq->last = m;
-    mq->ff_last = m;
   } else
   if((m->w.tv_sec  < mq->first->w.tv_sec)
   || (m->w.tv_sec == mq->first->w.tv_sec && m->w.tv_nsec <= mq->first->w.tv_nsec))
@@ -337,93 +338,85 @@ DBG("POLLA CASE: first msg and perhaps new ff group");
     /* this message is first, and perhaps is a new ff group (new sec group) */
     /* set message as first (and first ff if tv_sec fields aren't equal)    */
     m->next = mq->first;
-    if(mq->first)
+    mq->first->prev = m;
+    if(m->w.tv_sec == mq->first->w.tv_sec)
     {
-      mq->first->prev = m;
-      if(m->w.tv_sec == mq->first->w.tv_sec)
-      {
 DBG("POLLA CASE: removes current ff, and set this msg as first ff.");
-        /* removes current ff, and set this msg as first ff */
-        m->ff_next = mq->first->ff_next;
-        if(m->ff_next)
-          m->ff_next->ff_prev = m;
-        mq->first->ff_next = NULL;
-        mq->first->ff_prev = NULL;
-      } else {
-DBG("POLLA CASE: set this msg as first ff.");
-        /* set this msg as first ff */
-        m->ff_next = mq->first;
-        mq->first->ff_prev = m;
-      }
+      /* removes current ff, and set this msg as first ff */
+      m->ff_next = mq->first->ff_next;
+      if(m->ff_next)
+        m->ff_next->ff_prev = m;
+      mq->first->ff_next = NULL;
     } else {
-DBG("POLLA CASE: me chirrian los huevos.");
-      m->ff_next  = NULL;
-      mq->last    = m;
-      mq->ff_last = m;
+DBG("POLLA CASE: set this msg as first ff.");
+      /* set this msg as first ff */
+      m->ff_next = mq->first;
+      mq->first->ff_prev = m;
     }
     mq->first = m;
   } else {
-DBG("POLLA CASE: insert msg into proper ff segment.");
+DBG("POLLA CASE: insert msg [0x" STRF_PTR_X "] into proper ff segment.",  (UINT_POINTER) m);
     /* insert msg into proper ff segment, or create a new segment */
-    /* 0 - search nearest time segment (ff can be equal or older) */
+    /* 0 - search nearest segment ff-lf                           */
+//(2, 2.9) (3, 3.8) (4.2, 4.9) (5)
     ff = mq->ff_last;
     lf = mq->last;
-    while(ff && m->w.tv_sec > ff->w.tv_sec)
+    while(m->w.tv_sec < ff->w.tv_sec)
     {
       lf = ff->prev;
       ff = ff->ff_prev;
     }
-    if(!ff)
-      FAT("This code should never be executed.");
 
     /* add msg or create new segment */
-    if(m->w.tv_sec < ff->w.tv_sec)
+    if(m->w.tv_sec > ff->w.tv_sec)
     {
-DBG("POLLA CASE: new segment coes to the party.");
+      /* ff->ff_prev > m > lf > ff            */
+      /*   =>                                 */
+      /* (ff->ff_prev, ..., ff->prev) [m] (ff, ..., lf) */
+DBG("POLLA CASE: new segment comes to the party.");
       /* 1 - a new segment comes to the party! */
       /* msg */
-      m->prev = ff;
-      m->next = ff->next;
-      if(m->next)
-        m->next->prev = m;
-      ff->next = m;
+      m->prev = ff->prev;
+      m->next = ff;
+      m->prev->next = m;
+      m->next->prev = m;
 
       /* seg */
-      m->ff_prev = ff;
-      m->ff_next = ff->ff_next;
-      if(m->ff_next)
-        m->ff_next->ff_prev = m;
-      ff->ff_next = m;
+      m->ff_prev = ff->ff_prev;
+      m->ff_next = ff;
+      m->ff_prev->ff_next = m;
+      m->ff_next->ff_prev = m;
     } else {
-      /* 2 - search the best place in segment for this msg */
-      /* m must be installed between 'ff' and 'lf' */
-      for( ; lf != ff->prev; lf = lf->prev)
-      {
-        if(m->w.tv_nsec <= lf->w.tv_nsec)
-        {
-          /* msg */
-          m->prev = lf;
-          m->next = lf->next;
-          if(m->next)
-            m->next->prev = m;
-          lf->next = m;
+DBG("POLLA CASE: inserting in segment between ff[0x" STRF_PTR_X "] and lf[0x" STRF_PTR_X "].", (UINT_POINTER) ff, (UINT_POINTER) lf);
+      /* ff->ff_prev < m == lf == ff          */
+      /*   =>                                 */
+      /* (ff, ??[m]??, lf) */
+      /* 2 - search the best place in segment, between  */
+      /* 'ff' and 'lf', where msg m should be installed */
+      
+      /* if m should be sent later than c, then go to previous c */
+      for(c = lf; m->w.tv_nsec < c->w.tv_nsec; c = c->prev)
+        ;
 
-          /* seg - removes current ff, and set this msg as new ff */
-          if(lf == ff)
-          {
-            m->ff_prev = lf->ff_prev;
-            m->ff_next = lf->ff_next;
-            if(m->ff_next)
-              m->ff_next->ff_prev = m;
-            if(m->ff_prev)
-              m->ff_prev->ff_next = m;
-            ff->ff_next = NULL;
-            ff->ff_prev = NULL;
-          }
-          break;
-        }
+      /* current c is equal or less (should be sent before) than m */
+      /* insert msg */
+      m->next = c->next;
+      m->prev = c;
+      m->prev->next = m;
+      m->next->prev = m;
+
+      /* seg - removes current ff, and set this msg as new ff */
+      if(c == ff)
+      {
+        m->ff_next = c->ff_next;
+        m->ff_prev = c->ff_prev;
+        if(m->ff_next) m->ff_next->ff_prev = m;
+        if(m->ff_prev) m->ff_prev->ff_next = m;
+        c->ff_next = NULL;
+        c->ff_prev = NULL;
       }
     }
+DBG("POLLA CASE: pollaaaaaaaaaaaaaaaaa finish'd.");
   }
 
   mqueue_dump(LOG_LEVEL_DEBUG, mq, NULL);

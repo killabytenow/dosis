@@ -57,6 +57,7 @@ typedef struct _tag_THREAD_WORK {
   int                      id;
   pthread_t                pthread_id;
   struct _tag_TEA_OBJECT  *to;
+  HASH                    *options;
   void                    *data;
 
   /* listener/sender info */

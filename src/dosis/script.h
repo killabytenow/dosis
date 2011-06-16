@@ -164,7 +164,6 @@ double   script_get_float(SNODE *n);
 int      script_get_int(SNODE *n);
 char    *script_get_string(SNODE *n);
 char    *script_get_var(SNODE *n);
-
 SNODE   *script_get_default(char *param);
 
 int tea_iter_get(TEA_ITER *ti);

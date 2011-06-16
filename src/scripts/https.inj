@@ -41,7 +41,8 @@
 
 # thread debug mode: if you enable the DEBUG flag in TCP connections you can
 # see the data received from the target.
-DBG="ENABLED"
+#DBG="ENABLED"
+DBG="FALSE"
 
 # script
 0.0 ON [1%$THREADS] TCP SSL CIPHER "DES-CBC3-SHA" DEBUG $DBG DST $THOST $TPORT PAYLOAD FILE("http.payload") PERIODIC [ 1.0 ]

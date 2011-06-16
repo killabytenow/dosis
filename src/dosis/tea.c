@@ -114,6 +114,12 @@ static void *tea_thread(void *data)
 static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
 {
   char *s;
+  void *pdata = tw->data + oc->offset;
+
+  /* save into config hash */
+  hash_entry_add_or_set(tw->options, oc->name, v ? pdata : NULL);
+  if(!v)
+    return 0;
 
   /* check tea object */
   switch(oc->type)
@@ -121,7 +127,7 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
     case TEA_TYPE_ADDR_ID:
       {
         int port;
-        TEA_TYPE_ADDR *a = (tw->data + oc->offset);
+        TEA_TYPE_ADDR *a = pdata;
 
         s = script_get_string(v);
         if(ip_addr_parse(s, &a->addr, &port))
@@ -140,26 +146,26 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
       break;
 
     case TEA_TYPE_BOOL_ID:
-      *((TEA_TYPE_INT *) (tw->data + oc->offset)) = script_get_bool(v);
+      *((TEA_TYPE_INT *) pdata) = script_get_bool(v);
       break;
 
     case TEA_TYPE_INT_ID:
-      *((TEA_TYPE_INT *) (tw->data + oc->offset)) = script_get_int(v);
+      *((TEA_TYPE_INT *) pdata) = script_get_int(v);
       break;
 
     case TEA_TYPE_FLOAT_ID:
-      *((TEA_TYPE_FLOAT *) (tw->data + oc->offset)) = script_get_float(v);
+      *((TEA_TYPE_FLOAT *) pdata) = script_get_float(v);
       break;
 
     case TEA_TYPE_DATA_ID:
       {
-        TEA_TYPE_DATA *d = tw->data + oc->offset;
+        TEA_TYPE_DATA *d = pdata;
         d->data = script_get_data(v, &d->size);
       }
       break;
 
     case TEA_TYPE_STRING_ID:
-      *((TEA_TYPE_STRING *) (tw->data + oc->offset)) = script_get_string(v);
+      *((TEA_TYPE_STRING *) pdata) = script_get_string(v);
       break;
 
     default:
@@ -186,23 +192,23 @@ static SNODE *tea_thread_param_value_get(HASH *opts, char *name)
   return r;
 }
 
+#define FATAL_ERROR(...)  { ERR(__VA_ARGS__); fatal = 1; goto termination; }
 static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 {
   THREAD_WORK *tw = NULL;
   TEA_OBJCFG *ocline;
   HASH_ITER hi;
   HASH_NODE *hn;
+  int fatal = 0;
 
   DBG("[tea] Creating thread %d.", tid);
   if((tw = calloc(1, sizeof(THREAD_WORK))) == NULL)
-  {
-    ERR("Cannot alloc THREAD_WORK struct for thread %d.", tid);
-    goto fatal;
-  }
+    FAT("Cannot alloc THREAD_WORK struct for thread %d.", tid);
 
   tw->id         = tid;
   tw->pthread_id = 0;
   tw->to         = to;
+  tw->options    = hash_copy(command->command.thc.to->options);
 
   /* check methods */
   if(tw->to->listener || tw->to->sender)
@@ -219,10 +225,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
 
   /* make space for thread data */
   if((tw->data = calloc(1, to->datasize)) == NULL)
-  {
-    ERR("%d:%s: No memory for thread data.", command->line, to->name);
-    goto fatal;
-  }
+    FAT("%d:%s: No memory for thread data.", command->line, to->name);
 
   /* check config params */
   if(to->cparams)
@@ -240,10 +243,7 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
           ocline++)
         ;
       if(!ocline->name)
-      {
-        ERR("%d:%s: Parameter %s not allowed here.", command->line, to->name, hn->key);
-        goto fatal;
-      }
+        FAT("%d:%s: Parameter %s not allowed here.", command->line, to->name, hn->key);
     }
 
     /* set params (apply configuration) */
@@ -252,68 +252,45 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
       SNODE *val;
 
       /* get configured value (or set default value if not specified) */
-      val = tea_thread_param_value_get(command->command.thc.to->options, ocline->name);
-      val = script_get_default(ocline->name);
-      if(hash_key_exists(command->command.thc.to->options, ocline->name))
-        val = hash_entry_get(command->command.thc.to->options, ocline->name);
+      val = tea_thread_param_value_get(tw->options, ocline->name);
 
       /* check if parameter is optional */
-      if(!val)
-      {
-        if(ocline->needed)
-        {
-          ERR("%d:%s: Parameter %s is mandatory.", command->line, to->name, ocline->name);
-          goto fatal;
-        }
-        continue;
-      }
+      if(!val && ocline->needed)
+        FAT("%d:%s: Parameter %s is mandatory.", command->line, to->name, ocline->name);
 
       /* set value */
       if(tea_thread_param_value_set(tw, ocline, val))
-        goto fatal;
+        FAT("%d:%s: Cannot set parameter %s.", command->line, to->name, ocline->name);
     }
   } else {
     if(command->command.thc.to->options
     || command->command.thc.to->options->nentries > 0)
-    {
-      ERR("%d:%s: Parameters not allowed for this type of thread.", command->line, to->name);
-      goto fatal;
-    }
+      FAT("%d:%s: Parameters not allowed for this type of thread.", command->line, to->name);
   }
 
   /* once configuration applied, launch thread configuration routine */
-  if(tw->to->configure)
-    if(tw->to->configure(tw, command, 1))
-    {
-      ERR("%d:%s: Thread configuration failed.", command->line, to->name);
-      goto fatal;
-    }
+  if(tw->to->configure
+  && tw->to->configure(tw, command, 1))
+      FAT("%d:%s: Thread configuration failed.", command->line, to->name);
 
   /* add thread to the list */
-  pthreadex_lock_get_exclusive(&ttable_lock);
+  pthreadex_lock_get_exclusive_n(&ttable_lock, "install-thread");
   DBG("[tea] Installing thread %d.", tid);
 
   /* build threads */
   if(ttable[tid])
-  {
-    ERR("Thread slot %d is used already.", tid);
-    goto fatal;
-  }
+    FATAL_ERROR("Thread slot %d is used already.", tid);
   ttable[tid] = tw;
 
   /* launch thread */
   if(pthread_create(&(tw->pthread_id), NULL, tea_thread, tw) != 0)
   {
     ERR_ERRNO("Error creating thread %d", tid);
-    goto fatal;
+    FATAL_ERROR("Fatal error happened during thread creation.");
   }
 
-  pthreadex_lock_release();
-  return;
-
-fatal:
-  ERR("A fatal error has happened. Going to abort...");
-  if(tw)
+termination:
+  if(fatal && tw)
   {
     if(ttable[tid] == tw)
       ttable[tid] = NULL;
@@ -322,7 +299,12 @@ fatal:
     pthreadex_flag_destroy(&(tw->mwaiting));
     free(tw);
   }
-  pthreadex_lock_release_raw(&ttable_lock);
+
+  pthreadex_lock_release();
+  
+  if(!fatal)
+    return;
+
   FAT("Aborting.");
 }
 
@@ -333,7 +315,7 @@ static void tea_thread_stop(int tid)
 
   /* wait until we have exclusive access right on ttable */
   DBG("[tea] Thread %d killing scheduled.", tid);
-  pthreadex_lock_get_exclusive(&ttable_lock);
+  pthreadex_lock_get_exclusive_n(&ttable_lock, "kill-thread");
 
   /* going to kill thread */
   tw = ttable[tid];
@@ -614,8 +596,11 @@ void tea_timer(SNODE *program)
     /* launch command */
     switch(cmd->type)
     {
-      case TYPE_CMD_ON:
       case TYPE_CMD_MOD:
+        FAT("Thread modify not implemented yet.");
+        break;
+
+      case TYPE_CMD_ON:
         for(tid = tea_iter_start(cmd->command.thc.selection, &ti);
             !tea_iter_finish(&ti);
             tid = tea_iter_next(&ti))

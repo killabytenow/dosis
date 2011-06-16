@@ -70,7 +70,7 @@ extern "C" {
 #  undef PTHREADEX_DEBUG
 #endif
 
-#define PTHREADEX_LOG(l, ...) { fputs("pthreadex:" l ":", stderr); \
+#define PTHREADEX_LOG(l, ...) { fprintf(stderr, "pthreadex:%s:%s:%s:", l, __FILE__, __FUNCTION__); \
                                 fprintf(stderr, __VA_ARGS__);      \
                                 fputc('\n', stderr); }
 #define PTHREADEX_FAT(...)    { PTHREADEX_LOG("fatal", __VA_ARGS__); exit(1); }
@@ -166,6 +166,18 @@ typedef struct _tag_pthreadex_lock_t
   char            *n;
 #endif
 } pthreadex_lock_t;
+typedef struct {
+  pthreadex_lock_t *l;
+  int               type;
+#if PTHREADEX_DEBUG
+  char             *zone;
+#endif
+} pthreadex_lock_state_t;
+#if PTHREADEX_DEBUG
+#define PTHREADEX_LOCK_SAVE_STATE(l,t,n) { l, t, n }
+#else
+#define PTHREADEX_LOCK_SAVE_STATE(l,t,n) { l, t }
+#endif
 
 #define PTHREADEX_LOCK_SHARED        0
 #define PTHREADEX_LOCK_EXCLUSIVE     1
@@ -181,16 +193,24 @@ typedef struct _tag_pthreadex_lock_t
 #define PTHREADEX_LOCK_INITIALIZER   PTHREADEX_LOCK_INIT_NAMED("$unnamed:lock$")
 
 void pthreadex_lock_init(pthreadex_lock_t *ex);
-void pthreadex_lock_get_raw(pthreadex_lock_t *ex, int type);
-void pthreadex_lock_release_raw(pthreadex_lock_t *ex);
+void pthreadex_lock_get_raw(pthreadex_lock_state_t *ls);
+void pthreadex_lock_release_raw(pthreadex_lock_state_t *ls);
 void pthreadex_lock_fini(pthreadex_lock_t *ex);
-#define pthreadex_lock_get(x,y)         pthread_cleanup_push_defer_np(             \
-                                          (void *) pthreadex_lock_release_raw, x); \
-                                        pthreadex_lock_get_raw(x,y)
-#define pthreadex_lock_release()        pthread_cleanup_pop_restore_np(1)
+#define pthreadex_lock_get(x,y,n)         {                                          \
+                                          pthreadex_lock_state_t                     \
+                                            __pthex_lock_data =                      \
+                                              PTHREADEX_LOCK_SAVE_STATE(x,y,n);      \
+                                          pthread_cleanup_push_defer_np(             \
+                                            (void *) pthreadex_lock_release_raw,     \
+                                            &__pthex_lock_data);                     \
+                                          pthreadex_lock_get_raw(&__pthex_lock_data)
+#define pthreadex_lock_release()          pthread_cleanup_pop_restore_np(1); }
 
-#define pthreadex_lock_get_shared(x)    pthreadex_lock_get(x, PTHREADEX_LOCK_SHARED)
-#define pthreadex_lock_get_exclusive(x) pthreadex_lock_get(x, PTHREADEX_LOCK_EXCLUSIVE)
+
+#define pthreadex_lock_get_shared_n(x,n)    pthreadex_lock_get(x, PTHREADEX_LOCK_SHARED, n)
+#define pthreadex_lock_get_exclusive_n(x,n) pthreadex_lock_get(x, PTHREADEX_LOCK_EXCLUSIVE, n)
+#define pthreadex_lock_get_shared(x)        pthreadex_lock_get_shared_n((x), ((char *) __FUNCTION__))
+#define pthreadex_lock_get_exclusive(x)     pthreadex_lock_get_exclusive_n((x), ((char *) __FUNCTION__))
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  + PROTECTED VAR

@@ -231,8 +231,8 @@ TOC_BEGIN(teaTCPOPEN_cfg)
   TOC("payload",  TEA_TYPE_DATA, 1, TCPOPEN_CFG, payload, NULL)
   TOC("src_addr", TEA_TYPE_ADDR, 0, TCPOPEN_CFG, shost,   NULL)
   TOC("src_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, shost,   NULL)
-  TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, tcp_mss, NULL)
   TOC("tcp_win",  TEA_TYPE_INT,  1, TCPOPEN_CFG, tcp_win, NULL)
+  TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, tcp_mss, NULL)
 TOC_END
 
 TEA_OBJECT teaTCPOPEN = {

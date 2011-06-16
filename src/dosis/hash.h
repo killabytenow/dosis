@@ -45,6 +45,7 @@ HASH_NODE *hash_node_new(char *key, void *value);
 
 int   hash_entry_add(HASH *h, char *key, void *value);
 int   hash_entry_set(HASH *h, char *key, void *value);
+void *hash_entry_add_or_set(HASH *h, char *key, void *value);
 void  hash_entry_remove(HASH *h, char *key);
 void *hash_entry_get(HASH *h, char *key);
 HASH *hash_new(void);

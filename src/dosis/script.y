@@ -759,7 +759,12 @@ void script_init(void)
   hash_entry_add(defvalues, "tcp_flags",      NULL);
   hash_entry_add(defvalues, "tcp_cwait",      NULL);
   hash_entry_add(defvalues, "tcp_rwait",      NULL);
+  hash_entry_add(defvalues, "tcp_sack",       NULL);
+  hash_entry_add(defvalues, "tcp_tstamp",     NULL);
+  hash_entry_add(defvalues, "tcp_tstamp_val", NULL);
+  hash_entry_add(defvalues, "tcp_tstamp_ecr", NULL);
   hash_entry_add(defvalues, "tcp_win",        NULL);
+  hash_entry_add(defvalues, "tcp_wscale",     NULL);
   hash_entry_add(defvalues, "pattern",        NULL);
   hash_entry_add(defvalues, "periodic_ratio", NULL);
   hash_entry_add(defvalues, "periodic_n",     NULL);
