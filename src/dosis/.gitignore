@@ -1,0 +1,6 @@
+*.o
+Makefile.in
+Makefile
+dosis
+script.c
+.deps
