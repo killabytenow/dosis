@@ -29,13 +29,12 @@
 #include "ipqex.h"
 #include "listener.h"
 #include "lnet.h"
+#include "iptables.h"
 #include "tea.h"
 
 #define MODNAME        teaLISTENER.name
 #define BUFSIZE        65535
 
-static char              iptables_tmp[255];
-static char              ip_forward_status;
 static int               ipq_on;
 static ipqex_info_t      ipq;
 static pthreadex_mutex_t ipq_mutex;
@@ -54,105 +53,23 @@ typedef struct _tag_LISTENER_CFG {
 
 static void listener__global_fini(void)
 {
-  int f, pid, r;
-  char buf[100];
-
   /* finish ipq */
   pthreadex_mutex_begin(&ipq_mutex);
   ipq_on = 0;
   ipqex_destroy(&ipq);
   pthreadex_mutex_end();
 
-  /* restore ipforward */
-  if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
-    GFAT_ERRNO("/proc/sys/net/ipv4/ip_forward");
-  buf[0] = ip_forward_status;
-  buf[1] = '\n';
-  if(write(f, buf, 2) < 0)
-    GFAT_ERRNO("Cannot set ip_forward");
-  close(f);
-
-  /* restore iptables */
-  if((pid = dosis_fork()) == 0)
-  {
-    /* child */
-    /* restore iptables state */
-    close(0);
-    if(open(iptables_tmp, O_RDONLY) < 0)
-      GFAT_ERRNO("Cannot read %s", iptables_tmp);
-    execl("/sbin/iptables-restore", "/sbin/iptables-restore", NULL);
-    /* if this code is executed, we have an error */
-    GFAT_ERRNO("/sbin/iptables-restore");
-  }
-  /* parent */
-  waitpid(pid, &r, 0);
-  if(r != 0)
-    GFAT("iptables-restore failed.");
-  if(unlink(iptables_tmp) < 0)
-    GFAT_ERRNO("Cannot unlink %s", iptables_tmp);
+  /* restore initial iptables state */
+  iptables_restore();
 
   /* XXX: commented... is necesary until program exit */
   /* pthreadex_mutex_destroy(&ipq_mutex); */
-
   GDBG("listener threads finished.");
-}
-
-static void apply_iptables_script(char **script)
-{
-  int pid, r;
-  char **a;
-  int p[2];
-  char buff[1000];
-  FILE *f;
-
-  for(a = script; *a; )
-  {
-    if(pipe(p) < 0)
-        GFAT_ERRNO("Cannot pipe");
-
-    if((pid = dosis_fork()) == 0)
-    {
-      /* output redirected to pipe */
-      close(p[0]);
-      close(1);
-      close(2);
-      if(dup(p[1]) < 0) GFAT_ERRNO("Cannot dup(1)");
-      if(dup(p[1]) < 0) GFAT_ERRNO("Cannot dup(2)");
-
-      /* child */
-      execv(a[0], a);
-      GFAT_ERRNO("Cannot execute /sbin/iptables");
-    }
-
-    /* write output to log */
-    close(p[1]);
-    if((f = fdopen(p[0], "r")) == NULL)
-      GFAT_ERRNO("Cannot fdopen pipe");
-
-    while(fgets(buff, sizeof(buff), f) != NULL)
-    {
-      char *s;
-      for(s = buff; *s; s++)
-        if(*s == '\r' || *s == '\n')
-          *s = '\0';
-      GDBG2("%s: %s", a[0], buff);
-    }
-    fclose(f);
-
-    /* parent */
-    waitpid(pid, &r, 0);
-    if(r != 0)
-      GFAT("Command failed.");
-
-    /* next command */
-    while(*a++ != NULL)
-      ;
-  }
 }
 
 static void listener__global_init(void)
 {
-  int f, pid, r;
+  int f;
   char **a,
        *iscript[] = {
           "/sbin/iptables", "-t", "filter", "-F", NULL,
@@ -177,16 +94,11 @@ static void listener__global_init(void)
   pthreadex_mutex_init(&ipq_mutex);
   pthreadex_mutex_name(&ipq_mutex, "listener-ipq-mutex");
 
+  GDBG2("save iptables config.");
+  iptables_save();
+
   /* read/change ipforward */
   GDBG2("Enable ip_forward flag.");
-  if((f = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY)) < 0)
-    GFAT_ERRNO("/proc/sys/net/ipv4/ip_forward");
-  r = read(f, &ip_forward_status, 1);
-  if(r == 0)
-    GFAT("Invalid ip_forward content.");
-  if(r < 0)
-    GFAT_ERRNO("Cannot read ip_forward status");
-  close(f);
   if((f = creat("/proc/sys/net/ipv4/ip_forward", 640)) < 0)
     GFAT_ERRNO("/proc/sys/net/ipv4/ip_forward");
   if(write(f, "1\n", 2) < 0)
@@ -194,42 +106,21 @@ static void listener__global_init(void)
   close(f);
 
   /* prepare the ipqueue */
-  GDBG2("save iptables config.");
-  strcpy(iptables_tmp, "iptables-state-XXXXXX");
-  f = mkstemp(iptables_tmp);
-  if((pid = dosis_fork()) == 0)
-  {
-      /* child */
-      /* save iptables state */
-      close(1);
-      if(dup(f) < 0)
-        GFAT_ERRNO("Cannot dup");
-      close(f);
-      execl("/sbin/iptables-save", "/sbin/iptables-save", NULL);
-      /* if this code is executed, we have an error */
-      GFAT_ERRNO("Cannot execute /sbin/iptables-save");
-  }
-  /* here continues parent */
-  close(f);
-  waitpid(pid, &r, 0);
-  if(r != 0)
-    GFAT("iptables-save failed.");
-
   GDBG2("Init iptables config.");
   if(cfg.interfaces[0] == NULL)
   {
-    apply_iptables_script(iscript);
-    apply_iptables_script(igscript);
+    iptables_apply_script(iscript);
+    iptables_apply_script(igscript);
   } else {
     for(a = cfg.interfaces; *a; a++)
       if(*a)
       {
         isscript[4] = *a;
         isscript[12] = *a;
-        apply_iptables_script(isscript);
+        iptables_apply_script(isscript);
       }
   }
-  apply_iptables_script(ifscript);
+  iptables_apply_script(ifscript);
 
   /* initialize ipq */
   GDBG2("Initializing ipq.");
