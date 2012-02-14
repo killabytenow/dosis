@@ -353,7 +353,10 @@ DOS_ADDR_INFO *dos_get_interface(INET_ADDR *ta)
 {
   DOS_ADDR_INFO *r, *sa;
   DOS_ROUTE_INFO *ri;
-char buff[255];
+  char buff[255];
+
+  ip_addr_snprintf(ta, -1, sizeof(buff), buff);
+  DBG("Looking for the best interface for launching packets to %s", buff);
 
   r = NULL;
 
@@ -361,30 +364,29 @@ char buff[255];
   for(sa = cfg.addr; !r && sa; sa = sa->next)
     if(ip_addr_check_mask(ta, &sa->addr, &sa->mask))
     {
-ip_addr_snprintf(ta, -1, sizeof(buff), buff);
-DBG("  - Local iface %s (%s) is ok.", sa->name, buff);
+      DBG("  - Local iface %s seems ok.", sa->name);
       r = sa;
     }
 
   /* check now routing table (for special cases) */
   for(ri = cfg.routes; ri; ri = ri->next)
-  {
-ip_addr_snprintf(&ri->destination, -1, sizeof(buff), buff);
-ip_addr_snprintf(&ri->mask, -1, sizeof(buff) - strlen(buff) - 1, buff + strlen(buff) + 1);
-DBG("  - route %s/%s (defaultgw = %s)", buff, buff + strlen(buff) + 1, ri->defaultgw ? "yes" : "no");
     if(ip_addr_check_mask(ta, &ri->destination, &ri->mask) && (!ri->defaultgw || !r))
       for(sa = cfg.addr; sa; sa = sa->next)
         if(!strcmp(sa->name, ri->iface))
         {
-          DBG("    + USING ROUTE");
+          ip_addr_snprintf(&ri->destination, -1, sizeof(buff), buff);
+          ip_addr_snprintf(&ri->mask, -1, sizeof(buff) - strlen(buff) - 1, buff + strlen(buff) + 1);
+          DBG("  - Using interface %s attached to route %s/%s (defaultgw = %s)",
+              ri->iface,
+              buff,
+              buff + strlen(buff) + 1,
+              ri->defaultgw ? "yes" : "no");
           return sa;
-        } else
-          WRN("Route table references an interface that not exists or is down (%s).",
-              ri->iface);
-  }
+        }
 
   /* if routing table does not provide a better option, return the */
   /* first interface attached to a network that meets target       */
+  DBG("  - Using local iface %s", r->name);
   return r;
 }
 
