@@ -43,18 +43,21 @@ HASH_NODE *hash_node_new(char *key, void *value);
 
 #define hash_key_exists(h, k)   (hash_node_get(h, k) != (void *) 0)
 
-int   hash_entry_add(HASH *h, char *key, void *value);
-int   hash_entry_set(HASH *h, char *key, void *value);
-void *hash_entry_add_or_set(HASH *h, char *key, void *value);
-void  hash_entry_remove(HASH *h, char *key);
-void *hash_entry_get(HASH *h, char *key);
+int   hash_entry_add       (HASH *h, char *key, void *value);
+int   hash_entry_set       (HASH *h, char *key, void *value, void **old);
+int   hash_entry_add_or_set(HASH *h, char *key, void *value, void **old);
+void  hash_entry_remove    (HASH *h, char *key);
+void *hash_entry_get       (HASH *h, char *key);
+
 HASH *hash_new(void);
 void  hash_destroy(HASH *h, void (*freefunc)(char *k, void *e, va_list fp), ...);
-HASH *hash_copy(HASH *h);
-HASH *hash_join(HASH *h1, HASH *h2, void *(*conflict_handler)(char *k, void *va, void *vb));
+
+HASH *hash_copy (HASH *h);
+HASH *hash_join (HASH *h1,   HASH *h2,  void *(*conflict_handler)(char *k, void *va, void *vb));
 HASH *hash_merge(HASH *hout, HASH *hin, void *(*conflict_handler)(char *k, void *va, void *vb));
 
 void hash_print(HASH *h, FILE *f);
+
 void  hash_entry_foreach(HASH *h, void (*func)(char *k, void *e, va_list fp), ...);
 void  hash_entry_foreach_free(HASH *h);
 

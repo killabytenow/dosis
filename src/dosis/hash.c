@@ -165,7 +165,7 @@ int hash_entry_add(HASH *h, char *key, void *value)
   return __hash_entry_add(h, key, value);
 }
 
-int hash_entry_set(HASH *h, char *key, void *value)
+int hash_entry_set(HASH *h, char *key, void *value, void **old)
 {
   HASH_NODE *hn;
 
@@ -177,23 +177,27 @@ int hash_entry_set(HASH *h, char *key, void *value)
   }
 
   /* set value */
+  if(old)
+    *old = hn->entry;
   hn->entry = value;
 
   return 0;
 }
 
-void *hash_entry_add_or_set(HASH *h, char *key, void *value)
+int hash_entry_add_or_set(HASH *h, char *key, void *value, void **old)
 {
   HASH_NODE *hn;
-  void *old = NULL;
 
   if((hn = hash_node_get(h, key)) != NULL)
   {
     /* node exists => set value */
-    old = hn->entry;
+    if(old)
+      *old = hn->entry;
     hn->entry = value;
   } else {
     /* add node */
+    if(old)
+      *old = NULL;
     __hash_entry_add(h, key, value);
   }
 
@@ -324,7 +328,7 @@ static void hash_merge__add(char *k, void *v, va_list ap)
   conflict_handler = va_arg(ap, void *);
  
   if((n = hash_node_get(h, k)) != NULL)
-    hash_entry_set(h, k, conflict_handler ? conflict_handler(k, v, n->entry) : v);
+    hash_entry_set(h, k, conflict_handler ? conflict_handler(k, v, n->entry) : v, NULL);
   else
     hash_entry_add(h, k, v);
 }
