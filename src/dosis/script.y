@@ -194,12 +194,12 @@ opts:
 
 pattern: PERIODIC '[' nfloat ',' nint ']'
            { $$ = hash_new();
-             hash_entry_add($$, "pattern", node_new_int(TYPE_PERIODIC));
+             hash_entry_add($$, "pattern",        node_new_int(TYPE_PERIODIC));
              hash_entry_add($$, "periodic_ratio", $3);
              hash_entry_add($$, "periodic_n",     $5); }
        | PERIODIC '[' nfloat ']'
            { $$ = hash_new();
-             hash_entry_add($$, "pattern", node_new_int(TYPE_PERIODIC));
+             hash_entry_add($$, "pattern",        node_new_int(TYPE_PERIODIC));
              hash_entry_add($$, "periodic_ratio", $3);
              hash_entry_add($$, "periodic_n",     node_new_int(1)); }
        ;
@@ -746,38 +746,30 @@ void script_init(void)
 
   dosis_atexit("SCRIPT", script_fini);
 
-  /* create config skeleton */
+  /* create config skeleton and set default config */
   defvalues = hash_new();
   hash_entry_add(defvalues, "payload",        NULL);
   hash_entry_add(defvalues, "ssl",            NULL);
-  hash_entry_add(defvalues, "ssl_cipher",     NULL);
+  hash_entry_add(defvalues, "ssl_cipher",     node_new_string("DES-CBC3-SHA", 0, 1));
   hash_entry_add(defvalues, "src_addr",       NULL);
-  hash_entry_add(defvalues, "src_port",       NULL);
+  hash_entry_add(defvalues, "src_port",       node_new_int(-1));
   hash_entry_add(defvalues, "dst_addr",       NULL);
-  hash_entry_add(defvalues, "dst_port",       NULL);
+  hash_entry_add(defvalues, "dst_port",       node_new_int(-1));
   hash_entry_add(defvalues, "tcp_mss",        NULL);
   hash_entry_add(defvalues, "tcp_flags",      NULL);
-  hash_entry_add(defvalues, "tcp_cwait",      NULL);
-  hash_entry_add(defvalues, "tcp_rwait",      NULL);
+  hash_entry_add(defvalues, "tcp_cwait",      node_new_int(3000000));
+  hash_entry_add(defvalues, "tcp_rwait",      node_new_int(10000000));
   hash_entry_add(defvalues, "tcp_sack",       NULL);
   hash_entry_add(defvalues, "tcp_tstamp",     NULL);
   hash_entry_add(defvalues, "tcp_tstamp_val", NULL);
   hash_entry_add(defvalues, "tcp_tstamp_ecr", NULL);
-  hash_entry_add(defvalues, "tcp_win",        NULL);
+  hash_entry_add(defvalues, "tcp_win",        node_new_int(31337));
   hash_entry_add(defvalues, "tcp_wscale",     NULL);
   hash_entry_add(defvalues, "pattern",        NULL);
   hash_entry_add(defvalues, "periodic_ratio", NULL);
   hash_entry_add(defvalues, "periodic_n",     NULL);
-
-  /* set default config */
-  hash_entry_add(defvalues, "delay",      node_new_int(0));
-  hash_entry_add(defvalues, "debug",      node_new_bool(0));
-  hash_entry_set(defvalues, "tcp_cwait",  node_new_int(3000000));
-  hash_entry_set(defvalues, "tcp_rwait",  node_new_int(10000000));
-  hash_entry_set(defvalues, "tcp_win",    node_new_int(31337));
-  hash_entry_set(defvalues, "ssl_cipher", node_new_string("DES-CBC3-SHA", 0, 1));
-  hash_entry_set(defvalues, "src_port",   node_new_int(-1));
-  hash_entry_set(defvalues, "dst_port",   node_new_int(-1));
+  hash_entry_add(defvalues, "delay",          node_new_int(0));
+  hash_entry_add(defvalues, "debug",          node_new_bool(0));
 }
 
 static void yyerror(char const *str)
