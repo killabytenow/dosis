@@ -31,6 +31,7 @@
 #include "pthreadex.h"
 #include "tea.h"
 
+#include "pills/ignorer.h"
 #include "pills/listener.h"
 #include "pills/sender.h"
 #include "pills/slowy.h"
@@ -117,7 +118,7 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
   void *pdata = tw->data + oc->offset;
 
   /* save into config hash */
-  hash_entry_add_or_set(tw->options, oc->name, v ? pdata : NULL);
+  hash_entry_add_or_set(tw->options, oc->name, v ? pdata : NULL, NULL);
   if(!v)
     return 0;
 
@@ -607,6 +608,7 @@ void tea_timer(SNODE *program)
         {
           switch(cmd->command.thc.to->type)
           {
+            case TYPE_TO_IGNORE:  to = &teaIGNORER; break;
             case TYPE_TO_LISTEN:  to = &teaLISTENER; break;
             case TYPE_TO_TCPOPEN: to = &teaTCPOPEN;  break;
             case TYPE_TO_TCP:     to = &teaTCP;      break;

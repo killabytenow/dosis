@@ -34,13 +34,15 @@
 ###############################################################################
 
 # configuration
-? THOST="127.0.0.1"
+#? THOST="127.0.0.1"
+? THOST="10.2.20.1"
 ? TPORT="80"
-? THREADS="1"
-? RT="2.0"
+? THREADS="10"
+? RT="60.0"
 
 # script
-0.0 ON 99 LISTEN DEBUG
-0.0 ON [1%$THREADS] TCP RAW DST $THOST $TPORT FLAGS S PERIODIC [5.0, 1]
+#0.0 ON 99 LISTEN DEBUG
+0.0 ON 99 IGNORE
+0.0 ON [1%$THREADS] TCP RAW DST $THOST $TPORT FLAGS S PERIODIC [0.0, 1000000]
 $RT OFF *
 

@@ -55,6 +55,7 @@ enum TYPES {
   TYPE_SELECTOR,
   /* thread types */
   TYPE_TO_LISTEN = 3000,
+  TYPE_TO_IGNORE,
   TYPE_TO_SEND,
   TYPE_TO_SLOW,
   TYPE_TO_TCP,

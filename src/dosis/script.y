@@ -76,7 +76,7 @@
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
 %token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_CIPHER OPT_ZWIN
 %token            OPT_WINDOW OPT_DEBUG OPT_DELAY
-%token            TO_LISTEN TO_SEND TO_TCP TO_UDP
+%token            TO_LISTEN TO_IGNORE TO_SEND TO_TCP TO_UDP
 %token            OPT_CWAIT OPT_RWAIT
 %% /* Grammar rules and actions follow.  */
 /*---------------------------------------------------------------------------
@@ -220,7 +220,8 @@ to_no_patt: TO_TCP OPT_OPEN { $$ = node_new(TYPE_TO_TCPOPEN); }
           | TO_TCP OPT_ZWIN { $$ = node_new(TYPE_TO_ZWIN);    }
           | TO_TCP OPT_SLOW { $$ = node_new(TYPE_TO_SLOW);    }
           | TO_LISTEN       { $$ = node_new(TYPE_TO_LISTEN);  }
-          | TO_SEND         { $$ = node_new(TYPE_TO_SEND);  }
+          | TO_IGNORE       { $$ = node_new(TYPE_TO_IGNORE);  }
+          | TO_SEND         { $$ = node_new(TYPE_TO_SEND);    }
           ;
 to: to_pattern opts pattern { $$ = $1;
                               $1->options = hash_merge($2, $3, NULL);
@@ -355,6 +356,7 @@ static void node_free(SNODE *n)
     case TYPE_RANDOM:
     case TYPE_SELECTOR:
     case TYPE_TO_LISTEN:
+    case TYPE_TO_IGNORE:
     case TYPE_TO_SEND:
       /* do nothing */
       break;
@@ -466,6 +468,7 @@ static int yylex(void)
     { "FILE",     OPT_FILE    },
     { "FLAGS",    OPT_FLAGS   },
     { "LISTEN",   TO_LISTEN   },
+    { "IGNORE",   TO_IGNORE   },
     { "MOD",      CMD_MOD     },
     { "MSS",      OPT_MSS     },
     { "NULL",     OPT_NULL    },

@@ -27,8 +27,10 @@
 bin_PROGRAMS = dosis
 dosis_SOURCES = dosis.c           dosis.h           \
                 dosconfig.c       dosconfig.h       \
+                exec.c            exec.h            \
                 ip.c              ip.h              \
                 ipqex.c           ipqex.h           \
+                iptables.c        iptables.h        \
                 hash.c            hash.h            \
                 help.c            help.h            \
                 lnet.c            lnet.h            \
@@ -39,6 +41,7 @@ dosis_SOURCES = dosis.c           dosis.h           \
                 script.y          script.h          \
                 tea.c             tea.h             \
                                   teatype.h         \
+                pills/ignorer.c   pills/ignorer.h   \
                 pills/listener.c  pills/listener.h  \
                 pills/sender.c    pills/sender.h    \
                 pills/slowy.c     pills/slowy.h     \
