@@ -107,8 +107,12 @@ static void tcpraw__thread(THREAD_WORK *tw)
   {
     /* build TCP packet with payload (if requested) */
     TDBG2("Sending %d packet(s)...", tc->npackets);
-    *tc->tcp_tstamp_val_ptr = tc->tcp_tstamp_val;
-    *tc->tcp_tstamp_ecr_ptr = tc->tcp_tstamp_ecr;
+    if(tc->tcp_tstamp_val_ptr) /* set fixed tstamp val */
+      *tc->tcp_tstamp_val_ptr = tc->tcp_tstamp_val;
+    if(tc->tcp_tstamp_ecr_ptr) /* set fixed tstamp ecr */
+      *tc->tcp_tstamp_ecr_ptr = tc->tcp_tstamp_ecr;
+
+    /* send npackets */
     for(i = 0; i < tc->npackets; i++)
     {
       sport = tc->shost.port >= 0
@@ -117,10 +121,10 @@ static void tcpraw__thread(THREAD_WORK *tw)
       dport = tc->dhost.port >= 0
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
-      if(tc->tcp_tstamp_val_auto)
-        *tc->tcp_tstamp_val_ptr = time(NULL);
-      if(tc->tcp_tstamp_ecr_auto)
-        *tc->tcp_tstamp_ecr_ptr = 0;
+      if(tc->tcp_tstamp_val_ptr && tc->tcp_tstamp_val_auto)
+        *tc->tcp_tstamp_val_ptr = time(NULL); /* tcp stamp val set to auto */
+      if(tc->tcp_tstamp_ecr_ptr && tc->tcp_tstamp_ecr_auto)
+        *tc->tcp_tstamp_ecr_ptr = 0;          /* tcp stamp ecr set to auto */
       seq += (NEXT_RAND_PORT(seq) & 0x1f);
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr, sport,
