@@ -5,7 +5,7 @@
  *
  * ---------------------------------------------------------------------------
  * dosis - DoS: Internet Sodomizer
- *   (C) 2008-2009 Gerardo García Peña <gerardo@kung-foo.net>
+ *   (C) 2008-2012 Gerardo García Peña <gerardo@kung-foo.net>
  *
  *   This program is free software; you can redistribute it and/or modify it
  *   under the terms of the GNU General Public License as published by the Free
@@ -30,7 +30,7 @@
 void dos_help_program_header(void)
 {
   char *msg[] = {
-    PACKAGE_NAME " version " PACKAGE_VERSION ", Copyright (C) 2006-2009 Gerardo García Peña",
+    PACKAGE_NAME " version " PACKAGE_VERSION ", Copyright (C) 2006-2012 Gerardo García Peña",
     PACKAGE_NAME " is free software and comes with ABSOLUTELY NO WARRANTY;",
     "you are welcome to redistribute it under certain conditions;",
     "for details see the file `COPYING' that accompanies this software.",
