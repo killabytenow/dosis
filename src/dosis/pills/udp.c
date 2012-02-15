@@ -114,6 +114,7 @@ static void udp__thread(THREAD_WORK *tw)
       ln_send_udp_packet(&tu->lnc,
                          &tu->shost.addr, sport,
                          &tu->dhost.addr, dport,
+                         /* ip_id */ 0, /* frag_off */ 0,
                          tu->payload.data, tu->payload.size);
     }
   }

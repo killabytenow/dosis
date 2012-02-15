@@ -89,6 +89,7 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
   /* send handshake and data TCP packet */
   if((t = msg_build_ip_tcp_packet(&tc->shost.addr, IPV4_TCP_DPORT(m->b),
                                   &tc->dhost.addr, IPV4_TCP_SPORT(m->b),
+                                  /* ip_id */ 0, /* frag_off */ 0,
                                   LN_TH_ACK,
                                   tc->tcp_win,
                                   IPV4_TCP_ACK(m->b),
@@ -105,6 +106,7 @@ static void tcpopen__send_kakita(TEA_MSG *m, THREAD_WORK *tw)
 
   if((t = msg_build_ip_tcp_packet(&tc->shost.addr, IPV4_TCP_DPORT(m->b),
                                   &tc->dhost.addr, IPV4_TCP_SPORT(m->b),
+                                  /* ip_id */ 0, /* frag_off */ 0,
                                   LN_TH_ACK | LN_TH_PUSH,
                                   tc->tcp_win,
                                   IPV4_TCP_ACK(m->b),

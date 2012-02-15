@@ -28,10 +28,11 @@
 #include "lnet.h"
 #include "log.h"
 
-#define C1_SUM(s, n) { unsigned long __c1_ts;                    \
+#define IP_SUM(s, n) { unsigned long __c1_ts;                    \
                        __c1_ts = ((s) + ((unsigned) (n)));       \
                        s = (__c1_ts + (__c1_ts >> 16)) & 0xffff; \
                      }
+#define TCP_SUM(s, n) { s = (s) + ((((unsigned) (n))) & 0xffff); }
 
 /*****************************************************************************
  * SEQUENCE NUMBER GENERATORS
@@ -55,7 +56,7 @@ void ln_init_context(LN_CONTEXT *lnc)
 {
   const int one = 1;
 
-  if((lnc->rs = socket(PF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
+  if((lnc->rs = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
   {
     if(errno == EPERM)
     {
@@ -133,7 +134,7 @@ unsigned short ln_ip_checksum(unsigned short *buf, int nwords)
 {
   unsigned long sum;
   for(sum = 0; nwords > 0; nwords--)
-    C1_SUM(sum, *buf++);
+    IP_SUM(sum, *buf++);
   return ~sum;
 }
 
@@ -145,7 +146,8 @@ unsigned short ln_ip_checksum(unsigned short *buf, int nwords)
  * int ln_build_ip_packet(void *buff,
  *                        INET_ADDR *shost,
  *                        INET_ADDR *dhost,
- *                        int proto, int ip_id,
+ *                        int proto,
+ *                        int ip_id, int frag_off,
  *                        char *data, int datasz,
  *                        int *pdata)
  *
@@ -171,7 +173,8 @@ unsigned short ln_ip_checksum(unsigned short *buf, int nwords)
 int ln_build_ip_packet(void *buff,
                        INET_ADDR *shost,
                        INET_ADDR *dhost,
-                       int proto, int ip_id,
+                       int proto,
+                       int ip_id, int frag_off,
                        char *data, int datasz,
                        int *pdata)
 {
@@ -215,7 +218,7 @@ int ln_build_ip_packet(void *buff,
       ip.v4->tos = 0;
       ip.v4->tot_len = htons(psize);
       ip.v4->id  = htonl(ip_id); /* IP identification number                */
-      ip.v4->frag_off = 0;
+      ip.v4->frag_off = htons(frag_off);
       ip.v4->ttl = 255;
       ip.v4->protocol   = proto;
       ip.v4->saddr = shost->in.inaddr.s_addr;
@@ -254,7 +257,7 @@ int ln_build_tcp_packet(void *buff,
   int psize, poffset, i;
   unsigned long sum;
 
-  /* calculate packet size and payload offset */
+  /* calculate TCP packet size and payload offset */
   poffset = ((5 + ((optssz + 3) >> 2)) << 2);
   psize   = poffset + datasz;
   if(pdata)
@@ -281,19 +284,23 @@ int ln_build_tcp_packet(void *buff,
   if(data && datasz > 0)
     memcpy(buff + poffset, data, datasz);
 
-  /* [calculate cheksum] PSEUDO-HEADER */
   sum = 0;
-  C1_SUM(sum, shost->in.addr);
-  C1_SUM(sum, dhost->in.addr);
-  C1_SUM(sum, 0x0600);
-  C1_SUM(sum, htons(psize));
   /* [calculate cheksum] header+segment */
-  if(psize & 0x1)
-    C1_SUM(sum, ((char *) buff)[psize-1]);
   for(i = 0; i < psize; i += 2)
-    C1_SUM(sum, *((unsigned short *) (buff + i)));
+    TCP_SUM(sum, *((unsigned short *) (buff + i)));
+  if(psize & 0x1)
+    TCP_SUM(sum, ((char *) buff)[psize-1]);
+  /* [calculate cheksum] PSEUDO-HEADER */
+  TCP_SUM(sum, (shost->in.addr & 0x0000ffff));
+  TCP_SUM(sum, (shost->in.addr >> 16));
+  TCP_SUM(sum, (dhost->in.addr & 0x0000ffff));
+  TCP_SUM(sum, (dhost->in.addr >> 16));
+  TCP_SUM(sum, htons(0x06));
+  TCP_SUM(sum, htons(psize));
   /* [calculate cheksum] complement */
-  tcph->th_sum = ~sum;
+  sum = (sum >> 16) + (sum & 0xffff);
+  sum += (sum >> 16);
+  tcph->th_sum = ~sum & 0xffff;
 
   return psize;
 }
@@ -324,6 +331,7 @@ int ln_build_udp_packet(void *buff,
 int ln_build_ip_tcp_packet(void *buff,
                            INET_ADDR *shost, int sport,
                            INET_ADDR *dhost, int dport,
+                           int ip_id, int frag_off,
                            int flags, int window,
                            int seq, int ack,
                            char *data, int datasz,
@@ -339,7 +347,7 @@ int ln_build_ip_tcp_packet(void *buff,
                                      flags, window, seq, ack,
                                      NULL, datasz, opts, optssz,
                                      &data_offset)) < 0
-  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 6, 0,
+  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 6, 0, 0,
                                    NULL, tcp_size, &tcp_offset)) < 0)
     return -1;
 
@@ -355,7 +363,7 @@ int ln_build_ip_tcp_packet(void *buff,
                          flags, window, seq, ack,
                          data, datasz, opts, optssz,
                          NULL) < 0
-  || ln_build_ip_packet(buff, shost, dhost, 6, 0, NULL, tcp_size, NULL) < 0)
+  || ln_build_ip_packet(buff, shost, dhost, 6, 0, 0, NULL, tcp_size, NULL) < 0)
     return -1;
 
   return ip_size;
@@ -364,6 +372,7 @@ int ln_build_ip_tcp_packet(void *buff,
 int ln_build_ip_udp_packet(void *buff,
                            INET_ADDR *shost, int sport,
                            INET_ADDR *dhost, int dport,
+                           int ip_id, int frag_off,
                            char *data, int datasz,
                            char *pdata)
 {
@@ -373,7 +382,7 @@ int ln_build_ip_udp_packet(void *buff,
   /* calculate size */
   if((udp_size = ln_build_udp_packet(NULL, sport, dport,
                                      NULL, datasz, &data_offset)) < 0
-  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 17, 0,
+  || (ip_size = ln_build_ip_packet(NULL, shost, dhost, 17, 0, 0,
                                    NULL, udp_size, &udp_offset)) < 0)
     return -1;
 
@@ -386,7 +395,7 @@ int ln_build_ip_udp_packet(void *buff,
   /* buid packet */
   if(ln_build_udp_packet(buff + udp_offset, sport, dport,
                          data, datasz, NULL) < 0
-  || ln_build_ip_packet(buff, shost, dhost, 17, 0, NULL, udp_size, NULL) < 0)
+  || ln_build_ip_packet(buff, shost, dhost, 17, 0, 0, NULL, udp_size, NULL) < 0)
     return -1;
 
   return ip_size;
@@ -395,6 +404,7 @@ int ln_build_ip_udp_packet(void *buff,
 int ln_send_tcp_packet(LN_CONTEXT *lnc,
                        INET_ADDR *shost, int sport,
                        INET_ADDR *dhost, int dport,
+                       int ip_id, int frag_off,
                        int flags, int window,
                        int seq, int ack,
                        char *data, int datasz,
@@ -404,6 +414,7 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
 
   if((size = ln_build_ip_tcp_packet(lnc->buff,
                                     shost, sport, dhost, dport,
+                                    ip_id, frag_off,
                                     flags, window, seq, ack,
                                     data, datasz, opts, optssz,
                                     NULL)) < 0)
@@ -411,18 +422,21 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
     ERR("Cannot build TCP/IP package.");
     return -1;
   }
+  DUMP(LOG_LEVEL_LOG, "", lnc->buff, size);
   return ln_send_packet(lnc, lnc->buff, size, dhost);
 }
 
 int ln_send_udp_packet(LN_CONTEXT *lnc,
                        INET_ADDR *shost, int sport,
                        INET_ADDR *dhost, int dport,
+                       int ip_id, int frag_off,
                        char *data, int datasz)
 {
   int size;
 
   if((size = ln_build_ip_udp_packet(lnc->buff,
                                     shost, sport, dhost, dport,
+                                    ip_id, frag_off,
                                     data, datasz, NULL)) < 0)
   {
     ERR("Cannot build UDP/IP package.");

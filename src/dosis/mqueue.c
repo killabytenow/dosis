@@ -222,6 +222,7 @@ void msg_set_addr(TEA_MSG *m, INET_ADDR *a)
 
 TEA_MSG *msg_build_ip_udp_packet(INET_ADDR *saddr, int sport,
                                  INET_ADDR *daddr, int dport,
+                                 int ip_id, int frag_off,
                                  char *data, int datasz)
 {
   TEA_MSG *m = msg_get();
@@ -230,6 +231,7 @@ TEA_MSG *msg_build_ip_udp_packet(INET_ADDR *saddr, int sport,
   if((s = ln_build_ip_udp_packet(NULL,
                                  saddr, sport,
                                  daddr, dport,
+                                 ip_id, frag_off,
                                  data, datasz,
                                  NULL)) < 0)
   {
@@ -246,6 +248,7 @@ TEA_MSG *msg_build_ip_udp_packet(INET_ADDR *saddr, int sport,
   if((s = ln_build_ip_udp_packet(m->b,
                                  saddr, sport,
                                  daddr, dport,
+                                 ip_id, frag_off,
                                  data, datasz,
                                  NULL)) < 0)
   {
@@ -258,6 +261,7 @@ TEA_MSG *msg_build_ip_udp_packet(INET_ADDR *saddr, int sport,
 
 TEA_MSG *msg_build_ip_tcp_packet(INET_ADDR *saddr, int sport,
                                  INET_ADDR *daddr, int dport,
+                                 int ip_id, int frag_off,
                                  int flags, int window,
                                  int seq, int ack,
                                  char *data, int datasz,
@@ -269,6 +273,7 @@ TEA_MSG *msg_build_ip_tcp_packet(INET_ADDR *saddr, int sport,
   if((s = ln_build_ip_tcp_packet(NULL,
                                  saddr, sport,
                                  daddr, dport,
+                                 ip_id, frag_off,
                                  flags, window, seq, ack,
                                  data, datasz,
                                  opts, optssz,
@@ -287,6 +292,7 @@ TEA_MSG *msg_build_ip_tcp_packet(INET_ADDR *saddr, int sport,
   if((s = ln_build_ip_tcp_packet(m->b,
                                  saddr, sport,
                                  daddr, dport,
+                                 ip_id, frag_off,
                                  flags, window, seq, ack,
                                  data, datasz,
                                  opts, optssz,

@@ -77,9 +77,11 @@ void     msg_set_addr(TEA_MSG *m, INET_ADDR *a);
 /*- MESSAGE PACKET BUILDING -------------------------------------------------*/
 TEA_MSG *msg_build_ip_udp_packet(INET_ADDR *saddr, int sport,
                                  INET_ADDR *daddr, int dport,
+                                 int ip_id, int frag_off,
                                  char *data, int data_sz);
 TEA_MSG *msg_build_ip_tcp_packet(INET_ADDR *saddr, int sport,
                                  INET_ADDR *daddr, int dport,
+                                 int ip_id, int frag_off,
                                  int flags, int window,
                                  int seq, int ack,
                                  char *data, int data_sz,
