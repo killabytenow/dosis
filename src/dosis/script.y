@@ -73,7 +73,8 @@
 %token            BFALSE BTRUE
 %token            PERIODIC OPT_FILE OPT_RANDOM OPT_BYTE OPT_ZERO
 %token            CMD_ON CMD_MOD CMD_OFF
-%token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SLOW
+%token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SACK OPT_SLOW
+%token            OPT_TCP_TSTAMP
 %token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_CIPHER OPT_ZWIN
 %token            OPT_WINDOW OPT_DEBUG OPT_DELAY
 %token            TO_LISTEN TO_IGNORE TO_SEND TO_TCP TO_UDP
@@ -172,6 +173,10 @@ opts:
 | OPT_DST string nint opts  { $$ = $4; hash_entry_add($$, "dst_addr",   $2);
                                        hash_entry_add($$, "dst_port",   $3);   }
 | OPT_FLAGS string opts     { $$ = $3; hash_entry_add($$, "tcp_flags",  $2);   }
+| OPT_SACK opts             { $$ = $2; hash_entry_add($$, "tcp_sack",   node_new_bool(1)); }
+| OPT_SACK nbool opts       { $$ = $3; hash_entry_add($$, "tcp_sack",   $2);   }
+| OPT_TCP_TSTAMP opts       { $$ = $2; hash_entry_add($$, "tcp_tstamp", node_new_bool(1)); }
+| OPT_TCP_TSTAMP nbool opts { $$ = $3; hash_entry_add($$, "tcp_tstamp", $2);   }
 | OPT_MSS nint opts         { $$ = $3; hash_entry_add($$, "tcp_mss",    $2);   }
 | OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_entry_add($$, "payload",    NULL); }
 | OPT_PAYLOAD data opts     { $$ = $3; hash_entry_add($$, "payload",    $2);   }
@@ -480,11 +485,13 @@ static int yylex(void)
     { "RANDOM",   OPT_RANDOM  },
     { "RAW",      OPT_RAW     },
     { "RWAIT",    OPT_RWAIT   },
+    { "SACK",     OPT_SACK     },
     { "SEND",     TO_SEND     },
     { "SLOW",     OPT_SLOW    },
     { "SRC",      OPT_SRC     },
     { "SSL",      OPT_SSL     },
     { "TCP",      TO_TCP      },
+    { "TCPTSTAMP", OPT_TCP_TSTAMP },
     { "TRUE",     BTRUE       },
     { "UDP",      TO_UDP      },
     { "WINDOW",   OPT_WINDOW  },
@@ -762,11 +769,11 @@ void script_init(void)
   hash_entry_add(defvalues, "tcp_flags",      NULL);
   hash_entry_add(defvalues, "tcp_cwait",      node_new_int(3000000));
   hash_entry_add(defvalues, "tcp_rwait",      node_new_int(10000000));
-  hash_entry_add(defvalues, "tcp_sack",       NULL);
-  hash_entry_add(defvalues, "tcp_tstamp",     NULL);
+  hash_entry_add(defvalues, "tcp_sack",       node_new_bool(0));
+  hash_entry_add(defvalues, "tcp_tstamp",     node_new_bool(0));
   hash_entry_add(defvalues, "tcp_tstamp_val", NULL);
   hash_entry_add(defvalues, "tcp_tstamp_ecr", NULL);
-  hash_entry_add(defvalues, "tcp_win",        node_new_int(31337));
+  hash_entry_add(defvalues, "tcp_win",        node_new_int(14600));
   hash_entry_add(defvalues, "tcp_wscale",     NULL);
   hash_entry_add(defvalues, "pattern",        NULL);
   hash_entry_add(defvalues, "periodic_ratio", NULL);
