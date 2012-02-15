@@ -108,9 +108,9 @@ static void tcpraw__thread(THREAD_WORK *tw)
     /* build TCP packet with payload (if requested) */
     TDBG2("Sending %d packet(s)...", tc->npackets);
     if(tc->tcp_tstamp_val_ptr) /* set fixed tstamp val */
-      *tc->tcp_tstamp_val_ptr = tc->tcp_tstamp_val;
+      *tc->tcp_tstamp_val_ptr = htonl(tc->tcp_tstamp_val);
     if(tc->tcp_tstamp_ecr_ptr) /* set fixed tstamp ecr */
-      *tc->tcp_tstamp_ecr_ptr = tc->tcp_tstamp_ecr;
+      *tc->tcp_tstamp_ecr_ptr = htonl(tc->tcp_tstamp_ecr);
 
     /* send npackets */
     for(i = 0; i < tc->npackets; i++)
@@ -122,13 +122,14 @@ static void tcpraw__thread(THREAD_WORK *tw)
                 ? tc->dhost.port
                 : NEXT_RAND_PORT(dport);
       if(tc->tcp_tstamp_val_ptr && tc->tcp_tstamp_val_auto)
-        *tc->tcp_tstamp_val_ptr = time(NULL); /* tcp stamp val set to auto */
+        *tc->tcp_tstamp_val_ptr = htonl(time(NULL)); /* tcp stamp val set to auto */
       if(tc->tcp_tstamp_ecr_ptr && tc->tcp_tstamp_ecr_auto)
         *tc->tcp_tstamp_ecr_ptr = 0;          /* tcp stamp ecr set to auto */
       seq += (NEXT_RAND_PORT(seq) & 0x1f);
       ln_send_tcp_packet(tc->lnc,
                          &tc->shost.addr, sport,
                          &tc->dhost.addr, dport,
+                         /* ip_id */ 0, /* frag_off */ 0,
                          tc->tcp_flags_bitmap,
                          tc->tcp_win,
                          seq, 0,
@@ -260,6 +261,7 @@ static int cfg_cb_update_opts(TEA_OBJCFG *oc, THREAD_WORK *tw)
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
   int p = 0;
   char *b = tc->tcp_options;
+  HASH_NODE *hn;
 
   if(tc->tcp_mss > 0)    /* max size = 4 */
   {
@@ -276,11 +278,18 @@ static int cfg_cb_update_opts(TEA_OBJCFG *oc, THREAD_WORK *tw)
   }
   if(tc->tcp_tstamp)     /* max size = 10 */
   {
+    /* add option and set pointers */
     b[p++] = 0x08; b[p++] = 0x0a;
     tc->tcp_tstamp_val_ptr = (UINT32_T *) (b + p);
     p += 4;
     tc->tcp_tstamp_ecr_ptr = (UINT32_T *) (b + p);
     p += 4;
+
+    /* decide 'auto' values */
+    hn = hash_entry_get(tw->options, "tcp_tstamp_val");
+    tc->tcp_tstamp_val_auto = (hn == NULL || hn->entry == NULL);
+    hn = hash_entry_get(tw->options, "tcp_tstamp_ecr");
+    tc->tcp_tstamp_ecr_auto = (hn == NULL || hn->entry == NULL);
   }
   if(tc->tcp_wscale > 0) /* max size = 4 */
   {
@@ -304,11 +313,8 @@ static int cfg_cb_update_tstamp(TEA_OBJCFG *oc, THREAD_WORK *tw)
   hn = hash_entry_get(tw->options, oc->name);
   if(!strcmp(oc->name, "tcp_tstamp_val"))
     tc->tcp_tstamp_val_auto = (hn != NULL && hn->entry != NULL);
-  else
   if(!strcmp(oc->name, "tcp_tstamp_ecr"))
     tc->tcp_tstamp_ecr_auto = (hn != NULL && hn->entry != NULL);
-  else
-    FAT("Unknown parameter '%s'.", oc->name);
 
   return 0;
 }
