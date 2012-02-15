@@ -107,6 +107,10 @@ typedef struct __tag_LN_HDR_IPV4
   u_int16_t tot_len;
   u_int16_t id;
   u_int16_t frag_off;
+#define LN_HDR_IPV4_RF 0x8000      /* reserved fragment flag */
+#define LN_HDR_IPV4_DF 0x4000      /* dont fragment flag */
+#define LN_HDR_IPV4_MF 0x2000      /* more fragments flag */
+#define LN_HDR_IPV4_OFFMASK 0x1fff /* mask for fragmenting bits */
   u_int8_t ttl;
   u_int8_t protocol;
   u_int16_t check;
@@ -147,9 +151,17 @@ typedef struct _tag_LN_CONTEXT {
 void ln_init_context(LN_CONTEXT *lnc);
 void ln_destroy_context(LN_CONTEXT *lnc);
 
+int ln_build_ip_packet(void *buff,
+                       INET_ADDR *shost,
+                       INET_ADDR *dhost,
+                       int proto,
+                       int ip_id, int frag_off,
+                       char *data, int datasz,
+                       int *pdata);
 int ln_build_ip_tcp_packet(void *buff,
                            INET_ADDR *shost, int sport,
                            INET_ADDR *dhost, int dport,
+                           int ip_id, int frag_off,
                            int flags, int window,
                            int seq, int ack,
                            char *data, int datasz,
@@ -158,6 +170,7 @@ int ln_build_ip_tcp_packet(void *buff,
 int ln_build_ip_udp_packet(void *buff,
                            INET_ADDR *shost, int sport,
                            INET_ADDR *dhost, int dport,
+                           int ip_id, int frag_off,
                            char *data, int datasz,
                            char *pdata);
 int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *sa);
@@ -165,6 +178,7 @@ int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *sa);
 int ln_send_tcp_packet(LN_CONTEXT *lnc,
                        INET_ADDR *shost, int sport,
                        INET_ADDR *dhost, int dport,
+                       int ip_id, int frag_off,
                        int flags, int window,
                        int seq, int ack,
                        char *data, int datasz,
@@ -172,6 +186,7 @@ int ln_send_tcp_packet(LN_CONTEXT *lnc,
 int ln_send_udp_packet(LN_CONTEXT *lnc,
                        INET_ADDR *shost, int sport,
                        INET_ADDR *dhost, int dport,
+                       int ip_id, int frag_off,
                        char *data, int datasz);
                     
 /*****************************************************************************
