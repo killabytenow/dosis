@@ -418,11 +418,9 @@ SNODE *script_parse(void)
 void readvar(char *buff, int *real_bi)
 {
   int c;
-  char *v;
   int bi = *real_bi;
 
   /* read var name in buffer */
-  v = buff + bi;
   c = getchar();
   if(c == EOF)
     FAT("Bad identifier.");
