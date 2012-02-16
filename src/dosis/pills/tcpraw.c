@@ -72,24 +72,15 @@ static int tcpraw__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned 
 {
   TCPRAW_CFG *tc = (TCPRAW_CFG *) tw->data;
 
-  switch(proto)
-  {
-    case INET_FAMILY_IPV4:
-      /* check msg size and headers */
-      if(!IPV4_TCP_HDRCK(msg, size))
-        return 0;
+  /* check proto, msg size and headers */
+  if(proto != INET_FAMILY_IPV4
+  || !IPV4_TCP_HDRCK(msg, size))
+    return 0;
 
-      /* check msg */
-      return IPV4_SADDR(msg) == tc->dhost.addr.in.addr
-          && IPV4_TCP_SPORT(msg) == tc->dhost.port
-             ? -255 : 0;
-
-    case INET_FAMILY_IPV6:
-#warning "IPv6 not implemented."
-      return 0;
-  }
-
-  return 0;
+  /* check msg */
+  return IPV4_SADDR(msg) == tc->dhost.addr.in.addr
+      && IPV4_TCP_SPORT(msg) == tc->dhost.port
+         ? -255 : 0;
 }
 
 static void tcpraw__thread(THREAD_WORK *tw)
