@@ -201,7 +201,7 @@ repeat_search:
           memcpy(&addr.in.inaddr, &IPV4_TADDR(lcfg->imsg.m->payload), sizeof(addr.in.inaddr));
           break;
         case INET_FAMILY_IPV6:
-#warning "IPv6 address not implemented."
+          /* XXX: IPv6 address not implemented (see issue #2 in github) */
           break;
         default:
           TWRN("Unknown protocol %d.", proto);
