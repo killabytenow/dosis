@@ -50,6 +50,11 @@
   static SNODE *allocated_list = NULL;
 
   static HASH *defvalues;
+
+  typedef struct _tag_TOKEN {
+    char *token;
+    int  value;
+  } TOKEN;
 %}
 %union {
   HASH      *hash;
@@ -70,7 +75,6 @@
 %type  <snode>    list_num_enum list_num range selection
 %type  <snode>    o_ntime command
 %type  <snode>    to to_pattern to_no_patt
-%token            BFALSE BTRUE
 %token            PERIODIC OPT_FILE OPT_RANDOM OPT_BYTE OPT_ZERO
 %token            CMD_ON CMD_MOD CMD_OFF
 %token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SACK OPT_SLOW
@@ -464,8 +468,6 @@ static int yylex(void)
     case LITERAL:        DBG("yylex: LITERAL = %s", yylval.string); break;
     case STRING:         DBG("yylex: STRING = %s", yylval.string);  break;
     case VAR:            DBG("yylex: VAR = %s", yylval.string);     break;
-    case BFALSE:         DBG("yylex: BFALSE");                      break;
-    case BTRUE:          DBG("yylex: BTRUE");                       break;
     case PERIODIC:       DBG("yylex: PERIODIC");                    break;
     case OPT_FILE:       DBG("yylex: OPT_FILE");                    break;
     case OPT_RANDOM:     DBG("yylex: OPT_RANDOM");                  break;
@@ -524,50 +526,41 @@ static int yylex(void)
 {
   int c, bi, f;
   char buff[BUFFLEN];
-  struct {
-    char *token;
-    int  value;
-  } tokens[] = {
-    { "BYTE",     OPT_BYTE    },
-    { "CIPHER",   OPT_CIPHER  },
-    { "CWAIT",    OPT_CWAIT   },
-    { "DEBUG",    OPT_DEBUG   },
-    { "DELAY",    OPT_DELAY   },
-    { "DISABLE",  BFALSE      },
-    { "DISABLED", BFALSE      },
-    { "DLL",      OPT_DLL     },
-    { "DST",      OPT_DST     },
-    { "ENABLE",   BTRUE       },
-    { "ENABLED",  BTRUE       },
-    { "FALSE",    BFALSE      },
-    { "FILE",     OPT_FILE    },
-    { "FLAGS",    OPT_FLAGS   },
-    { "LISTEN",   TO_LISTEN   },
-    { "IGNORE",   TO_IGNORE   },
-    { "MOD",      CMD_MOD     },
-    { "MSS",      OPT_MSS     },
-    { "NULL",     OPT_NULL    },
-    { "OFF",      CMD_OFF     },
-    { "ON",       CMD_ON      },
-    { "OPEN",     OPT_OPEN    },
-    { "PAYLOAD",  OPT_PAYLOAD },
-    { "PERIODIC", PERIODIC    },
-    { "RANDOM",   OPT_RANDOM  },
-    { "RAW",      OPT_RAW     },
-    { "RWAIT",    OPT_RWAIT   },
-    { "SACK",     OPT_SACK     },
-    { "SEND",     TO_SEND     },
-    { "SLOW",     OPT_SLOW    },
-    { "SRC",      OPT_SRC     },
-    { "SSL",      OPT_SSL     },
-    { "TCP",      TO_TCP      },
+  TOKEN tokens[] = {
+    { "BYTE",      OPT_BYTE    },
+    { "CIPHER",    OPT_CIPHER  },
+    { "CWAIT",     OPT_CWAIT   },
+    { "DEBUG",     OPT_DEBUG   },
+    { "DELAY",     OPT_DELAY   },
+    { "DLL",       OPT_DLL     },
+    { "DST",       OPT_DST     },
+    { "FILE",      OPT_FILE    },
+    { "FLAGS",     OPT_FLAGS   },
+    { "LISTEN",    TO_LISTEN   },
+    { "IGNORE",    TO_IGNORE   },
+    { "MOD",       CMD_MOD     },
+    { "MSS",       OPT_MSS     },
+    { "NULL",      OPT_NULL    },
+    { "OFF",       CMD_OFF     },
+    { "ON",        CMD_ON      },
+    { "OPEN",      OPT_OPEN    },
+    { "PAYLOAD",   OPT_PAYLOAD },
+    { "PERIODIC",  PERIODIC    },
+    { "RANDOM",    OPT_RANDOM  },
+    { "RAW",       OPT_RAW     },
+    { "RWAIT",     OPT_RWAIT   },
+    { "SACK",      OPT_SACK     },
+    { "SEND",      TO_SEND     },
+    { "SLOW",      OPT_SLOW    },
+    { "SRC",       OPT_SRC     },
+    { "SSL",       OPT_SSL     },
+    { "TCP",       TO_TCP      },
     { "TCPTSTAMP", OPT_TCP_TSTAMP },
-    { "TRUE",     BTRUE       },
-    { "UDP",      TO_UDP      },
-    { "WINDOW",   OPT_WINDOW  },
-    { "ZERO",     OPT_ZERO    },
-    { "ZWIN",     OPT_ZWIN    },
-    { NULL,       0           }
+    { "UDP",       TO_UDP      },
+    { "WINDOW",    OPT_WINDOW  },
+    { "ZERO",      OPT_ZERO    },
+    { "ZWIN",      OPT_ZWIN    },
+    { NULL,        0           }
   }, bool_tokens[] = {
     { "TRUE",     -1 },
     { "ENABLE",   -1 },
