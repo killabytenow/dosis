@@ -53,9 +53,8 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
 {
   TEA_MSG_QUEUE *mq;
 
-  TDBG2("[tea-cleanup] Thread final cleanup started.");
-
   /* do thread cleanup */
+  TDBG2("[tea-cleanup] Thread final cleanup started.");
   if(tw->to->cleanup)
     tw->to->cleanup(tw);
 
@@ -81,13 +80,8 @@ static void tea_thread_cleanup(THREAD_WORK *tw)
     }
   }
 
-  TDBG2("[tea-cleanup] destroy mwaiting flag");
-  pthreadex_flag_destroy(&(tw->mwaiting));
-
   TDBG("[tea-cleanup] Thread finished.");
-
-  /* free mem */
-  free(tw);
+  pthreadex_flag_up(&(tw->cleanup_done));
 }
 
 static void *tea_thread(void *data)
@@ -101,9 +95,16 @@ static void *tea_thread(void *data)
   pthread_cleanup_push((void *) tea_thread_cleanup, tw);
 
   /* launch thread */
-  TDBG("[tea] Starting thread main function");
+  TDBG("[tea-thread] Starting thread main function");
   tw->to->thread(tw);
-  TDBG("[tea] Thread main function finished.");
+  TDBG("[tea-thread] Thread main function finished.");
+
+  /* wait until the correct die moment */
+  TDBG2("[tea-thread] Waiting for cleanup approval...");
+  while( pthreadex_flag_wait_timeout(&(tw->cleanup_do), 1000))
+  {
+    TDBG2("[tea-thread]  ...");
+  }
 
   /* finish him */
   pthread_cleanup_pop(1);
@@ -216,6 +217,10 @@ static void tea_thread_new(int tid, TEA_OBJECT *to, SNODE *command)
     tw->mqueue = mqueue_create();
   pthreadex_flag_init(&(tw->mwaiting), 0);
   pthreadex_flag_name(&(tw->mwaiting), "mwaiting");
+  pthreadex_flag_init(&(tw->cleanup_do), 0);
+  pthreadex_flag_name(&(tw->cleanup_do), "cleanup_do");
+  pthreadex_flag_init(&(tw->cleanup_done), 0);
+  pthreadex_flag_name(&(tw->cleanup_done), "cleanup_done");
 
   /* global thread initialization here */
   if(tw->to->global_init && !tw->to->initialized)
@@ -298,6 +303,8 @@ termination:
     if(tw->mqueue)
       mqueue_destroy(tw->mqueue);
     pthreadex_flag_destroy(&(tw->mwaiting));
+    pthreadex_flag_destroy(&(tw->cleanup_do));
+    pthreadex_flag_destroy(&(tw->cleanup_done));
     free(tw);
   }
 
@@ -329,14 +336,10 @@ static void tea_thread_stop(int tid)
     /* consider it dead */
     ttable[tid] = NULL;
 
-    /* kill thread */
-    while((r = pthread_detach(tw->pthread_id)) != 0 && errno == EINTR)
-    {
-      DBG("[tea] Detach EINTR; repeating pthread_detach() on  %d", tid);
-      errno = 0;
-    }
-    if(r != 0)
-      ERR_ERRNO("[tea] Cannot detach thread %d", tid);
+    /* allow thread to do the cleanup */
+    DBG2("[tea] Approve cleanup...");
+    pthreadex_flag_up(&(tw->cleanup_do));
+
     while((r = pthread_cancel(tw->pthread_id)) != 0 && errno == EINTR)
     {
       DBG("[tea] Cancel EINTR; repeating pthread_cancel() on %d", tid);
@@ -345,7 +348,26 @@ static void tea_thread_stop(int tid)
     if(r != 0)
       ERR_ERRNO("[tea] Cannot cancel thread %d", tid);
 
+    /* kill thread */
+    while((r = pthread_detach(tw->pthread_id)) != 0 && errno == EINTR)
+    {
+      DBG("[tea] Detach EINTR; repeating pthread_detach() on  %d", tid);
+      errno = 0;
+    }
+    if(r != 0)
+      ERR_ERRNO("[tea] Cannot detach thread %d", tid);
+
+    /* wait cleanup finishes */
+    DBG2("[tea] Wait cleanup termination...");
+    pthreadex_flag_wait(&(tw->cleanup_done));
+
     DBG("[tea] THREAD %d KILLED!", tid);
+
+    /* destroy flags && free mem */
+    pthreadex_flag_destroy(&(tw->mwaiting));
+    pthreadex_flag_destroy(&(tw->cleanup_do));
+    pthreadex_flag_destroy(&(tw->cleanup_done));
+    free(tw);
   } else
     ERR("[tea] Thread %d does not exist or died voluntarely.", tid);
 }
@@ -633,7 +655,7 @@ void tea_timer(SNODE *program)
             tid = tea_iter_next(&ti))
           if(ttable[tid])
           {
-            LOG("[tea] Stopped thread %d of type %s.", tid, to->name);
+            LOG("[tea] Stopped thread %d of type %s.", tid, ttable[tid]->to->name);
             tea_thread_stop(tid);
           }
         break;

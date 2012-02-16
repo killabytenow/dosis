@@ -38,17 +38,22 @@
  *   This structure groups all core info needed by tea timer
  *   to manage a thread:
  *
- *     id         - is the id
- *     pthread_id - is the pthread_id
- *     to         - is the to (joking, it is an structure specifying the TEA
- *                  OBJECT type, which defines all methods and properties of
- *                  this thread.
- *     data       - Block of memory alloc'd by TEA TIMER (of to.datasize
- *                  bytes). In spite of being alloc'd and free'd by TEA TIMER,
- *                  its contents are only managed by the thread implementation.
- *     mqueue     - Message queue used by sender/listener threads.
- *     mwaiting   - This flag is used to signal listener/sender threads when a
- *                  new message arrives.
+ *     id          - is the id
+ *     pthread_id  - is the pthread_id
+ *     to          - is the to (joking, it is an structure specifying the TEA
+ *                   OBJECT type, which defines all methods and properties of
+ *                   this thread.
+ *     data        - Block of memory alloc'd by TEA TIMER (of to.datasize
+ *                   bytes). In spite of being alloc'd and free'd by TEA TIMER,
+ *                   its contents are only managed by the thread
+ *                   implementation.
+ *     mqueue      - Message queue used by sender/listener threads.
+ *     mwaiting    - This flag is used to signal listener/sender threads when a
+ *                   new message arrives.
+ *     cleanup_do* - These flags are used to signal a thread when it should
+ *                   execute the cleanup functions (this is used to keep the
+ *                   thread state valid even if the thread have finished before
+ *                   expected).
  *
  *****************************************************************************/
 
@@ -63,6 +68,8 @@ typedef struct _tag_THREAD_WORK {
   /* listener/sender info */
   TEA_MSG_QUEUE           *mqueue;
   pthreadex_flag_t         mwaiting;
+  pthreadex_flag_t         cleanup_do;
+  pthreadex_flag_t         cleanup_done;
   /* XXX optimization not implemented XXX */
   /*struct _tag_THREAD_WORK *prev_listener;*/
   /*struct _tag_THREAD_WORK *next_listener;*/
