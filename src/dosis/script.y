@@ -415,7 +415,7 @@ SNODE *script_parse(void)
                        strcat(buff, s);              \
                        bi += strlen(s); }
 
-void readvar(char *buff, int *real_bi)
+static void readvar(char *buff, int *real_bi)
 {
   int c;
   int bi = *real_bi;
@@ -423,16 +423,16 @@ void readvar(char *buff, int *real_bi)
   /* read var name in buffer */
   c = getchar();
   if(c == EOF)
-    FAT("Bad identifier.");
+    FAT("%d: Bad identifier.", lineno);
   SADD(c);
   if(c == '{')
   {
     while((c = getchar()) != '}' && isalnum(c) && c != '\n' && c != EOF)
       SADD(c);
     if(c == '\n')
-      FAT("Non-terminated var.");
+      FAT("%d: Non-terminated var.", lineno);
     if(isblank(c) || c == EOF)
-      FAT("Bad identifier.");
+      FAT("%d: Bad identifier.", lineno);
   } else {
     while(isalnum(c = getchar()) && c != EOF)
       SADD(c);
@@ -448,7 +448,79 @@ ha_roto_la_olla:
   FAT("You have agoted my pedazo of buffer (%s...).", buff);
 }
 
+#ifdef PARSER_DEBUG
+static int yylex_real(void);
+
 static int yylex(void)
+{
+  int r = yylex_real();
+  
+  switch(r)
+  {
+    case 0:              DBG("yylex: EOF (%d lines)", lineno - 1);  break;
+    case NINT:           DBG("yylex: NINT = %d", yylval.nint);      break;
+    case NBOOL:          DBG("yylex: NBOOL = %d", yylval.nbool);    break;
+    case NFLOAT:         DBG("yylex: NFLOAT = %f", yylval.nfloat);  break;
+    case LITERAL:        DBG("yylex: LITERAL = %s", yylval.string); break;
+    case STRING:         DBG("yylex: STRING = %s", yylval.string);  break;
+    case VAR:            DBG("yylex: VAR = %s", yylval.string);     break;
+    case BFALSE:         DBG("yylex: BFALSE");                      break;
+    case BTRUE:          DBG("yylex: BTRUE");                       break;
+    case PERIODIC:       DBG("yylex: PERIODIC");                    break;
+    case OPT_FILE:       DBG("yylex: OPT_FILE");                    break;
+    case OPT_RANDOM:     DBG("yylex: OPT_RANDOM");                  break;
+    case OPT_BYTE:       DBG("yylex: OPT_BYTE");                    break;
+    case OPT_ZERO:       DBG("yylex: OPT_ZERO");                    break;
+    case CMD_ON:         DBG("yylex: CMD_ON");                      break;
+    case CMD_MOD:        DBG("yylex: CMD_MOD");                     break;
+    case CMD_OFF:        DBG("yylex: CMD_OFF");                     break;
+    case OPT_OPEN:       DBG("yylex: OPT_OPEN");                    break;
+    case OPT_RAW:        DBG("yylex: OPT_RAW");                     break;
+    case OPT_SRC:        DBG("yylex: OPT_SRC");                     break;
+    case OPT_DST:        DBG("yylex: OPT_DST");                     break;
+    case OPT_FLAGS:      DBG("yylex: OPT_FLAGS");                   break;
+    case OPT_MSS:        DBG("yylex: OPT_MSS");                     break;
+    case OPT_SACK:       DBG("yylex: OPT_SACK");                    break;
+    case OPT_SLOW:       DBG("yylex: OPT_SLOW");                    break;
+    case OPT_TCP_TSTAMP: DBG("yylex: OPT_TCP_TSTAMP");              break;
+    case OPT_PAYLOAD:    DBG("yylex: OPT_PAYLOAD");                 break;
+    case OPT_NULL:       DBG("yylex: OPT_NULL");                    break;
+    case OPT_DLL:        DBG("yylex: OPT_DLL");                     break;
+    case OPT_SSL:        DBG("yylex: OPT_SSL");                     break;
+    case OPT_CIPHER:     DBG("yylex: OPT_CIPHER");                  break;
+    case OPT_ZWIN:       DBG("yylex: OPT_ZWIN");                    break;
+    case OPT_WINDOW:     DBG("yylex: OPT_WINDOW");                  break;
+    case OPT_DEBUG:      DBG("yylex: OPT_DEBUG");                   break;
+    case OPT_DELAY:      DBG("yylex: OPT_DELAY");                   break;
+    case TO_LISTEN:      DBG("yylex: TO_LISTEN");                   break;
+    case TO_IGNORE:      DBG("yylex: TO_IGNORE");                   break;
+    case TO_SEND:        DBG("yylex: TO_SEND");                     break;
+    case TO_TCP:         DBG("yylex: TO_TCP");                      break;
+    case TO_UDP:         DBG("yylex: TO_UDP");                      break;
+    case OPT_CWAIT:      DBG("yylex: OPT_CWAIT");                   break;
+    case OPT_RWAIT:      DBG("yylex: OPT_RWAIT");                   break;
+    case '\n':           DBG("yylex: New line.");                   break;
+    case '?':
+    case '=':
+    case '[':
+    case '%':
+    case ']':
+    case ',':
+    case '*':
+      DBG("yylex: =");
+      break;
+
+    default:
+      FAT("%d: Unknown token %d (%c).", lineno, r, r);
+  }
+
+  return r;
+}
+
+static int yylex_real(void)
+#else
+static int yylex(void)
+#endif
 {
   int c, bi, f;
   char buff[BUFFLEN];
@@ -507,27 +579,38 @@ static int yylex(void)
   }, *token;
 
   /* Skip white space.  */
+again_skip:
   while(isblank(c = getchar()))
     ;
-  /* Return end-of-input.  */
   if(c == EOF)
-  {
-    DBG("Readed a void script.");
     return 0;
+  if(c == '\\')
+  {
+    c = getchar();
+    if(c == '\r')
+      c = getchar();
+    if(c == '\n')
+      goto again_skip;
+    if(c == EOF)
+      return 0;
+    FAT("%d: Unexpected char '%c' after \\.", lineno, c);
   }
 
   /* ignore comments */
   if(c == '#')
   {
-    while((c = getchar()) != '\n' && c != EOF)
+    while((c = getchar()) != '\n' && c != '\r' && c != EOF)
       ;
+    if(c == '\r')
+      c = getchar();
+    if(c == EOF)
+      return 0;
     if(c == '\n')
     {
       lineno++;
       return c;
     }
-    DBG("Readed a script of %d lines.", lineno - 1);
-    return 0;
+    FAT("%d: Unexpected char '%c' after '\\r'.", lineno, c);
   }
 
   /* reset */
@@ -569,30 +652,59 @@ static int yylex(void)
       return NINT;
     }
 
-    /* octal num or network-address-like string? */
-    if(isdigit(c) || strchr("89abcdefABCDEF:", c) != NULL)
+    /* octal number? */
+    if(c >= '0' && c <= '7')
     {
       /* read until non-octal char */
+      SADD(c);
       do {
         SADD(c);
       } while((c = getchar()) >= '0' && c <= '7');
-      ungetc(c, stdin);
 
-      /* check if it is an address ... */
-      if(strchr("89abcdefABCDEF.:", c) != NULL)
-      {
-        while(strchr("89abcdefABCDEF.:", c) != NULL)
-          SADD(c);
-        ungetc(c, stdin);
-DBG("TOKEN[STRING] = '%s' (network address?)", buff);
-        return STRING;
-      }
+      if(c != EOF && (isdigit(c) || isalpha(c)))
+        FAT("%d: Unexpected char '%c' after octal number '%s'.", lineno, c, buff);
 
       /* it is an octal num */
       sscanf(buff, "%o", &(yylval.nint));
       return NINT;
     }
-    /* else... it should be a float number or something like that */
+
+    /* float number? */
+    if(c == '.')
+    {
+      SADD('0');
+      SADD('.');
+      while(isdigit(c = getchar()))
+        SADD(c);
+      if(c != EOF)
+        ungetc(c, stdin);
+
+      if(c != EOF && (c == '.' || c == ':'))
+      {
+        /* it is not a float... maybe and address or something like that */
+        while(isdigit(c = getchar()) || c == '.' || c == ':')
+          SADD(c);
+        if((yylval.string = strdup(buff)) == NULL)
+          FAT("No mem for string '%s'.", buff);
+        if(c != EOF)
+          ungetc(c, stdin);
+        return STRING;
+      }
+
+      sscanf(buff, "%lf", &(yylval.nfloat));
+      return NFLOAT;
+    }
+
+    /* if is not an alpha and not [0-7], do ungetc and return 0! */
+    if(c != EOF)
+    {
+      ungetc(c, stdin);
+      if(c != EOF && (isdigit(c) || isalpha(c)))
+          FAT("%d: Unexpected char '%c' after zero.", lineno, c);
+    }
+
+    yylval.nint = 0;
+    return NINT;
   }
 
   if(isdigit(c) || c == '.')
@@ -680,13 +792,21 @@ DBG("TOKEN[STRING] = '%s' (network address?)", buff);
         SADD(c);
       }
     if(c == '\n')
-      FAT("Non-terminated string.");
+      FAT("%d: Non-terminated string.", lineno);
     if((yylval.string = strdup(buff)) == NULL)
       FAT("No mem for string \"%s\".", buff);
     return STRING;
   }
 
   /* special chars (chocolate minitokens) */
+  if(c == '\r')
+  {
+    c = getchar();
+    if(c == EOF)
+      return 0;
+    if(c != '\n')
+      FAT("%d: Unexpected char '%c' after '\\r'.", lineno, c);
+  }
   if(c == '\n')
   {
     lineno++;

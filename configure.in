@@ -211,6 +211,15 @@ dnl ---------------------------------------------------------------------------
 dnl Enable/disable some little things
 dnl ---------------------------------------------------------------------------
 
+AC_ARG_ENABLE([parser-debug],
+              AC_HELP_STRING([--enable-parser-debug],
+                             [compile parser debug facilities (default is NO)]),
+              [PARSER_DEBUG="$enableval"],
+              [PARSER_DEBUG="no"])
+if test "$PARSER_DEBUG" = "yes"; then
+  AC_DEFINE([PARSER_DEBUG], 1, [Enable parser debug capabilities.])
+fi
+
 AC_ARG_ENABLE([thread-debug],
               AC_HELP_STRING([--enable-thread-debug],
                              [compile pthread debug facilities (default is NO)]),
