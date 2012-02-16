@@ -401,7 +401,7 @@ int ip_addr_parse_ipv4(char *saddr, INET_ADDR *addr, int *port)
 
 int ip_addr_parse_ipv6(char *saddr, INET_ADDR *addr, int *port)
 {
-#warning "IPv6 address parser not implemented."
+  /* XXX: IPv6 address parser not implemented (see issue #1 in github) */
   return -1;
 }
 
