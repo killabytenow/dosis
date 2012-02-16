@@ -329,9 +329,10 @@ int pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout
   pthread_mutex_lock(&(flag->lock));
   PTHREADEX_DBG("Flag %s: Going to wait...", flag->n);
 
-  /* (probably) one more thread waiting nnutil flag count >0 */
+  /* (probably) one more thread waiting nnutil flag up */
   flag->waiters_count++;
   while(flag->state == 0 && !e)
+  {
     if(tout)
     {
       /* wait until somebody flags or time run out */
@@ -353,11 +354,13 @@ int pthreadex_flag_wait_timeout_ts(pthreadex_flag_t *flag, struct timespec *tout
           PTHREADEX_ERR_ERRNO("pthreadex_flag_wait_timeout_ts:pthread_cond_timedwait()");
 #         endif
       }
-    } else
+    } else {
       e = pthread_cond_wait(&flag->flag_up, &flag->lock);
+    }
+  }
   flag->waiters_count--;
 
-  /* decrement one flag resource */
+  /* set flag down */
   flag->state = 0;
 
   PTHREADEX_DBG("Flag %s: Restarted.", flag->n);
