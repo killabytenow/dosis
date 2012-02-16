@@ -149,24 +149,14 @@ static int slowy__listen_check(THREAD_WORK *tw, int proto, char *msg, unsigned i
 {
   SLOWY_CFG *tc = (SLOWY_CFG *) tw->data;
 
-  switch(proto)
-  {
-    case INET_FAMILY_IPV4:
-      /* check msg size and headers */
-      if(!IPV4_TCP_HDRCK(msg, size))
-        return 0;
+  /* check proto, msg size and headers */
+  if(proto != INET_FAMILY_IPV4
+  || !IPV4_TCP_HDRCK(msg, size))
+    return 0;
 
-      /* check msg */
-      return IPV4_HDR(msg)->saddr == tc->dhost.addr.in.addr
-          && IPV4_TCP_SPORT(msg) == tc->dhost.port
-             ? -1 : 0;
-
-    case INET_FAMILY_IPV6:
-#warning "IPv6 not implemented."
-      return 0;
-  }
-
-  return 0;
+  return IPV4_HDR(msg)->saddr == tc->dhost.addr.in.addr
+      && IPV4_TCP_SPORT(msg) == tc->dhost.port
+         ? -1 : 0;
 }
 
 static void slowy__listen(THREAD_WORK *tw)
