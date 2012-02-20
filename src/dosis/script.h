@@ -50,6 +50,7 @@ enum TYPES {
   TYPE_RANDOM,
   TYPE_STRING,
   TYPE_VAR,
+  TYPE_ADDR_PORT,
   /* lists and selectors */
   TYPE_LIST_NUM = 2000,
   TYPE_SELECTOR,
@@ -122,6 +123,10 @@ typedef struct SNODE_tag {
       struct SNODE_tag *len;    /* length of data block                      */
       struct SNODE_tag *val;    /* value used to fill data block             */
     } byterep;
+    struct {
+      struct SNODE_tag *addr;   /* IPv4/IPv6 address (string)                */
+      struct SNODE_tag *port;   /* IPv4/IPv6 address (nint)                  */
+    } addr_port;
 
     /* --------------------------------------------------------------------- */
     /* list_num snode - snode used to specify a list of integers             */

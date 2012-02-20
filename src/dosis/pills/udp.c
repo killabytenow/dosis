@@ -34,12 +34,12 @@
 
 typedef struct _tag_UDP_CFG {
   /* parameters */
-  TEA_TYPE_ADDR          dhost;
+  TEA_TYPE_ADDR_PORT     dhost;
+  TEA_TYPE_ADDR_PORT     shost;
   TEA_TYPE_FLOAT         hitratio;
   TEA_TYPE_INT           npackets;
   TEA_TYPE_INT           pattern;
   TEA_TYPE_DATA          payload;
-  TEA_TYPE_ADDR          shost;
 
   /* other things */
   pthreadex_timer_t  timer;
@@ -187,14 +187,12 @@ static void udp__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(udp_cfg_def)
-  TOC("dst_addr",       TEA_TYPE_ADDR,   1, UDP_CFG, dhost,      NULL)
-  TOC("dst_port",       TEA_TYPE_PORT,   0, UDP_CFG, dhost,      NULL)
-  TOC("pattern",        TEA_TYPE_INT,    1, UDP_CFG, pattern,    NULL)
-  TOC("payload",        TEA_TYPE_DATA,   0, UDP_CFG, payload,    NULL)
-  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, UDP_CFG, hitratio,   NULL)
-  TOC("periodic_n",     TEA_TYPE_INT,    1, UDP_CFG, npackets,   NULL)
-  TOC("src_addr",       TEA_TYPE_ADDR,   0, UDP_CFG, shost,      NULL)
-  TOC("src_port",       TEA_TYPE_PORT,   0, UDP_CFG, shost,      NULL)
+  TOC("dst_addr_port",  TEA_TYPE_ADDR_PORT, 1, UDP_CFG, dhost,      NULL)
+  TOC("pattern",        TEA_TYPE_INT,       1, UDP_CFG, pattern,    NULL)
+  TOC("payload",        TEA_TYPE_DATA,      0, UDP_CFG, payload,    NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,     1, UDP_CFG, hitratio,   NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,       1, UDP_CFG, npackets,   NULL)
+  TOC("src_addr_port",  TEA_TYPE_ADDR_PORT, 0, UDP_CFG, shost,      NULL)
 TOC_END
 
 TEA_OBJECT teaUDP = {

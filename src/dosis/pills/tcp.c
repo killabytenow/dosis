@@ -37,7 +37,7 @@
 typedef struct _tag_TCP_CFG {
   /* options */
   TEA_TYPE_BOOL      debug;
-  TEA_TYPE_ADDR      dhost;
+  TEA_TYPE_ADDR_PORT dhost;
   TEA_TYPE_DATA      payload;
   TEA_TYPE_BOOL      ssl;
   TEA_TYPE_STRING    sslcipher;
@@ -376,18 +376,17 @@ static void tcp__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(tcp_cfg_def)
-  TOC("debug",          TEA_TYPE_BOOL,   0, TCP_CFG, debug,      NULL)
-  TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCP_CFG, dhost,      NULL)
-  TOC("dst_port",       TEA_TYPE_PORT,   0, TCP_CFG, dhost,      NULL)
-  TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
-  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCP_CFG, p_ratio,    NULL)
-  TOC("periodic_n",     TEA_TYPE_INT,    1, TCP_CFG, p_num,      NULL)
-  TOC("pattern",        TEA_TYPE_INT,    1, TCP_CFG, pattern,    NULL)
-  TOC("payload",        TEA_TYPE_DATA,   1, TCP_CFG, payload,    NULL)
-  TOC("ssl",            TEA_TYPE_BOOL,   0, TCP_CFG, ssl,        NULL)
-  TOC("ssl_cipher",     TEA_TYPE_STRING, 0, TCP_CFG, sslcipher,  NULL)
-  TOC("tcp_cwait",      TEA_TYPE_INT,    1, TCP_CFG, tcp_cwait,  NULL)
-  TOC("tcp_rwait",      TEA_TYPE_INT,    1, TCP_CFG, tcp_rwait,  NULL)
+  TOC("debug",          TEA_TYPE_BOOL,      0, TCP_CFG, debug,      NULL)
+  TOC("dst_addr_port",  TEA_TYPE_ADDR_PORT, 1, TCP_CFG, dhost,      NULL)
+  TOC("pattern",        TEA_TYPE_INT,       1, TCP_CFG, pattern,    NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,     1, TCP_CFG, p_ratio,    NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,       1, TCP_CFG, p_num,      NULL)
+  TOC("pattern",        TEA_TYPE_INT,       1, TCP_CFG, pattern,    NULL)
+  TOC("payload",        TEA_TYPE_DATA,      1, TCP_CFG, payload,    NULL)
+  TOC("ssl",            TEA_TYPE_BOOL,      0, TCP_CFG, ssl,        NULL)
+  TOC("ssl_cipher",     TEA_TYPE_STRING,    0, TCP_CFG, sslcipher,  NULL)
+  TOC("tcp_cwait",      TEA_TYPE_INT,       1, TCP_CFG, tcp_cwait,  NULL)
+  TOC("tcp_rwait",      TEA_TYPE_INT,       1, TCP_CFG, tcp_rwait,  NULL)
 TOC_END
 
 TEA_OBJECT teaTCP = {

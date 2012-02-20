@@ -41,16 +41,16 @@
 #define IPV4_TADDR_P(p,x)  INET_ADDR_IPV4_GETP(p, IPV4_TADDR(x))
 
 typedef struct _tag_TCPOPEN_CFG {
-  TEA_TYPE_ADDR  shost;
-  TEA_TYPE_ADDR  dhost;
-  TEA_TYPE_INT   npackets;
-  TEA_TYPE_DATA  payload;
-  TEA_TYPE_INT   tcp_mss;
-  TEA_TYPE_INT   tcp_win;
-  TEA_TYPE_INT   delay;
-  TEA_TYPE_BOOL  debug;
+  TEA_TYPE_ADDR_PORT shost;
+  TEA_TYPE_ADDR_PORT dhost;
+  TEA_TYPE_INT       npackets;
+  TEA_TYPE_DATA      payload;
+  TEA_TYPE_INT       tcp_mss;
+  TEA_TYPE_INT       tcp_win;
+  TEA_TYPE_INT       delay;
+  TEA_TYPE_BOOL      debug;
 
-  LN_CONTEXT     lnc;
+  LN_CONTEXT         lnc;
 } TCPOPEN_CFG;
 
 /*****************************************************************************
@@ -217,15 +217,13 @@ static void tcpopen__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(teaTCPOPEN_cfg)
-  TOC("debug",    TEA_TYPE_BOOL, 0, TCPOPEN_CFG, debug,   NULL)
-  TOC("delay",    TEA_TYPE_INT,  0, TCPOPEN_CFG, delay,   NULL)
-  TOC("dst_addr", TEA_TYPE_ADDR, 1, TCPOPEN_CFG, dhost,   NULL)
-  TOC("dst_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, dhost,   NULL)
-  TOC("payload",  TEA_TYPE_DATA, 1, TCPOPEN_CFG, payload, NULL)
-  TOC("src_addr", TEA_TYPE_ADDR, 0, TCPOPEN_CFG, shost,   NULL)
-  TOC("src_port", TEA_TYPE_PORT, 0, TCPOPEN_CFG, shost,   NULL)
-  TOC("tcp_win",  TEA_TYPE_INT,  1, TCPOPEN_CFG, tcp_win, NULL)
-  TOC("tcp_mss",  TEA_TYPE_INT,  0, TCPOPEN_CFG, tcp_mss, NULL)
+  TOC("debug",         TEA_TYPE_BOOL,      0, TCPOPEN_CFG, debug,   NULL)
+  TOC("delay",         TEA_TYPE_INT,       0, TCPOPEN_CFG, delay,   NULL)
+  TOC("dst_addr_port", TEA_TYPE_ADDR_PORT, 1, TCPOPEN_CFG, dhost,   NULL)
+  TOC("payload",       TEA_TYPE_DATA,      1, TCPOPEN_CFG, payload, NULL)
+  TOC("src_addr_port", TEA_TYPE_ADDR_PORT, 0, TCPOPEN_CFG, shost,   NULL)
+  TOC("tcp_win",       TEA_TYPE_INT,       1, TCPOPEN_CFG, tcp_win, NULL)
+  TOC("tcp_mss",       TEA_TYPE_INT,       0, TCPOPEN_CFG, tcp_mss, NULL)
 TOC_END
 
 TEA_OBJECT teaTCPOPEN = {

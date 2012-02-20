@@ -27,7 +27,7 @@
 #define __TEATYPE_H__
 
 enum {
-  TEA_TYPE_ADDR_ID = 1,
+  TEA_TYPE_ADDR_PORT_ID = 1,
   TEA_TYPE_BOOL_ID,
   TEA_TYPE_DATA_ID,
   TEA_TYPE_FLOAT_ID,
@@ -41,10 +41,10 @@ struct __TEA_DATA {
   unsigned  size;
 };
 
-typedef struct _tag_TEA_TYPE_ADDR {
+typedef struct _tag_TEA_TYPE_ADDR_PORT {
   INET_ADDR addr;
   int       port;
-} TEA_TYPE_ADDR;
+} TEA_TYPE_ADDR_PORT;
 typedef int               TEA_TYPE_BOOL;
 typedef struct __TEA_DATA TEA_TYPE_DATA;
 typedef double            TEA_TYPE_FLOAT;

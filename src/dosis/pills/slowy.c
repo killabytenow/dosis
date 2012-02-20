@@ -58,8 +58,8 @@ typedef struct _tag_TCPCON {
 } TCP_CON;
 
 typedef struct _tag_SLOWY_CFG {
-  TEA_TYPE_ADDR   shost;
-  TEA_TYPE_ADDR   dhost;
+  TEA_TYPE_ADDR_PORT   shost;
+  TEA_TYPE_ADDR_PORT   dhost;
   TEA_TYPE_INT         mss;      /* default mss                       */
   TEA_TYPE_INT         window;   /* window                            */
   TEA_TYPE_INT         zerowin;
@@ -406,13 +406,11 @@ static void slowy__cleanup(THREAD_WORK *tw)
  *+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 TOC_BEGIN(teaSlowy_cfg)
-  TOC("src_addr", TEA_TYPE_ADDR, 0, SLOWY_CFG, shost,   NULL)
-  TOC("src_port", TEA_TYPE_PORT, 0, SLOWY_CFG, shost,   NULL)
-  TOC("dst_addr", TEA_TYPE_ADDR, 1, SLOWY_CFG, dhost,   NULL)
-  TOC("dst_port", TEA_TYPE_PORT, 0, SLOWY_CFG, dhost,   NULL)
-  TOC("tcp_mss",  TEA_TYPE_INT,  0, SLOWY_CFG, mss,     NULL)
-  TOC("tcp_win",  TEA_TYPE_INT,  0, SLOWY_CFG, window,  NULL)
-  TOC("payload",  TEA_TYPE_DATA, 1, SLOWY_CFG, payload, NULL)
+  TOC("src_addr_port", TEA_TYPE_ADDR_PORT, 0, SLOWY_CFG, shost,   NULL)
+  TOC("dst_addr_port", TEA_TYPE_ADDR_PORT, 1, SLOWY_CFG, dhost,   NULL)
+  TOC("tcp_mss",       TEA_TYPE_INT,       0, SLOWY_CFG, mss,     NULL)
+  TOC("tcp_win",       TEA_TYPE_INT,       0, SLOWY_CFG, window,  NULL)
+  TOC("payload",       TEA_TYPE_DATA,      1, SLOWY_CFG, payload, NULL)
 TOC_END
 
 TEA_OBJECT teaSlowy = {

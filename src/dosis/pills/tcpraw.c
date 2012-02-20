@@ -37,8 +37,8 @@
 
 typedef struct _tag_TCPRAW_CFG {
   /* options */
-  TEA_TYPE_ADDR      shost;
-  TEA_TYPE_ADDR      dhost;
+  TEA_TYPE_ADDR_PORT shost;
+  TEA_TYPE_ADDR_PORT dhost;
   TEA_TYPE_INT       pattern;
   TEA_TYPE_INT       npackets;
   TEA_TYPE_FLOAT     hitratio;
@@ -311,22 +311,20 @@ static int cfg_cb_update_tstamp(TEA_OBJCFG *oc, THREAD_WORK *tw)
 }
 
 TOC_BEGIN(tcpraw_cfg_def)
-  TOC("dst_addr",       TEA_TYPE_ADDR,   1, TCPRAW_CFG, dhost,          NULL)
-  TOC("dst_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, dhost,          NULL)
-  TOC("pattern",        TEA_TYPE_INT,    1, TCPRAW_CFG, pattern,        NULL)
-  TOC("payload",        TEA_TYPE_DATA,   0, TCPRAW_CFG, payload,        NULL)
-  TOC("periodic_ratio", TEA_TYPE_FLOAT,  1, TCPRAW_CFG, hitratio,       NULL)
-  TOC("periodic_n",     TEA_TYPE_INT,    1, TCPRAW_CFG, npackets,       NULL)
-  TOC("src_addr",       TEA_TYPE_ADDR,   0, TCPRAW_CFG, shost,          NULL)
-  TOC("src_port",       TEA_TYPE_PORT,   0, TCPRAW_CFG, shost,          NULL)
-  TOC("tcp_flags",      TEA_TYPE_STRING, 1, TCPRAW_CFG, tcp_flags,      cfg_cb_update_flags)
-  TOC("tcp_mss",        TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_mss,        cfg_cb_update_opts)
-  TOC("tcp_sack",       TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_sack,       cfg_cb_update_opts)
-  TOC("tcp_tstamp",     TEA_TYPE_BOOL,   0, TCPRAW_CFG, tcp_tstamp,     cfg_cb_update_opts)
-  TOC("tcp_tstamp_val", TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_tstamp_val, cfg_cb_update_tstamp)
-  TOC("tcp_tstamp_ecr", TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_tstamp_ecr, cfg_cb_update_tstamp)
-  TOC("tcp_win",        TEA_TYPE_INT,    1, TCPRAW_CFG, tcp_win,        NULL)
-  TOC("tcp_wscale",     TEA_TYPE_INT,    0, TCPRAW_CFG, tcp_wscale,     cfg_cb_update_opts)
+  TOC("dst_addr_port",  TEA_TYPE_ADDR_PORT, 1, TCPRAW_CFG, dhost,          NULL)
+  TOC("src_addr_port",  TEA_TYPE_ADDR_PORT, 0, TCPRAW_CFG, shost,          NULL)
+  TOC("pattern",        TEA_TYPE_INT,       1, TCPRAW_CFG, pattern,        NULL)
+  TOC("payload",        TEA_TYPE_DATA,      0, TCPRAW_CFG, payload,        NULL)
+  TOC("periodic_ratio", TEA_TYPE_FLOAT,     1, TCPRAW_CFG, hitratio,       NULL)
+  TOC("periodic_n",     TEA_TYPE_INT,       1, TCPRAW_CFG, npackets,       NULL)
+  TOC("tcp_flags",      TEA_TYPE_STRING,    1, TCPRAW_CFG, tcp_flags,      cfg_cb_update_flags)
+  TOC("tcp_mss",        TEA_TYPE_INT,       0, TCPRAW_CFG, tcp_mss,        cfg_cb_update_opts)
+  TOC("tcp_sack",       TEA_TYPE_BOOL,      0, TCPRAW_CFG, tcp_sack,       cfg_cb_update_opts)
+  TOC("tcp_tstamp",     TEA_TYPE_BOOL,      0, TCPRAW_CFG, tcp_tstamp,     cfg_cb_update_opts)
+  TOC("tcp_tstamp_val", TEA_TYPE_INT,       0, TCPRAW_CFG, tcp_tstamp_val, cfg_cb_update_tstamp)
+  TOC("tcp_tstamp_ecr", TEA_TYPE_INT,       0, TCPRAW_CFG, tcp_tstamp_ecr, cfg_cb_update_tstamp)
+  TOC("tcp_win",        TEA_TYPE_INT,       1, TCPRAW_CFG, tcp_win,        NULL)
+  TOC("tcp_wscale",     TEA_TYPE_INT,       0, TCPRAW_CFG, tcp_wscale,     cfg_cb_update_opts)
 TOC_END
 
 TEA_OBJECT teaTCPRAW = {

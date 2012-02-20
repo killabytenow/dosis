@@ -53,7 +53,8 @@
 
   typedef struct _tag_TOKEN {
     char *token;
-    int  value;
+    int   value;
+    char *name;
   } TOKEN;
 %}
 %union {
@@ -63,26 +64,25 @@
   int        nint;
   double     nfloat;
   char      *string;
+  char      *name;
 }
 %token <nbool>    NBOOL
 %token <nint>     NINT
 %token <nfloat>   NFLOAT
 %token <string>   STRING LITERAL
 %token <string>   VAR
+%token <name>     CMD_OPT_BOOL CMD_OPT_INT CMD_OPT_STR CMD_OPT_DATA CMD_OPT_ADDR_PORT
 %type  <hash>     opts pattern
 %type  <snode>    input
-%type  <snode>    data nbool nfloat nint ntime string var varval
+%type  <snode>    data nbool nfloat nint ntime string var varval addr_port
 %type  <snode>    list_num_enum list_num range selection
 %type  <snode>    o_ntime command
 %type  <snode>    to to_pattern to_no_patt
-%token            PERIODIC OPT_FILE OPT_RANDOM OPT_BYTE OPT_ZERO
+%token            PERIODIC
+%token            DATA_NULL DATA_ZERO DATA_BYTE DATA_RANDOM DATA_FILE
 %token            CMD_ON CMD_MOD CMD_OFF
-%token            OPT_OPEN OPT_RAW OPT_SRC OPT_DST OPT_FLAGS OPT_MSS OPT_SACK OPT_SLOW
-%token            OPT_TCP_TSTAMP
-%token            OPT_PAYLOAD OPT_NULL OPT_DLL OPT_SSL OPT_CIPHER OPT_ZWIN
-%token            OPT_WINDOW OPT_DEBUG OPT_DELAY
 %token            TO_LISTEN TO_IGNORE TO_SEND TO_TCP TO_UDP
-%token            OPT_CWAIT OPT_RWAIT
+%token            OPT_OPEN OPT_RAW OPT_SLOW OPT_ZWIN
 %% /* Grammar rules and actions follow.  */
 /*---------------------------------------------------------------------------
     SCRIPT
@@ -125,17 +125,25 @@ string: STRING                  { $$ = node_new_string($1, 1, 0); }
       | var
       ;
 data:   string
-      | OPT_RANDOM '(' nint ')'        { $$ = node_new(TYPE_RANDOM);
-                                         $$->random.len = $3; }
-      | OPT_ZERO '(' nint ')'          { $$ = node_new(TYPE_BYTEREP);
-                                         $$->byterep.len = $3;
-                                         $$->byterep.val = '\0'; }
-      | OPT_BYTE '(' nint ',' nint ')' { $$ = node_new(TYPE_BYTEREP);
-                                         $$->byterep.len = $3;
-                                         $$->byterep.val = $5; }
-      | OPT_FILE '(' string ')'        { $$ = node_new(TYPE_FILE);
-                                         $$->file.path = $3; }
+      | DATA_NULL                       { $$ = NULL; }
+      | DATA_RANDOM '(' nint ')'        { $$ = node_new(TYPE_RANDOM);
+                                          $$->random.len = $3; }
+      | DATA_ZERO '(' nint ')'          { $$ = node_new(TYPE_BYTEREP);
+                                          $$->byterep.len = $3;
+                                          $$->byterep.val = '\0'; }
+      | DATA_BYTE '(' nint ',' nint ')' { $$ = node_new(TYPE_BYTEREP);
+                                          $$->byterep.len = $3;
+                                          $$->byterep.val = $5; }
+      | DATA_FILE '(' string ')'        { $$ = node_new(TYPE_FILE);
+                                          $$->file.path = $3; }
       ;
+addr_port: string      { $$ = node_new(TYPE_ADDR_PORT);
+                         $$->addr_port.addr = $1;
+                         $$->addr_port.port = NULL; }
+         | string nint { $$ = node_new(TYPE_ADDR_PORT);
+                         $$->addr_port.addr = $1;
+                         $$->addr_port.port = $2; }
+         ;
 list_num_enum: nint                   { $$ = node_new(TYPE_LIST_NUM);
                                         $$->list_num.val  = $1;
                                         $$->list_num.next = NULL; }
@@ -167,31 +175,13 @@ selection: range
   ---------------------------------------------------------------------------*/
 
 opts:
-  /* none */                { $$ = hash_new(); }
- /* SSL [ciphersuite] */
-| OPT_CWAIT nint opts       { $$ = $3; hash_entry_add($$, "tcp_cwait",  $2);   }
-| OPT_DEBUG nbool opts      { $$ = $3; hash_entry_add($$, "debug",      $2);   }
-| OPT_DEBUG opts            { $$ = $2; hash_entry_add($$, "debug",      node_new_bool(1)); }
-| OPT_DELAY nint opts       { $$ = $3; hash_entry_add($$, "delay",      $2);   }
-| OPT_DST string opts       { $$ = $3; hash_entry_add($$, "dst_addr",   $2);   }
-| OPT_DST string nint opts  { $$ = $4; hash_entry_add($$, "dst_addr",   $2);
-                                       hash_entry_add($$, "dst_port",   $3);   }
-| OPT_FLAGS string opts     { $$ = $3; hash_entry_add($$, "tcp_flags",  $2);   }
-| OPT_SACK opts             { $$ = $2; hash_entry_add($$, "tcp_sack",   node_new_bool(1)); }
-| OPT_SACK nbool opts       { $$ = $3; hash_entry_add($$, "tcp_sack",   $2);   }
-| OPT_TCP_TSTAMP opts       { $$ = $2; hash_entry_add($$, "tcp_tstamp", node_new_bool(1)); }
-| OPT_TCP_TSTAMP nbool opts { $$ = $3; hash_entry_add($$, "tcp_tstamp", $2);   }
-| OPT_MSS nint opts         { $$ = $3; hash_entry_add($$, "tcp_mss",    $2);   }
-| OPT_PAYLOAD OPT_NULL opts { $$ = $3; hash_entry_add($$, "payload",    NULL); }
-| OPT_PAYLOAD data opts     { $$ = $3; hash_entry_add($$, "payload",    $2);   }
-| OPT_RWAIT nint opts       { $$ = $3; hash_entry_add($$, "tcp_rwait",  $2);   }
-| OPT_SRC string opts       { $$ = $3; hash_entry_add($$, "src_addr",   $2);   }
-| OPT_SRC string nint opts  { $$ = $4; hash_entry_add($$, "src_addr",   $2);
-                                       hash_entry_add($$, "src_port",   $3);   }
-| OPT_SSL nbool opts        { $$ = $3; hash_entry_add($$, "ssl",        $2);   }
-| OPT_SSL opts              { $$ = $2; hash_entry_add($$, "ssl",        node_new_bool(1)); }
-| OPT_CIPHER string opts    { $$ = $3; hash_entry_add($$, "ssl_cipher", $2);   }
-| OPT_WINDOW nint opts      { $$ = $3; hash_entry_add($$, "tcp_win",    $2);   }
+  /* none */                       { $$ = hash_new(); }
+| CMD_OPT_BOOL      opts           { $$ = $2; hash_entry_add($$, $1, node_new_bool(1)); }
+| CMD_OPT_BOOL      nbool     opts { $$ = $3; hash_entry_add($$, $1, $2);   }
+| CMD_OPT_STR       string    opts { $$ = $3; hash_entry_add($$, $1, $2);   }
+| CMD_OPT_INT       nint      opts { $$ = $3; hash_entry_add($$, $1, $2);   }
+| CMD_OPT_DATA      data      opts { $$ = $3; hash_entry_add($$, $1, $2);   }
+| CMD_OPT_ADDR_PORT addr_port opts { $$ = $3; hash_entry_add($$, $1, $2);   }
        /*| OPT_PAYLOAD OPT_DLL '(' string ')'
                                  { $$ = node_new(TYPE_OPT_PAYLOAD_DLL);
                                    $$->option.payload = $4; }*/
@@ -367,6 +357,7 @@ static void node_free(SNODE *n)
     case TYPE_TO_LISTEN:
     case TYPE_TO_IGNORE:
     case TYPE_TO_SEND:
+    case TYPE_ADDR_PORT:
       /* do nothing */
       break;
 
@@ -467,40 +458,26 @@ static int yylex(void)
     case NFLOAT:         DBG("yylex: NFLOAT = %f", yylval.nfloat);  break;
     case LITERAL:        DBG("yylex: LITERAL = %s", yylval.string); break;
     case STRING:         DBG("yylex: STRING = %s", yylval.string);  break;
+    case DATA_FILE:      DBG("yylex: DATA_FILE");                   break;
+    case DATA_RANDOM:    DBG("yylex: DATA_RANDOM");                 break;
+    case DATA_BYTE:      DBG("yylex: DATA_BYTE");                   break;
+    case DATA_ZERO:      DBG("yylex: DATA_ZERO");                   break;
+    case DATA_NULL:      DBG("yylex: DATA_NULL");                   break;
     case VAR:            DBG("yylex: VAR = %s", yylval.string);     break;
     case PERIODIC:       DBG("yylex: PERIODIC");                    break;
-    case OPT_FILE:       DBG("yylex: OPT_FILE");                    break;
-    case OPT_RANDOM:     DBG("yylex: OPT_RANDOM");                  break;
-    case OPT_BYTE:       DBG("yylex: OPT_BYTE");                    break;
-    case OPT_ZERO:       DBG("yylex: OPT_ZERO");                    break;
     case CMD_ON:         DBG("yylex: CMD_ON");                      break;
     case CMD_MOD:        DBG("yylex: CMD_MOD");                     break;
     case CMD_OFF:        DBG("yylex: CMD_OFF");                     break;
     case OPT_OPEN:       DBG("yylex: OPT_OPEN");                    break;
     case OPT_RAW:        DBG("yylex: OPT_RAW");                     break;
-    case OPT_SRC:        DBG("yylex: OPT_SRC");                     break;
-    case OPT_DST:        DBG("yylex: OPT_DST");                     break;
-    case OPT_FLAGS:      DBG("yylex: OPT_FLAGS");                   break;
     case OPT_MSS:        DBG("yylex: OPT_MSS");                     break;
-    case OPT_SACK:       DBG("yylex: OPT_SACK");                    break;
     case OPT_SLOW:       DBG("yylex: OPT_SLOW");                    break;
-    case OPT_TCP_TSTAMP: DBG("yylex: OPT_TCP_TSTAMP");              break;
-    case OPT_PAYLOAD:    DBG("yylex: OPT_PAYLOAD");                 break;
-    case OPT_NULL:       DBG("yylex: OPT_NULL");                    break;
-    case OPT_DLL:        DBG("yylex: OPT_DLL");                     break;
-    case OPT_SSL:        DBG("yylex: OPT_SSL");                     break;
-    case OPT_CIPHER:     DBG("yylex: OPT_CIPHER");                  break;
     case OPT_ZWIN:       DBG("yylex: OPT_ZWIN");                    break;
-    case OPT_WINDOW:     DBG("yylex: OPT_WINDOW");                  break;
-    case OPT_DEBUG:      DBG("yylex: OPT_DEBUG");                   break;
-    case OPT_DELAY:      DBG("yylex: OPT_DELAY");                   break;
     case TO_LISTEN:      DBG("yylex: TO_LISTEN");                   break;
     case TO_IGNORE:      DBG("yylex: TO_IGNORE");                   break;
     case TO_SEND:        DBG("yylex: TO_SEND");                     break;
     case TO_TCP:         DBG("yylex: TO_TCP");                      break;
     case TO_UDP:         DBG("yylex: TO_UDP");                      break;
-    case OPT_CWAIT:      DBG("yylex: OPT_CWAIT");                   break;
-    case OPT_RWAIT:      DBG("yylex: OPT_RWAIT");                   break;
     case '\n':           DBG("yylex: New line.");                   break;
     case '?':
     case '=':
@@ -509,7 +486,7 @@ static int yylex(void)
     case ']':
     case ',':
     case '*':
-      DBG("yylex: =");
+      DBG("yylex: [%c]", r);
       break;
 
     default:
@@ -527,48 +504,52 @@ static int yylex(void)
   int c, bi, f;
   char buff[BUFFLEN];
   TOKEN tokens[] = {
-    { "BYTE",      OPT_BYTE    },
-    { "CIPHER",    OPT_CIPHER  },
-    { "CWAIT",     OPT_CWAIT   },
-    { "DEBUG",     OPT_DEBUG   },
-    { "DELAY",     OPT_DELAY   },
-    { "DLL",       OPT_DLL     },
-    { "DST",       OPT_DST     },
-    { "FILE",      OPT_FILE    },
-    { "FLAGS",     OPT_FLAGS   },
-    { "LISTEN",    TO_LISTEN   },
-    { "IGNORE",    TO_IGNORE   },
-    { "MOD",       CMD_MOD     },
-    { "MSS",       OPT_MSS     },
-    { "NULL",      OPT_NULL    },
-    { "OFF",       CMD_OFF     },
-    { "ON",        CMD_ON      },
-    { "OPEN",      OPT_OPEN    },
-    { "PAYLOAD",   OPT_PAYLOAD },
-    { "PERIODIC",  PERIODIC    },
-    { "RANDOM",    OPT_RANDOM  },
-    { "RAW",       OPT_RAW     },
-    { "RWAIT",     OPT_RWAIT   },
-    { "SACK",      OPT_SACK     },
-    { "SEND",      TO_SEND     },
-    { "SLOW",      OPT_SLOW    },
-    { "SRC",       OPT_SRC     },
-    { "SSL",       OPT_SSL     },
-    { "TCP",       TO_TCP      },
-    { "TCPTSTAMP", OPT_TCP_TSTAMP },
-    { "UDP",       TO_UDP      },
-    { "WINDOW",    OPT_WINDOW  },
-    { "ZERO",      OPT_ZERO    },
-    { "ZWIN",      OPT_ZWIN    },
-    { NULL,        0           }
+    { "BYTE",      DATA_BYTE,         NULL            },
+    { "FILE",      DATA_FILE,         NULL            },
+    { "ZERO",      DATA_ZERO,         NULL            },
+    { "RANDOM",    DATA_RANDOM,       NULL            },
+    { "NULL",      DATA_NULL,         NULL            },
+
+    { "ON",        CMD_ON,            NULL            },
+    { "MOD",       CMD_MOD,           NULL            },
+    { "OFF",       CMD_OFF,           NULL            },
+
+    { "LISTEN",    TO_LISTEN,         NULL            },
+    { "IGNORE",    TO_IGNORE,         NULL            },
+    { "SEND",      TO_SEND,           NULL            },
+    { "TCP",       TO_TCP,            NULL            },
+    { "UDP",       TO_UDP,            NULL            },
+    { "OPEN",      OPT_OPEN,          NULL            },
+    { "RAW",       OPT_RAW,           NULL            },
+    { "SLOW",      OPT_SLOW,          NULL            },
+    { "ZWIN",      OPT_ZWIN,          NULL            },
+    { "PERIODIC",  PERIODIC,          NULL            },
+
+    { "CIPHER",    CMD_OPT_STR,       "ssl_cipher"    },
+    { "CWAIT",     CMD_OPT_INT,       "tcp_cwait"     },
+    { "DEBUG",     CMD_OPT_BOOL,      "debug"         },
+    { "DELAY",     CMD_OPT_INT,       "delay"         },
+    { "DLL",       CMD_OPT_STR,       "dll"           },
+    { "DST",       CMD_OPT_ADDR_PORT, "dst_addr_port" },
+    { "FLAGS",     CMD_OPT_STR,       "tcp_flags"     },
+    { "MSS",       CMD_OPT_INT,       "tcp_mss"       },
+    { "PAYLOAD",   CMD_OPT_DATA,      "payload"       },
+    { "RWAIT",     CMD_OPT_INT,       "tcp_rwait"     },
+    { "SACK",      CMD_OPT_BOOL,      "tcp_sack"      },
+    { "SRC",       CMD_OPT_ADDR_PORT, "src_addr_port" },
+    { "SSL",       CMD_OPT_BOOL,      "ssl"           },
+    { "TCPTSTAMP", CMD_OPT_BOOL,      "tcp_tstamp"    },
+    { "WINDOW",    CMD_OPT_INT,       "tcp_win"       },
+
+    { NULL,        0,                 NULL            }
   }, bool_tokens[] = {
-    { "TRUE",     -1 },
-    { "ENABLE",   -1 },
-    { "ENABLED",  -1 },
-    { "FALSE",     0 },
-    { "DISABLE",   0 },
-    { "DISABLED",  0 },
-    { NULL,        0 }
+    { "TRUE",      -1,                NULL            },
+    { "ENABLE",    -1,                NULL            },
+    { "ENABLED",   -1,                NULL            },
+    { "FALSE",      0,                NULL            },
+    { "DISABLE",    0,                NULL            },
+    { "DISABLED",   0,                NULL            },
+    { NULL,         0,                NULL            }
   }, *token;
 
   /* Skip white space.  */
@@ -831,7 +812,12 @@ again_skip:
   /* is a language token? */
   for(token = tokens; token->token; token++)
     if(!strcasecmp(buff, token->token))
+    {
+      if(token->name)
+        if((yylval.name = strdup(token->name)) == NULL)
+          FAT("No mem for token \"%s\".", buff);
       return token->value;
+    }
   /* return string */
   if((yylval.string = strdup(buff)) == NULL)
     FAT("No mem for string \"%s\".", buff);
@@ -872,10 +858,8 @@ void script_init(void)
   hash_entry_add(defvalues, "payload",        NULL);
   hash_entry_add(defvalues, "ssl",            NULL);
   hash_entry_add(defvalues, "ssl_cipher",     node_new_string("DES-CBC3-SHA", 0, 1));
-  hash_entry_add(defvalues, "src_addr",       NULL);
-  hash_entry_add(defvalues, "src_port",       node_new_int(-1));
-  hash_entry_add(defvalues, "dst_addr",       NULL);
-  hash_entry_add(defvalues, "dst_port",       node_new_int(-1));
+  hash_entry_add(defvalues, "src_addr_port",  NULL);
+  hash_entry_add(defvalues, "dst_addr_port",  NULL);
   hash_entry_add(defvalues, "tcp_mss",        NULL);
   hash_entry_add(defvalues, "tcp_flags",      NULL);
   hash_entry_add(defvalues, "tcp_cwait",      node_new_int(3000000));

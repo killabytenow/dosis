@@ -126,24 +126,26 @@ static int tea_thread_param_value_set(THREAD_WORK *tw, TEA_OBJCFG *oc, SNODE *v)
   /* check tea object */
   switch(oc->type)
   {
-    case TEA_TYPE_ADDR_ID:
+    case TEA_TYPE_ADDR_PORT_ID:
       {
         int port;
-        TEA_TYPE_ADDR *a = pdata;
+        TEA_TYPE_ADDR_PORT *a = pdata;
 
-        s = script_get_string(v);
+        if(v->type != TYPE_ADDR_PORT)
+          TFAT("Found node '%d' when TYPE_ADDR_PORT was expected.", v->type);
+
+        s = script_get_string(v->addr_port.addr);
         if(ip_addr_parse(s, &a->addr, &port))
           TFAT("%d: Cannot parse address '%s'.", v->line, s);
         if(port >= 0)
+        {
           a->port = port;
+          if(v->addr_port.port != NULL)
+            TWRN("%d: port defined twice (alo defined in addr:port).", v->line);
+        }
+        if(v->addr_port.port != NULL)
+          a->port = script_get_int(v->addr_port.port);
         free(s);
-      }
-      break;
-
-    case TEA_TYPE_PORT_ID:
-      {
-        TEA_TYPE_ADDR *a = tw->data + oc->offset;
-        a->port = script_get_int(v);
       }
       break;
 
