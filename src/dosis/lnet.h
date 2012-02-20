@@ -253,7 +253,7 @@ unsigned ln_get_next_random_port_number(unsigned *n);
 void *ln_tcp_get_opt(void *msg, int sz, int sopt);
 int ln_tcp_get_mss(void *msg, int sz);
 
-void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, void *p, int s);
+void ln_dump_msg(int level, char *file, char *func, int line, char *prefix, int proto, void *p, int s);
 
 #ifdef __cplusplus
 }

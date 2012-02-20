@@ -90,7 +90,7 @@ void dosis_exec_log_output(int loglevel, int finput, char **cmd)
     for(s = buff; *s; s++)
       if(*s == '\r' || *s == '\n')
         *s = '\0';
-    d_log_level(loglevel, (char *) __FILE__, cmd[0], "%s", buff);
+    d_log_level(loglevel, (char *) __FILE__, cmd[0], 0, "%s", buff);
   }
   fclose(f);
   close(p[0]);

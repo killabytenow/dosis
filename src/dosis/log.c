@@ -71,7 +71,7 @@ static char *d_log_get_level_desc(int level)
   return type;
 }
 
-static void d_log_prefix_print(int level, char *file, char *function)
+static void d_log_prefix_print(int level, char *file, char *function, int line)
 {
   if(cfg.log_tstamp)
   {
@@ -93,10 +93,11 @@ static void d_log_prefix_print(int level, char *file, char *function)
   {
     if(file)     fprintf(logfile, "%s:", file);
     if(function) fprintf(logfile, "%s:", function);
+    if(line)     fprintf(logfile, "%d:", line);
   }
 }
 
-static void d_log_level_print(int level, char *file, char *function, char *format, va_list args)
+static void d_log_level_print(int level, char *file, char *function, int line, char *format, va_list args)
 {
   if(cfg.verbosity < level)
     return;
@@ -107,7 +108,7 @@ static void d_log_level_print(int level, char *file, char *function, char *forma
 #endif
 
   /* print The Pretty Log Line (tm) */
-  d_log_prefix_print(level, file, function);
+  d_log_prefix_print(level, file, function, line);
   vfprintf(logfile, format, args);
   fputc('\n', logfile);
 
@@ -123,77 +124,77 @@ static void d_log_level_print(int level, char *file, char *function, char *forma
  *   These functions only use the previous functions to expose a rich log API.
  */
 
-void d_log_level_v(int level, char *file, char *function, char *format, va_list args)
+void d_log_level_v(int level, char *file, char *function, int line, char *format, va_list args)
 {
-  d_log_level_print(level, file, function, format, args);
+  d_log_level_print(level, file, function, line, format, args);
   
   if(level == LOG_LEVEL_FATAL)
     exit(1);
 }
 
-void d_log_level(int level, char *file, char *function, char *format, ...)
+void d_log_level(int level, char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(level, file, function, format, args);
+  d_log_level_print(level, file, function, line, format, args);
   va_end(args);
   
   if(level == LOG_LEVEL_FATAL)
     exit(1);
 }
 
-void d_db2(char *file, char *function, char *format, ...)
+void d_db2(char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(LOG_LEVEL_DEBUG2, file, function, format, args);
+  d_log_level_print(LOG_LEVEL_DEBUG2, file, function, line, format, args);
   va_end(args);
 }
 
-void d_dbg(char *file, char *function, char *format, ...)
+void d_dbg(char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(LOG_LEVEL_DEBUG, file, function, format, args);
+  d_log_level_print(LOG_LEVEL_DEBUG, file, function, line, format, args);
   va_end(args);
 }
 
-void d_log(char *file, char *function, char *format, ...)
+void d_log(char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(LOG_LEVEL_LOG, file, function, format, args);
+  d_log_level_print(LOG_LEVEL_LOG, file, function, line, format, args);
   va_end(args);
 }
 
-void d_wrn(char *file, char *function, char *format, ...)
+void d_wrn(char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(LOG_LEVEL_WARNING, file, function, format, args);
+  d_log_level_print(LOG_LEVEL_WARNING, file, function, line, format, args);
   va_end(args);
 }
 
-void d_err(char *file, char *function, char *format, ...)
+void d_err(char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(LOG_LEVEL_ERROR, file, function, format, args);
+  d_log_level_print(LOG_LEVEL_ERROR, file, function, line, format, args);
   va_end(args);
 }
 
-void d_fat(char *file, char *function, char *format, ...)
+void d_fat(char *file, char *function, int line, char *format, ...)
 {
   va_list args;
 
   va_start(args, format);
-  d_log_level_print(LOG_LEVEL_FATAL, file, function, format, args);
+  d_log_level_print(LOG_LEVEL_FATAL, file, function, line, format, args);
   va_end(args);
 
   exit(1);
@@ -205,7 +206,7 @@ void d_fat(char *file, char *function, char *format, ...)
  *   A nice hex-dumper!
  */
 
-void d_dump(int level, char *file, char *func, char *prefix, void *buff, int size)
+void d_dump(int level, char *file, char *func, int line, char *prefix, void *buff, int size)
 {
   char dump[255], *s;
   unsigned char c;
@@ -253,7 +254,7 @@ void d_dump(int level, char *file, char *func, char *prefix, void *buff, int siz
     *s = '\0';
     /* output churro */
     /* XXX: When threaded, get log library lock here */
-    d_log_prefix_print(level, file, func);
+    d_log_prefix_print(level, file, func, line);
     fprintf(logfile, "%s%04x %s\n", prefix, i, dump);
   }
 

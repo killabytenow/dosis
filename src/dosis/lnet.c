@@ -460,7 +460,7 @@ int ln_send_packet(LN_CONTEXT *lnc, void *buff, int sz, INET_ADDR *a)
   return 0;
 }
 
-void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, void *p, int s)
+void ln_dump_msg(int level, char *file, char *func, int line, char *prefix, int proto, void *p, int s)
 {
   if(!prefix)
     prefix = "";
@@ -470,7 +470,7 @@ void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, voi
     case INET_FAMILY_IPV4:
       if(IPV4_UDP_HDRCK(p, s))
       {
-        d_log_level(level, file, func,
+        d_log_level(level, file, func, line,
                     "%sIPv4/UDP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d:",
                     prefix, s,
                     IPV4_SADDR_P(3, p), IPV4_SADDR_P(2, p),
@@ -482,7 +482,7 @@ void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, voi
       } else
       if(IPV4_TCP_HDRCK(p, s))
       {
-        d_log_level(level, file, func,
+        d_log_level(level, file, func, line,
                     "%sIPv4/TCP packet (%d bytes) %d.%d.%d.%d:%d->%d.%d.%d.%d:%d [%s%s%s%s%s%s]:",
                     prefix, s,
                     IPV4_SADDR_P(3, p), IPV4_SADDR_P(2, p),
@@ -500,7 +500,7 @@ void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, voi
       } else
       if(IPV4_HDRCK(p, s))
       {
-        d_log_level(level, file, func,
+        d_log_level(level, file, func, line,
                     "%sIPv4/Unknown(%d) packet received (%d bytes) %d.%d.%d.%d->%d.%d.%d.%d:",
                     prefix, IPV4_PROTOCOL(p), s,
                     IPV4_SADDR_P(3, p), IPV4_SADDR_P(2, p),
@@ -508,21 +508,21 @@ void ln_dump_msg(int level, char *file, char *func, char *prefix, int proto, voi
                     IPV4_TADDR_P(3, p), IPV4_TADDR_P(2, p),
                     IPV4_TADDR_P(1, p), IPV4_TADDR_P(0, p));
       } else {
-        d_log_level(level, file, func,
+        d_log_level(level, file, func, line,
                     "%sMalformed IPV4 packet received (%d bytes):",
                     prefix, s);
       }
       break;
     case INET_FAMILY_IPV6:
-      d_log_level(level, file, func,
+      d_log_level(level, file, func, line,
                   "%sIPv6 packet received (%d bytes):",
                   prefix, s);
       break;
     default:
-      d_log_level(level, file, func,
+      d_log_level(level, file, func, line,
                   "%sUnknown protocol %d packet received (%d bytes):",
                   prefix, proto, s);
   }
-  d_dump(level, file, func, prefix, p, s);
+  d_dump(level, file, func, line, prefix, p, s);
 }
 
